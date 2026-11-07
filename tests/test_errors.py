@@ -997,12 +997,12 @@ def test_a_review_copy_that_cannot_be_made_names_the_os_error_not_its_path(tmp_p
 
 
 def test_the_firms_own_error_is_said_whole_and_anything_else_by_its_class():
-    from tracker import filer
+    from tracker import copies
 
-    firm = filer.FilingError("the list changed while this pass ran; run it again")
-    assert errors.said(firm, filer.FIRM_WRITTEN) == str(firm)
-    assert errors.said(ValueError(QUOTED), filer.FIRM_WRITTEN) == "ValueError"
-    assert errors.said(PermissionError(errno.EACCES, "no", f"/{NAME}"), filer.FIRM_WRITTEN) == (
+    firm = copies.FilingError("the list changed while this pass ran; run it again")
+    assert errors.said(firm, copies.FIRM_WRITTEN) == str(firm)
+    assert errors.said(ValueError(QUOTED), copies.FIRM_WRITTEN) == "ValueError"
+    assert errors.said(PermissionError(errno.EACCES, "no", f"/{NAME}"), copies.FIRM_WRITTEN) == (
         "PermissionError (EACCES)")
 
 

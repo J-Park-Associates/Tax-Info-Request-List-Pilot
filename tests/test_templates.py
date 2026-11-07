@@ -7,7 +7,7 @@ the year it is written for follows the calendar rather than a person.
 
 import pytest
 
-from tracker.content_check import has_content_rules
+from tracker.keywords import has_content_rules
 from tracker.manifest import (
     ManifestError,
     narrowing_rows,
@@ -381,7 +381,7 @@ def test_a_k1_issuer_row_is_short_named_by_its_issuer():
     five letters of the issuer ("Schedule K-1") and none of Ashford's. The
     Document the client reads keeps the whole name; the row's working
     copies take the short one."""
-    from tracker.filer import prepared_name_for
+    from tracker.copies import prepared_name_for
     from tracker.manifest import item_from_fields, short_title_problem
 
     cases = {
@@ -413,7 +413,7 @@ def test_a_hand_added_k1_row_derives_its_short_name_from_the_issuer():
     and the title is recognised from the one constant, its prefix without
     case. Any other title derives its first twenty characters."""
     from tracker import manifest, templates
-    from tracker.filer import prepared_name_for
+    from tracker.copies import prepared_name_for
     from tracker.manifest import derived_short_title, issuer_short_title, item_from_fields
 
     assert templates.ISSUER_DOCUMENT is manifest.ISSUER_DOCUMENT

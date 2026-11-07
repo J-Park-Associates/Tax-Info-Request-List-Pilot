@@ -276,7 +276,7 @@ def form_1098_lines(lender: str, borrower: str, year: int) -> list[str]:
 # Decision 94's pile: the sheets that come out of a client's scanner when
 # they feed it a stack. Each block is one real form as the IRS prints it -
 # its number at the head of a line with its printed title and its year
-# after it, which is what ``content_check.self_named_forms`` reads - and a
+# after it, which is what ``keywords.self_named_forms`` reads - and a
 # block is a page's worth of boxes long, so two of them are never inside
 # one title window. Two blocks inside one window would be a menu
 # (decision 73), and that is the checklist below, which must go on

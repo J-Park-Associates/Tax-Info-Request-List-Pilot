@@ -32,11 +32,11 @@ import pytest
 
 from tests.routing_cases import _DECISION_141_XLSX, CASES, XLSX_CASES, filed_to, k1_received_lines
 from tests.samples import sheet_xlsx, text_pdf
-from tracker.content_check import Extraction
 from tracker.keywords import FIRST_PAGE_PHRASES
 from tracker.manifest import keyword_alternatives, validated
 from tracker.router import route_file
 from tracker.templates import FORM_TEMPLATES, SHARED, item_from_spec, template_items
+from tracker.verdicts import Extraction
 
 NL = chr(10)
 

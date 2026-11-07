@@ -28,13 +28,8 @@ from tests.children import (
 from tests.content_check_helpers import an_engagement, item
 from tests.samples import photo, text_pdf
 from tracker import reasons, store
-from tracker.content_check import (
-    check_content,
-    evaluate_rules,
-    extract_text,
-    has_content_rules,
-    rules_fingerprint,
-)
+from tracker.content_check import check_content, extract_text
+from tracker.keywords import evaluate_rules, has_content_rules, rules_fingerprint
 from tracker.locking import engagement_lock
 from tracker.manifest import RequestItem
 from tracker.verdicts import CACHE_VERSION, ContentCache
@@ -418,7 +413,7 @@ def test_a_cache_with_no_engagement_never_touches_the_store(tmp_path, monkeypatc
 
 
 def test_a_transient_verdict_is_still_never_cached(tmp_path, monkeypatch):
-    from tracker.content_check import Extraction
+    from tracker.verdicts import Extraction
 
     monkeypatch.setattr("tracker.content_check.extract", lambda path, ocr=True: Extraction(
         None, reason=reasons.NO_TEXT_LAYER.format(), extractable=False, transient=True))
@@ -971,6 +966,7 @@ def test_a_text_layer_that_never_finishes_is_stopped_and_abandoned(tmp_path, a_s
 
     import tracker.content_check as content_check
     from tests import child_readers
+    from tracker import keywords
 
     a_short_stop.setattr(content_check, "_CHILD_READER", child_readers.a_text_layer_that_never_finishes)
     pdf = text_pdf(tmp_path / "drawing.pdf", "Form W-2 Wage and Tax Statement 2025", style="bare")
@@ -983,7 +979,7 @@ def test_a_text_layer_that_never_finishes_is_stopped_and_abandoned(tmp_path, a_s
 
     assert child_readers.reached(pdf, "text-layer").is_file()      # stopped inside the text layer
     assert STOP_IN_TESTS <= took < STOP_IN_TESTS + 45
-    assert verdict == content_check.ContentResult(ok=False, reason=STOPPED, extractable=False,
+    assert verdict == keywords.ContentResult(ok=False, reason=STOPPED, extractable=False,
                                                      code=reasons.READING_STOPPED.code)
     assert no_child_left()
     a_short_stop.setattr(content_check, "_read_in_a_child",
@@ -998,6 +994,7 @@ def test_a_render_that_never_finishes_is_stopped_and_abandoned(tmp_path, a_short
     scanner keeps that verdict."""
     import tracker.content_check as content_check
     from tests import child_readers
+    from tracker import keywords
     from tracker.router import route_file
 
     pytest.importorskip("pypdfium2")
@@ -1016,7 +1013,7 @@ def test_a_render_that_never_finishes_is_stopped_and_abandoned(tmp_path, a_short
 
     cache = ContentCache()
     verdict = check_content(scan, rules, cache)
-    assert verdict == content_check.ContentResult(ok=False, reason=STOPPED, extractable=False,
+    assert verdict == keywords.ContentResult(ok=False, reason=STOPPED, extractable=False,
                                                      code=reasons.READING_STOPPED.code)
     a_short_stop.setattr(content_check, "_read_in_a_child",
                          lambda *a, **k: pytest.fail("a kept verdict was read again"))
@@ -1066,6 +1063,7 @@ def test_a_reading_on_time_returns_what_it_returned_in_process(tmp_path, in_a_ch
 
     import tracker.content_check as content_check
     from tests.samples import build_samples
+    from tracker import verdicts
 
     pile = tmp_path / "pile"
     pile.mkdir()
@@ -1079,9 +1077,9 @@ def test_a_reading_on_time_returns_what_it_returned_in_process(tmp_path, in_a_ch
     assert len(documents) >= 12
     for document in documents:
         in_process = content_check.open_and_read(document)
-        in_child = content_check.judge_bounded(document, content_check.Questions()).extraction
+        in_child = content_check.judge_bounded(document, verdicts.Questions()).extraction
         assert in_child.opened is not None, document.name
-        words_let_go = content_check.unjudged(in_process).extraction
+        words_let_go = verdicts.unjudged(in_process).extraction
         assert replace(in_child, seconds=0.0) == replace(words_let_go, seconds=0.0), document.name
     assert no_child_left()
 
@@ -1134,12 +1132,13 @@ def test_no_child_is_left_running_after_a_stop(tmp_path, a_short_stop):
     tree goes, on Windows as elsewhere."""
     import tracker.content_check as content_check
     from tests import child_readers
+    from tracker import verdicts
 
     a_short_stop.setattr(content_check, "_CHILD_READER",
                          child_readers.a_reader_that_starts_a_reader_of_its_own)
     pdf = text_pdf(tmp_path / "page.pdf", "Form W-2 2025", style="bare")
 
-    reading = content_check.judge_bounded(pdf, content_check.Questions()).extraction
+    reading = content_check.judge_bounded(pdf, verdicts.Questions()).extraction
 
     assert reading.text is None and reading.reason == STOPPED and not reading.transient
     helper = child_readers.reached(pdf, "helper")
@@ -1158,11 +1157,11 @@ import sys
 from pathlib import Path
 sys.path[:0] = [sys.argv[3]]
 from tests import child_readers
-from tracker import content_check, reader_child
+from tracker import content_check, reader_child, verdicts
 content_check._CHILD_READER = child_readers.a_reader_that_starts_a_reader_of_its_own
 if sys.argv[2] == "lifeline":
     reader_child._kill_on_close_job = lambda pid, **_limits: None
-content_check.judge_bounded(Path(sys.argv[1]), content_check.Questions())
+content_check.judge_bounded(Path(sys.argv[1]), verdicts.Questions())
 """
 
 
@@ -1369,6 +1368,7 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
 
     import tracker.content_check as content_check
     from tests.builders import named_page
+    from tracker import verdicts
     from tracker.index import read_index
     from tracker.layout import inbox_of, originals_of
     from tracker.registry import discover_engagements
@@ -1382,7 +1382,7 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
     page = text_pdf(tmp_path / "page.pdf", "Form W-2 2025", style="bare")
 
     # Dies before "started": transient, and nothing is kept.
-    reading = content_check.judge_bounded(page, content_check.Questions()).extraction
+    reading = content_check.judge_bounded(page, verdicts.Questions()).extraction
     assert reading.text is None and reading.transient and reading.reason == unavailable
     cache = ContentCache()
     verdict = check_content(page, rules, cache)
@@ -1397,7 +1397,7 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(multiprocessing.context.SpawnProcess, "_Popen", staticmethod(no_process))
-        assert content_check.judge_bounded(page, content_check.Questions()).extraction.reason == unavailable
+        assert content_check.judge_bounded(page, verdicts.Questions()).extraction.reason == unavailable
     content_check.readers_that_could_not_start()          # the claims above were not a pass
 
     # A pass: two documents wait for the next pass - no row, nothing kept
@@ -1709,7 +1709,7 @@ MARKER = "Quendrilvax"
 
 
 def _questions_about(*items, names=()):
-    from tracker.content_check import Questions, row_question
+    from tracker.verdicts import Questions, row_question
 
     return Questions(rows=tuple(row_question(one) for one in items), names=tuple(names))
 
@@ -1726,7 +1726,8 @@ def test_no_document_word_crosses_the_pipe(tmp_path, in_a_child):
 
     import tracker.content_check as content_check
     from tests.builders import TEST_CLIENT
-    from tracker.content_check import NameQuestion
+    from tracker import verdicts
+    from tracker.verdicts import NameQuestion
 
     page = text_pdf(tmp_path / "w2.pdf", "\n".join([
         f"Form W-2 Wage and Tax Statement 2025 {MARKER}",
@@ -1742,7 +1743,7 @@ def test_no_document_word_crosses_the_pipe(tmp_path, in_a_child):
 
     judged = content_check.judge_bounded(page, questions)
 
-    assert isinstance(judged, content_check.Judgment)
+    assert isinstance(judged, verdicts.Judgment)
     assert judged.extraction.text == "" and judged.has_words
     assert judged.row(rows[0]).verdict.ok and not judged.row(rows[1]).verdict.ok
     assert judged.name(names[0]).matched == TEST_CLIENT
@@ -1851,6 +1852,7 @@ def test_a_catastrophic_date_pattern_costs_one_stop_and_the_next_pass_takes_the_
 
     import tracker.content_check as content_check
     from tests.builders import named_page, sort
+    from tracker import keywords
     from tracker.index import read_index
     from tracker.layout import inbox_of
 
@@ -1896,7 +1898,7 @@ def test_a_catastrophic_date_pattern_costs_one_stop_and_the_next_pass_takes_the_
     a_short_stop.setattr(content_check, "_read_in_a_child",
                          lambda *a, **k: pytest.fail("a kept verdict was judged again"))
     kept = check_content(loose, row, ContentCache(engagement))
-    assert kept == content_check.ContentResult(ok=False, reason=STOPPED, extractable=False,
+    assert kept == keywords.ContentResult(ok=False, reason=STOPPED, extractable=False,
                                                code=content_check.reasons.READING_STOPPED.code)
     # The record now carries a pattern decision 187 refuses on read. The
     # read-back check after every test is about honest records, so this
@@ -2059,18 +2061,13 @@ def test_every_verdict_is_the_same_judged_in_the_child_as_in_the_pass(tmp_path, 
 
     import tracker.content_check as content_check
     from tests import samples
-    from tracker.content_check import (
-        NameQuestion,
-        carries_a_1099b_section,
-        extract,
-        judgment_of,
-        own_forms,
-        row_question,
-        self_named_forms,
-    )
+    from tracker import verdicts
+    from tracker.content_check import extract, judgment_of
+    from tracker.keywords import carries_a_1099b_section, own_forms, self_named_forms
     from tracker.manifest import validated
     from tracker.names import check_name
     from tracker.templates import FORM_TYPES, template_items
+    from tracker.verdicts import NameQuestion, row_question
 
     rows = list(dict.fromkeys(
         one for form in FORM_TYPES for one in validated(template_items(form["id"], year=2025))
@@ -2080,7 +2077,7 @@ def test_every_verdict_is_the_same_judged_in_the_child_as_in_the_pass(tmp_path, 
     by_question = {row_question(one): one for one in rows}
     names = (NameQuestion(own=("Test Client",), others=(("the other return", ("Pat Sample",)),)),
              NameQuestion(own=("Pat Sample",), others=(("the first return", ("Test Client",)),)))
-    questions = content_check.Questions(rows=tuple(distinct), names=names)
+    questions = verdicts.Questions(rows=tuple(distinct), names=names)
 
     irs = Path(__file__).parent / "irs"
     with pytest.MonkeyPatch.context() as shorter:
@@ -2096,7 +2093,7 @@ def test_every_verdict_is_the_same_judged_in_the_child_as_in_the_pass(tmp_path, 
         "scanned 1099-int": samples.scanned_1099_int_lines(2025),
     }
     for name, lines in pages.items():
-        readings[name] = content_check.Extraction("\n".join(lines))
+        readings[name] = verdicts.Extraction("\n".join(lines))
     assert len(readings) > 100
 
     for name, reading in readings.items():
@@ -2141,7 +2138,8 @@ def test_the_form_scan_runs_once_per_judgment(monkeypatch):
     however many rows are asked."""
     import tracker.content_check as content_check
     import tracker.keywords as keywords
-    from tracker.content_check import Extraction, judgment_of
+    from tracker.content_check import judgment_of
+    from tracker.verdicts import Extraction
 
     counts = {"dominant_forms": 0, "self_named_forms": 0}
     for module, name in ((keywords, "dominant_forms"), (content_check, "dominant_forms"),

@@ -16,7 +16,7 @@
   ],
   "counts": {
     "nodes": 383,
-    "edges": 1973,
+    "edges": 1980,
     "reused": 329
   },
   "node_types": [
@@ -4871,8 +4871,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "1ac2d7f07b22c627",
-      "lines": 1923,
+      "sha256": "c7891ca3e2429994",
+      "lines": 1927,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -4914,7 +4914,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "13d5131e73dbe3c0",
+      "sha256": "6ba2a8080e1976d5",
       "lines": 9416,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -5888,7 +5888,7 @@
       "id": "pilot/wintest/make_samples.py",
       "type": "module",
       "layer": "root",
-      "sha256": "27c05c3ed7d3e433",
+      "sha256": "3edc284a8ef02f9e",
       "lines": 153,
       "cli": "python -m pilot.wintest.make_samples",
       "exports": [
@@ -6233,7 +6233,7 @@
       "id": "tests/child_readers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c21ce79297eb55ce",
+      "sha256": "edf1fb43ef9ba842",
       "lines": 259,
       "exports": [
         "MARKS_VARIABLE",
@@ -6339,8 +6339,8 @@
       "id": "tests/filer_helpers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "926a5c03cd08fa5e",
-      "lines": 540,
+      "sha256": "1d51d36e776bc951",
+      "lines": 543,
       "exports": [
         "A_CLIENT_PATH",
         "DAY3",
@@ -6742,7 +6742,7 @@
       "id": "tests/samples.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "20630004c625fa76",
+      "sha256": "998f264c1cc1cb52",
       "lines": 676,
       "exports": [
         "BARE",
@@ -6850,8 +6850,8 @@
       "id": "tests/test_actions.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e4d846cf90d8791a",
-      "lines": 3047,
+      "sha256": "9a1204b294a0a4e3",
+      "lines": 3049,
       "exports": [
         "CRASH_POINTS",
         "a_moved_filed_row",
@@ -7138,8 +7138,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9821a99f895044b2",
-      "lines": 11686,
+      "sha256": "9bec901495ffbd70",
+      "lines": 11687,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -7868,7 +7868,7 @@
       "id": "tests/test_catalog.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ff1be58b56dee25d",
+      "sha256": "49938c19037d02de",
       "lines": 247,
       "exports": [
         "NL",
@@ -7925,8 +7925,8 @@
       "id": "tests/test_containers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0366093c655b05fe",
-      "lines": 1062,
+      "sha256": "fde08a7dfe2ae9f6",
+      "lines": 1061,
       "exports": [
         "FORM_1098",
         "Killed",
@@ -7994,8 +7994,8 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6382a411c6c5d4be",
-      "lines": 2249,
+      "sha256": "89d64e9f3a114ea5",
+      "lines": 2247,
       "exports": [
         "A_PASS_READING",
         "BOMB_REFUSED",
@@ -8077,7 +8077,7 @@
       ],
       "constants": {
         "BOMB_REFUSED": "'(LimitReachedError)'",
-        "A_PASS_READING": "'\\nimport sys\\nfrom pathlib import Path\\nsys.path[:0] = [sys.argv[3]]\\nfrom tests import child_readers\\nfrom tracker import content_check, reader_child\\ncontent_check._CHILD_READER = child_readers.a_reader_that_starts_a_reader_of_its_own\\nif sys.argv[2] == \"lifeline\":\\n    reader_child._kill_on_close_job = lambda pid, **_limits: None\\ncontent_check.judge_bounded(Path(sys.argv[1]), content_check.Questions())\\n'",
+        "A_PASS_READING": "'\\nimport sys\\nfrom pathlib import Path\\nsys.path[:0] = [sys.argv[3]]\\nfrom tests import child_readers\\nfrom tracker import content_check, reader_child, verdicts\\ncontent_check._CHILD_READER = child_readers.a_reader_that_starts_a_reader_of_its_own\\nif sys.argv[2] == \"lifeline\":\\n    reader_child._kill_on_close_job = lambda pid, **_limits: None\\ncontent_check.judge_bounded(Path(sys.argv[1]), verdicts.Questions())\\n'",
         "MARKER": "'Quendrilvax'"
       },
       "role": "Tests for the content check: reading a document, judging it and checking a row against it - the cache tests that also check or read a document, the reading child's stops and what it leaves behind.",
@@ -8087,7 +8087,7 @@
       "id": "tests/test_copies.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9d285cc31fca7623",
+      "sha256": "199a2f2afc062c3d",
       "lines": 645,
       "exports": [
         "test_a_copy_already_there_is_reused_only_under_its_own_request",
@@ -8183,7 +8183,7 @@
       "id": "tests/test_errors.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "825aa54dc45dc51b",
+      "sha256": "b11ab54e265929ad",
       "lines": 1049,
       "exports": [
         "DROPPED",
@@ -8257,8 +8257,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ea15928d62586cce",
-      "lines": 5625,
+      "sha256": "326ae23acf3de177",
+      "lines": 5628,
       "exports": [
         "A_PASS_KILLED_MID_COPY",
         "DANA",
@@ -8747,8 +8747,8 @@
       "id": "tests/test_intents.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8dbc56ca2526e495",
-      "lines": 543,
+      "sha256": "837811e5ab93fc61",
+      "lines": 544,
       "exports": [
         "FORGED",
         "test_a_copy_through_a_link_copies_nothing",
@@ -8830,13 +8830,15 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "44b3544c5c346c6b",
-      "lines": 1235,
+      "sha256": "a38a3666cae18e10",
+      "lines": 1327,
       "exports": [
+        "MOVED_OUT",
         "REPO",
         "SOCKET_SHAPED",
         "SPELLING_OWNERS",
         "spellings",
+        "test_a_name_this_phase_moved_is_read_from_its_home_never_through_the_module_it_left",
         "test_every_allowed_spelling_is_still_needed",
         "test_every_allowed_third_party_import_is_a_locked_package",
         "test_every_allowed_upward_edge_is_still_needed",
@@ -8878,13 +8880,15 @@
       ],
       "constants": {
         "SPELLING_OWNERS": "('tracker/layout.py', 'tracker/door.py')"
-      }
+      },
+      "role": "The package's layers, domains and import rules, pinned: no load-time import points to a higher layer, and each module sits in exactly one layer and one domain.",
+      "notes": "SPEC-architecture-p4 P4.13 (R4.13.1): the guard holds every name phase 4 moved to its home (MOVED_OUT says where each old module's names went), so a test cannot reach it through the module it left; READ_THROUGH_ON_PURPOSE, the allow-list, starts empty and an entry is a stop and ask."
     },
     {
       "id": "tests/test_layout.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "db5d6be809a80709",
+      "sha256": "aa31eb34e576e38a",
       "lines": 914,
       "exports": [
         "FILE_NAME_PART_SENTENCES",
@@ -8985,7 +8989,7 @@
       "id": "tests/test_ledger.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "464a5cea9eec1c33",
+      "sha256": "66425cac2110d876",
       "lines": 1187,
       "exports": [
         "A_ROW_ORIGINAL",
@@ -9284,8 +9288,8 @@
       "id": "tests/test_names.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5280337bd506a5f4",
-      "lines": 144,
+      "sha256": "6c73a5d9ac1bc35d",
+      "lines": 145,
       "exports": [
         "spelling_in",
         "test_a_name_is_parsed_once_per_text",
@@ -9300,7 +9304,7 @@
       "id": "tests/test_ocr.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "34f37b7fc3eee123",
+      "sha256": "3d2ceed0b7159d86",
       "lines": 1117,
       "exports": [
         "A_PASS_BETWEEN_DOCUMENTS",
@@ -9706,7 +9710,7 @@
       "id": "tests/test_reader_child.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "925f27bff15febb1",
+      "sha256": "7d866c44878afeba",
       "lines": 586,
       "exports": [
         "OFF_WINDOWS",
@@ -9917,7 +9921,7 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "85ef17d7c0e2fe56",
+      "sha256": "6ca26c2b3d939336",
       "lines": 2435,
       "exports": [
         "A_WRITE_KILLED_HALF_WAY",
@@ -10202,7 +10206,7 @@
       "id": "tests/test_resident.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0cc2c6a2b2bd461a",
+      "sha256": "8fa1239366596ef7",
       "lines": 717,
       "exports": [
         "CHANGES_IN_PLACE",
@@ -10287,7 +10291,7 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "44ff2cb75b465cff",
+      "sha256": "43ea43665fff17ca",
       "lines": 2040,
       "exports": [
         "PAIR_SAID",
@@ -10384,8 +10388,8 @@
       "id": "tests/test_router.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6ba7b3ddf2e3fa6c",
-      "lines": 1485,
+      "sha256": "e9dd31d73ab7e77f",
+      "lines": 1486,
       "exports": [
         "DONATIONS",
         "GARBLED",
@@ -10525,8 +10529,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "170b771681ba8eff",
-      "lines": 5824,
+      "sha256": "1a1f56292a75a187",
+      "lines": 5825,
       "exports": [
         "A_CLIENT_PATH",
         "DRAFT_DAY",
@@ -10795,7 +10799,7 @@
       "id": "tests/test_scaffold.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "02fa7bbf5bc08787",
+      "sha256": "7a2e7243782d22de",
       "lines": 1182,
       "exports": [
         "A01_LABEL",
@@ -10870,7 +10874,7 @@
       "id": "tests/test_scanner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5da958dc41a5489f",
+      "sha256": "840b9c46238819d3",
       "lines": 931,
       "exports": [
         "DAY1",
@@ -11566,7 +11570,7 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8837586488b8db54",
+      "sha256": "85128e86b3b3fb2e",
       "lines": 5432,
       "exports": [
         "AFTER_WHAT",
@@ -12060,7 +12064,7 @@
       "id": "tests/test_templates.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1601608c3b4bad37",
+      "sha256": "8eef5645dc08ac2e",
       "lines": 480,
       "exports": [
         "OWNERS_ROWS_141",
@@ -13664,6 +13668,12 @@
       "source": "derived"
     },
     {
+      "from": "tests/child_readers.py",
+      "to": "tracker/verdicts.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
       "from": "tests/content_check_helpers.py",
       "to": "tracker/manifest.py",
       "type": "exercises",
@@ -15261,12 +15271,6 @@
     },
     {
       "from": "tests/test_catalog.py",
-      "to": "tracker/content_check.py",
-      "type": "exercises",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_catalog.py",
       "to": "tracker/keywords.py",
       "type": "exercises",
       "source": "derived"
@@ -15286,6 +15290,12 @@
     {
       "from": "tests/test_catalog.py",
       "to": "tracker/templates.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_catalog.py",
+      "to": "tracker/verdicts.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -15436,6 +15446,12 @@
     {
       "from": "tests/test_containers.py",
       "to": "tracker/store_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_containers.py",
+      "to": "tracker/verdicts.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -16174,6 +16190,12 @@
     {
       "from": "tests/test_filer.py",
       "to": "tracker/intents.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
+      "to": "tracker/keywords.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -17127,7 +17149,7 @@
     },
     {
       "from": "tests/test_layout.py",
-      "to": "tracker/filer.py",
+      "to": "tracker/copies.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -17308,6 +17330,12 @@
     {
       "from": "tests/test_ledger.py",
       "to": "tracker/index.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ledger.py",
+      "to": "tracker/layout.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -17553,6 +17581,12 @@
     },
     {
       "from": "tests/test_names.py",
+      "to": "tracker/verdicts.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_names.py",
       "to": "tracker/names.py",
       "type": "tests",
       "source": "derived"
@@ -17668,6 +17702,12 @@
     {
       "from": "tests/test_ocr.py",
       "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "tracker/verdicts.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -18076,6 +18116,12 @@
     {
       "from": "tests/test_reader_child.py",
       "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reader_child.py",
+      "to": "tracker/verdicts.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -19563,12 +19609,6 @@
     },
     {
       "from": "tests/test_scaffold.py",
-      "to": "tracker/filer.py",
-      "type": "exercises",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_scaffold.py",
       "to": "tracker/fsio.py",
       "type": "exercises",
       "source": "derived"
@@ -19576,6 +19616,12 @@
     {
       "from": "tests/test_scaffold.py",
       "to": "tracker/households.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scaffold.py",
+      "to": "tracker/inbox.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -19708,6 +19754,12 @@
     {
       "from": "tests/test_scanner.py",
       "to": "tracker/index.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scanner.py",
+      "to": "tracker/keywords.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -20086,12 +20138,6 @@
     {
       "from": "tests/test_single_source.py",
       "to": "tracker/errlog.py",
-      "type": "exercises",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_single_source.py",
-      "to": "tracker/filer.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -20499,13 +20545,13 @@
     },
     {
       "from": "tests/test_templates.py",
-      "to": "tracker/content_check.py",
+      "to": "tracker/copies.py",
       "type": "exercises",
       "source": "derived"
     },
     {
       "from": "tests/test_templates.py",
-      "to": "tracker/filer.py",
+      "to": "tracker/keywords.py",
       "type": "exercises",
       "source": "derived"
     },

@@ -386,7 +386,7 @@ def test_bytes_recorded_after_the_fact_are_tied_to_the_row_or_not_recorded(engag
     import tracker.inbox as inbox_module
     import tracker.intents as intents_module
     from tracker.actions import assign_review_file
-    from tracker.filer import UNTIED_IN_PBC
+    from tracker.inbox import UNTIED_IN_PBC
     from tracker.validators import sha256_of
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
@@ -1495,7 +1495,7 @@ def test_put_it_back_never_overwrites_a_different_file_at_home_and_parks_this_do
 
 def test_put_it_back_refuses_a_row_that_is_not_moved_by_name(engagement):
     from tracker.actions import restore_working_copy
-    from tracker.filer import FilingError
+    from tracker.copies import FilingError
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     filed = sort(engagement, today=DAY1).filed[0]
@@ -1552,7 +1552,7 @@ def test_put_it_back_refuses_a_row_without_a_digest(engagement, monkeypatch):
     import tracker.intents as intents_module
     import tracker.readme_ack as readme_ack_module
     from tracker.actions import restore_working_copy
-    from tracker.filer import FilingError
+    from tracker.copies import FilingError
     from tracker.index import FILE_MOVED
 
     filed, wanderer = a_moved_filed_row(engagement)
@@ -1573,7 +1573,7 @@ def test_put_it_back_refuses_a_row_without_a_digest(engagement, monkeypatch):
 def test_put_it_back_refuses_when_neither_the_wanderer_nor_the_original_holds_the_bytes_and_names_which(
         engagement):
     from tracker.actions import restore_working_copy
-    from tracker.filer import FilingError
+    from tracker.copies import FilingError
 
     filed, wanderer = a_moved_filed_row(engagement)
     wanderer.write_bytes(b"%PDF-1.4 somebody re-saved it\n")
@@ -1707,7 +1707,7 @@ def test_keep_and_send_to_review_refuse_a_row_with_copies_under_several_requests
         assign_review_file,
         unfile_document,
     )
-    from tracker.filer import FilingError
+    from tracker.copies import FilingError
 
     split, wanderer = a_moved_split_row(engagement)
     files = every_byte(engagement)
@@ -1747,7 +1747,7 @@ def test_put_it_back_restores_every_copy_of_such_a_row(engagement):
 def test_every_recovery_refusal_leaves_the_file_count_unchanged(engagement, refusal):
     """Standing rule: a refused action moves nothing and overwrites nothing."""
     from tracker.actions import restore_working_copy, unfile_document
-    from tracker.filer import FilingError
+    from tracker.copies import FilingError
 
     entry, wanderer = (a_moved_split_row(engagement) if refusal == "several copies"
                        else a_moved_filed_row(engagement))
@@ -1778,7 +1778,7 @@ def test_dismiss_still_refuses_a_moved_row_by_name(engagement):
     """Decision 76 unchanged: setting a request aside says nothing about a
     file nobody can find, so a moved row is not dismissable."""
     from tracker.actions import dismiss_review_file
-    from tracker.filer import FilingError
+    from tracker.copies import FilingError
     from tracker.index import FILE_MOVED
 
     filed, wanderer = a_moved_filed_row(engagement)
@@ -2328,7 +2328,8 @@ def test_a_released_row_is_gone_from_the_index_the_queue_and_every_count_and_the
     and it names the return and the request - never a person."""
     from tracker import review
     from tracker.actions import assign_review_file
-    from tracker.filer import RELEASED_TO, FilingError, hand_over
+    from tracker.copies import FilingError
+    from tracker.filer import RELEASED_TO, hand_over
 
     father, llc = fed
     parked = parked_notice(father)
@@ -2358,7 +2359,8 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
     return's page (decision 204's review, S-1)."""
     from tests.builders import root_for_a_return_of
     from tracker.actions import assign_review_file
-    from tracker.filer import PATH_NO_ROOM_IN, _details_of, _label_of, hand_over
+    from tracker.copies import PATH_NO_ROOM_IN
+    from tracker.filer import _details_of, _label_of, hand_over
     from tracker.layout import path_limit
 
     # One household, three returns: home fits; ``cut`` leaves A01 nine short;
@@ -2880,7 +2882,7 @@ def test_a_refused_mark_on_an_unfile_records_nothing_and_the_next_pass_runs(enga
     open intent, the row still Filed at its copy - so the passes after it
     run, where before every one of them raised on the intent it left."""
     from tracker.actions import unfile_document
-    from tracker.filer import MarkRefusedError
+    from tracker.copies import MarkRefusedError
 
     row = _a_filed_macro_workbook(engagement, monkeypatch)
     _refuse_the_mark(monkeypatch)
@@ -3000,7 +3002,7 @@ def test_a_refused_issuer_filing_leaves_the_list_the_index_and_the_folders_as_th
         NOT_AN_ISSUER_CARD,
         assign_review_file,
     )
-    from tracker.filer import FilingError
+    from tracker.copies import FilingError
     from tracker.manifest import ISSUER_NAMED_TWICE, ManifestError, list_head
     from tracker.records import entry_to_json
     from tracker.templates import issuer_item

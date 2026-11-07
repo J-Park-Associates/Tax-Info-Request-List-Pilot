@@ -114,7 +114,8 @@ def test_a_name_is_parsed_once_per_text(monkeypatch):
     three returns about one page, each read the page's words once, and
     every verdict is the one the page always gave."""
     import tracker.names as names
-    from tracker.content_check import Extraction, NameQuestion, Questions, judgment_of
+    from tracker.content_check import judgment_of
+    from tracker.verdicts import Extraction, NameQuestion, Questions
 
     folded = []
     real = names.name_parts

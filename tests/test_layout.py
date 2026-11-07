@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from tracker import layout
-from tracker.filer import prepared_name_for
+from tracker.copies import prepared_name_for
 from tracker.layout import (
     CLIENTS_TREE,
     ENGAGEMENT_LABEL_PATTERN,

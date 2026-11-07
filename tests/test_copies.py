@@ -245,7 +245,7 @@ def test_a_working_copy_is_named_to_fit_the_room_left_under_its_folder(tmp_path,
     and the extension and loses the tail of the document label. The row
     names the copy on disk, the scan proves it, and the next pass's reuse
     check finds it."""
-    from tracker.filer import _existing_copy
+    from tracker.copies import _existing_copy
     from tracker.layout import path_limit
     from tracker.manifest import Status
     from tracker.scanner import scan_engagement
@@ -463,7 +463,7 @@ def test_a_move_whose_source_is_now_behind_a_link_moves_nothing(engagement, tmp_
 
     # Directly: the move itself refuses, and says why.
     with pytest.raises(copies.MovedThroughALinkError, match="reached through a link"):
-        filer._move_whole(behind, originals(engagement) / "theirs.pdf", within=inbox)
+        copies._move_whole(behind, originals(engagement) / "theirs.pdf", within=inbox)
     assert (outside / "theirs.pdf").exists()
 
     # Through a pass whose listing was made before the swap: left in place.
@@ -494,7 +494,7 @@ def test_the_working_copy_uses_the_short_title(short_root):
 
 
 def test_the_one_numbering_function_takes_a_name_a_row_still_names(tmp_path):
-    from tracker.filer import _unique_path
+    from tracker.copies import _unique_path
 
     folder = tmp_path / "2025"
     folder.mkdir()
@@ -518,7 +518,7 @@ def test_a_copy_already_there_is_reused_only_under_its_own_request(engagement):
     94's page filed under A01 and C01 has the same bytes under both names,
     and C01's filing never takes A01's copy for its own."""
     from tests.samples import scanned_1098_lines, scanned_w2_lines
-    from tracker.filer import _existing_copy, copies_of
+    from tracker.copies import _existing_copy, copies_of
     from tracker.validators import sha256_of
 
     original = drop(engagement, "scan0003.pdf",

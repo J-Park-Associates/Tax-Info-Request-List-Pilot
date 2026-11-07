@@ -69,7 +69,7 @@ def test_sanitize_component():
 def test_working_copy_names_are_windows_safe_and_begin_with_their_identifier():
     """Decision 168: the name is all there is to say which request a copy
     is for, so it always begins with the identifier and a separator."""
-    from tracker.filer import prepared_name_for
+    from tracker.copies import prepared_name_for
 
     for item in ITEMS:
         name = prepared_name_for(item, "pdf", set())
@@ -377,7 +377,7 @@ def test_a_readme_that_cannot_be_read_just_now_waits_where_it_is(engagement, mon
     from pathlib import Path
 
     from tests.builders import sort
-    from tracker.filer import README_UNREAD
+    from tracker.inbox import README_UNREAD
     from tracker.index import read_index
     from tracker.scaffold import README_FIRST_LINE
 
@@ -467,7 +467,7 @@ def test_each_issuer_gets_its_own_working_copy_name(tmp_path):
     carries the row's short name, ``K-1`` and the issuer cut to twenty
     characters at a whole word (the owner's Q-B), while the Document the
     client reads keeps the entity's whole name."""
-    from tracker.filer import prepared_name_for
+    from tracker.copies import prepared_name_for
     from tracker.templates import issuer_row, item_from_spec
 
     rows = [item_from_spec(issuer_row("F02", "Ashford Holdings, L.P.")),
@@ -552,7 +552,7 @@ def test_a_filed_document_is_listed_as_received_under_its_return_by_its_request_
 
 def test_a_document_filed_to_two_requests_is_listed_once_per_request(tmp_path):
     from tests.builders import seed_index
-    from tracker.filer import prepared_name_for
+    from tracker.copies import prepared_name_for
     from tracker.index import FILED
     from tracker.scaffold import RECEIVED_HEADING
 
@@ -1173,7 +1173,7 @@ def test_the_client_readme_keeps_the_full_title(short_root):
 
     w2 = template_items("1040", year=TEST_YEAR)[0]
     engagement = make_engagement(short_root, [w2])
-    from tracker.filer import prepared_name_for
+    from tracker.copies import prepared_name_for
 
     assert prepared_name_for(w2, "pdf", set()).startswith("A01 - W-2 - ")
     assert persons_folders(engagement / PREPARED_DIR_NAME) == []

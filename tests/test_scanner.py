@@ -315,7 +315,7 @@ def test_the_scanner_reads_the_request_list_only_under_the_lock(engagement, monk
 
 
 def test_the_scan_leaves_its_verdicts_in_the_store_and_prunes_what_is_gone(engagement):
-    from tracker.content_check import rules_fingerprint
+    from tracker.keywords import rules_fingerprint
 
     pdf = text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")
     scan_engagement(engagement, today=DAY1)

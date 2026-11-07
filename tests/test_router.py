@@ -445,7 +445,7 @@ def test_a_scanned_1099_c_read_as_1099_g_beside_a_second_form_name_parks(tmp_pat
     and no 1040 row asks for the 1099-S. The second self-named form is not
     one of A06's title forms, so the scan parks as a lead, byte for byte
     what it parks as today."""
-    from tracker.content_check import self_named_forms
+    from tracker.keywords import self_named_forms
 
     text = NL.join([
         "Form 1099-G 2025 Cancellation of Debt Copy B For Debtor",
@@ -469,7 +469,7 @@ def test_a_scan_whose_page_shows_another_requests_form_number_parks(tmp_path):
     fails on its year, but its evidence records its own form number on the
     page - another request's form number - so the INT row's scan parks as a
     lead instead of filing."""
-    from tracker.content_check import dominant_forms
+    from tracker.keywords import dominant_forms
 
     int_row = _scan_row("B01", "1099-int")
     oid_row = _scan_row("B02", "1099-oid", date_pattern=r"(?i)\b2024\b")
@@ -489,7 +489,7 @@ def test_a_page_naming_only_its_own_form_files(tmp_path):
     row's: a 1099-R printed in decision 85's shape (its number, then its
     year) files under E02. The ordinary 1099-INT reading names no form in
     that shape at all (first claim above) and passes the same way."""
-    from tracker.content_check import self_named_forms
+    from tracker.keywords import self_named_forms
     from tracker.router import MATCHED_FROM_SCAN
 
     text = NL.join(["Form 1099-R 2025", "Distributions From Pensions, Annuities, Retirement",
@@ -508,7 +508,7 @@ def test_a_page_naming_two_families_as_itself_is_decision_94s_and_never_reaches_
     SEVERAL_FORMS_UNSORTED, exactly as _multi_form decides today, and is
     never filed with the scan sentence."""
     from tests.samples import scanned_1099_int_lines, scanned_w2_lines
-    from tracker.content_check import own_forms, self_named_forms
+    from tracker.keywords import own_forms, self_named_forms
     from tracker.router import MATCHED_FROM_SCAN
 
     text = NL.join(scanned_w2_lines(2025) + scanned_1099_int_lines(2025))
@@ -547,7 +547,8 @@ def test_a_page_naming_two_forms_never_files_on_a_third_and_the_miss_path_agrees
     times deep in its text is those two documents - it parks on a list that
     asks only for a 1099, and an empty cache reaches the same verdict."""
     from tests.samples import scanned_1098_lines, scanned_w2_lines
-    from tracker.content_check import check_content, rules_fingerprint
+    from tracker.content_check import check_content
+    from tracker.keywords import rules_fingerprint
     from tracker.verdicts import ContentCache
 
     third = RequestItem(identifier="A02", document="1099 Statements", period="TY2025",
@@ -1205,7 +1206,7 @@ def _catalog_1040():
 
 def _read_by_ocr(tmp_path, name, text, items):
     """Route ``text`` as an OCR reading of a scan called ``name``."""
-    from tracker.content_check import Extraction
+    from tracker.verdicts import Extraction
 
     scan = text_pdf(tmp_path / name, "")
     return route_file(scan, items, reading=Extraction(text=text, from_ocr=True))
@@ -1419,7 +1420,7 @@ def test_a_bank_consolidated_statement_or_a_notice_email_is_not_a_brokerage_stat
     1099-B that a notice or a checklist only mentions: a bank's consolidated
     statement is its 1099-INT (A02), and the notices and the organizer page
     file under no row at all - never E01 as the statement."""
-    from tracker.content_check import carries_a_1099b_section
+    from tracker.keywords import carries_a_1099b_section
 
     text = NL.join(lines)
     routing = route_file(text_pdf(tmp_path / name, text), _catalog("1040"))

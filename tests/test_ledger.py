@@ -826,8 +826,8 @@ def test_a_copy_moved_event_folds_as_a_row_event_in_both_folds_and_check_agrees(
     so it needs no fold of its own: the generic one puts the row where the
     row it replaces was, a store built from the journal alone says the same,
     and the row's own sequence number is this line's."""
-    from tracker.filer import PREPARED_DIR_NAME
     from tracker.index import FILE_MOVED, moved_to
+    from tracker.layout import PREPARED_DIR_NAME
     from tracker.scaffold import REVIEW_DIR_NAME
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")

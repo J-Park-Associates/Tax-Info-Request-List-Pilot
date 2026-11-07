@@ -25,7 +25,7 @@ pilot treats with care and the suite's pile does not hold:
 
 * ``Donation Receipts {YEAR} with macros.xlsm`` - a workbook under a macro
   workbook's name and declared type (no macro inside; the suffix is all
-  ``filer.bears_macros`` reads), so a review copy can be marked for Protected View on Windows, and
+  ``validators.bears_macros`` reads), so a review copy can be marked for Protected View on Windows, and
   the Mac check can show its sentence that there is none (SPEC-mac step 10);
 * ``Email from John Smith.msg`` - an Outlook message holding one made-up
   1099-INT PDF from a payer the pile does not hold, the email path and its

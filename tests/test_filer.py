@@ -89,9 +89,7 @@ from tests.filer_helpers import (
 )
 from tests.samples import text_pdf
 from tracker import checkpoint, ledger, reasons, store, store_check
-from tracker.filer import (
-    FilingError,
-)
+from tracker.copies import FilingError
 from tracker.fsio import TEMP_SUFFIX
 from tracker.index import DUPLICATE, FILED, NEEDS_REVIEW, ensure, read_index
 from tracker.layout import household_of, inbox_of, locate, location_of, originals_of, root_of
@@ -357,7 +355,8 @@ def test_a_name_a_deleted_original_left_is_not_reused_for_a_new_drop(engagement)
     was then an unrecorded copy for ever. A name a row still names is
     taken, so the new one rests beside it and the old row goes on saying
     it is missing - the truthful state."""
-    from tracker.filer import MISSING_IN_PBC, UNRECORDED_COPY
+    from tracker.filer import UNRECORDED_COPY
+    from tracker.inbox import MISSING_IN_PBC
 
     drop(engagement, "W2.pdf", "Form W-2 Wage and Tax Statement 2025 the wrong one")
     [first] = sort(engagement, today=DAY1).filed
@@ -623,7 +622,7 @@ def test_a_retired_cache_file_is_never_read_and_is_not_the_passs_to_remove(engag
     import json
 
     from tests.builders import counting_extractor
-    from tracker.content_check import rules_fingerprint
+    from tracker.keywords import rules_fingerprint
     from tracker.scanner import scan_engagement
     from tracker.validators import sha256_of
     from tracker.verdicts import CACHE_VERSION, RETIRED_CACHE_FILENAME
@@ -1138,7 +1137,7 @@ def test_a_drop_for_a_not_applicable_row_parks_and_nothing_under_the_engagement_
 
 
 def test_an_original_replaced_under_its_own_name_is_said_out_loud_every_run(engagement):
-    from tracker.filer import REPLACED_IN_PBC
+    from tracker.inbox import REPLACED_IN_PBC
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     first = sort(engagement, today=DAY1).filed[0]
@@ -1189,7 +1188,7 @@ def test_a_file_still_being_written_is_reported_as_waiting_not_passed_over(engag
 def test_a_same_size_replacement_with_an_old_date_is_still_noticed(engagement):
     # One number changed in a CSV, copied in with its original timestamp:
     # same size, older mtime. Only the bytes can tell.
-    from tracker.filer import REPLACED_IN_PBC
+    from tracker.inbox import REPLACED_IN_PBC
 
     (inbox_of(engagement) / "ledger.csv").write_text("a,1\nb,2\n", encoding="utf-8")
     first = sort(engagement, today=DAY1).review[0]
@@ -1331,7 +1330,7 @@ def test_an_original_deleted_from_pbc_is_said_every_pass(engagement):
     # Explorer will delete what is already there. Every other disagreement
     # between the index and the disk was said every pass; this one was said
     # by nothing at all, and the scan went on calling the request Received.
-    from tracker.filer import MISSING_IN_PBC
+    from tracker.inbox import MISSING_IN_PBC
 
     drop(engagement, "w2 employer a.pdf", "Form W-2 Wage and Tax Statement 2025 A")
     drop(engagement, "w2 employer b.pdf", "Form W-2 Wage and Tax Statement 2025 B")
@@ -1351,7 +1350,7 @@ def test_an_original_deleted_from_pbc_is_said_every_pass(engagement):
 
 
 def test_an_original_the_client_renamed_in_pbc_is_followed_not_filed_again(engagement):
-    from tracker.filer import MOVED_IN_PBC
+    from tracker.inbox import MOVED_IN_PBC
 
     drop(engagement, "w2 employer a.pdf", "Form W-2 Wage and Tax Statement 2025 A")
     filed = sort(engagement, today=DAY1).filed[0]
@@ -1385,7 +1384,7 @@ def test_an_original_the_client_moved_into_a_subfolder_of_pbc_is_followed(engage
 
 
 def test_a_duplicate_rows_own_original_is_watched_like_every_other(engagement):
-    from tracker.filer import MISSING_IN_PBC
+    from tracker.inbox import MISSING_IN_PBC
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     sort(engagement, today=DAY1)
@@ -1408,7 +1407,7 @@ def test_a_row_recorded_without_its_bytes_is_never_moved_onto_another_file(engag
     import tracker.filer as filer_module
     import tracker.inbox as inbox_module
     import tracker.intents as intents_module
-    from tracker.filer import MISSING_IN_PBC
+    from tracker.inbox import MISSING_IN_PBC
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     real = filer_module.sha256_of
@@ -2557,7 +2556,8 @@ def test_a_dry_run_of_the_household_pass_moves_nothing_and_takes_no_lock(two_ret
 def test_the_household_pass_refuses_to_sort_a_return_whose_lock_it_does_not_hold(two_returns):
     """The locks are the caller's and the sort says so rather than writing
     outside them: a run that had no lock must not discover it half way."""
-    from tracker.filer import FilingError, file_household_drops
+    from tracker.copies import FilingError
+    from tracker.filer import file_household_drops
 
     personal, business = two_returns
     drop(personal, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
@@ -3936,7 +3936,9 @@ def test_a_stray_named_by_another_records_open_intent_is_left_alone_by_the_pass(
     document ends claimed by exactly one row, in the return that took it."""
     import tracker.actions as actions_module
     import tracker.filer as filer_module
-    from tracker.filer import LEFT_FOR_ANOTHER_RETURN, hand_over
+    from tracker import intents
+    from tracker.filer import hand_over
+    from tracker.inbox import LEFT_FOR_ANOTHER_RETURN
 
     father, llc = fed
     parked = parked_notice(father)
@@ -3947,7 +3949,7 @@ def test_a_stray_named_by_another_records_open_intent_is_left_alone_by_the_pass(
     feeding(tmp_path, [])                       # a person trims the feed
 
     if order == "the taking pass during the dropping pass":
-        real_record = filer_module._record
+        real_record = intents._record
         ran = {"llc": False}
 
         def interleaved(engagement_dir, *args, **kwargs):
@@ -4054,7 +4056,8 @@ def test_an_original_left_for_another_returns_filing_is_said_on_every_pass(
     finishes (its return retired, unreadable, its pass never run) must not
     leave an original unrecorded in silence. Once the filing finishes, the
     sentence stops."""
-    from tracker.filer import LEFT_FOR_ANOTHER_RETURN, hand_over
+    from tracker.filer import hand_over
+    from tracker.inbox import LEFT_FOR_ANOTHER_RETURN
 
     father, llc = fed
     parked = parked_notice(father)
@@ -4250,7 +4253,7 @@ def test_a_fed_return_with_no_room_parks_at_home_naming_the_fed_return(tmp_path,
     was dropped for one click, the row naming the fed return by its label;
     and the click itself refuses on the room, with nothing moved."""
     from tests.builders import root_for_a_return_of
-    from tracker.filer import PATH_NO_ROOM_IN, NoRoom
+    from tracker.copies import PATH_NO_ROOM_IN, NoRoom
     from tracker.layout import path_limit
     from tracker.records import Feed
     from tracker.registry import discover_engagements
@@ -4293,7 +4296,7 @@ def test_a_sibling_return_with_no_room_parks_in_the_home_return_naming_it(tmp_pa
     Maria's has no room, and the row parks in John's - the home return -
     naming Maria's return by its label, never "this request"."""
     from tests.builders import root_for_a_return_of
-    from tracker.filer import PATH_NO_ROOM_IN
+    from tracker.copies import PATH_NO_ROOM_IN
     from tracker.layout import path_limit
     from tracker.registry import discover_engagements
 
@@ -5316,10 +5319,10 @@ def test_details_that_cannot_be_read_are_none_and_the_failure_is_kept_on_the_log
     import logging
 
     import tracker.filer as filer
-    from tracker import errors
+    from tracker import copies, errors
 
     def torn(_folder):
-        raise filer.FilingError("the record changed under this read")
+        raise copies.FilingError("the record changed under this read")
 
     monkeypatch.setattr(filer, "load_engagement_info", torn)
     with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
@@ -5529,7 +5532,7 @@ def test_a_macro_copy_that_cannot_be_marked_is_not_made(engagement, monkeypatch)
     no review copy is made - the drop is a "could not be filed" row the
     pass report names - and the original rests safe."""
     import tracker.copies as copies_module
-    from tracker.filer import MARK_REFUSED_STEP
+    from tracker.copies import MARK_REFUSED_STEP
 
     def refused(path):
         raise OSError(95, "Operation not supported", str(path))

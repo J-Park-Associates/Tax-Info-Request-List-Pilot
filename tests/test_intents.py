@@ -177,7 +177,7 @@ def test_a_recovery_never_copies_an_original_the_row_names_outside_its_places(en
     row's own original, not a step, so an intent whose row named a file
     outside the clients root had that file copied into Needs Review. The
     row's original is held to the same places as a step's source."""
-    from tracker.filer import _intend
+    from tracker.intents import _intend
     from tracker.locking import engagement_lock
     from tracker.records import IndexEntry, entry_to_json, ledger_key
     from tracker.validators import sha256_of
@@ -517,7 +517,8 @@ def test_a_macro_working_copy_moved_into_review_is_marked_or_not_moved(engagemen
     a copy made there: marked before the rename, and a mark refused moves
     nothing (fail closed)."""
     import tracker.copies as copies_module
-    from tracker.filer import MarkRefusedError, _do_op, _op
+    from tracker.copies import MarkRefusedError
+    from tracker.intents import _do_op, _op
 
     marked = []
 

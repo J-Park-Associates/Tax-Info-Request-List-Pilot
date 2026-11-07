@@ -1540,12 +1540,13 @@ def test_the_pass_that_sorts_the_inbox_drafts_the_held_reminder_the_same_day(
     import tracker.actions as actions_module
     import tracker.filer as filer_module
     import tracker.intents as intents_module
+    from tracker import copies
     from tracker.layout import README_NAME
     from tracker.reminder import INBOX_HOLD
 
     engagement = build_engagement(tmp_path, samples)
     inbox = inbox_of(engagement.path)
-    real = filer_module._move_whole
+    real = copies._move_whole
 
     def refused_once(source, target, *, within):
         if Path(source).parent == inbox:
@@ -4816,7 +4817,7 @@ def test_no_run_log_line_contains_a_client_file_name(tmp_path, samples, monkeypa
     names them all."""
     import errno
 
-    from tracker.filer import FileError
+    from tracker.intents import FileError
 
     marker = "Zqxmarker"
     root = tmp_path / "Clients"
@@ -4925,7 +4926,7 @@ def test_every_failure_and_skip_is_logged_as_a_code(tmp_path, samples, monkeypat
         patch.setattr(runner_module, "scan_engagement", refuse)
         runs["refused:ManifestError"] = a_pass(one(), today=FRIDAY)
     with monkeypatch.context() as patch:
-        from tracker.filer import FileError
+        from tracker.intents import FileError
         real = runner_module.file_household_drops
 
         def file_drops(*args, **kwargs):

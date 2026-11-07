@@ -6331,7 +6331,7 @@ def test_a_rename_carries_duplicates_and_parked_candidates_that_name_it(
         assert now[parked["original_name"]]["decision"] == NEEDS_REVIEW
 
     # Killed at its one move: every row's intent is already written.
-    real = filer._do_op
+    real = intents._do_op
 
     def killed(engagement_dir, op, **kwargs):
         raise PermissionError("held open by another program")
@@ -6372,7 +6372,7 @@ def test_an_interrupted_rename_is_finished_by_the_next_pass(capsys, demo_root, t
 
     engagement, _ = _filed_documents(capsys, demo_root, tmp_path)
     prepared = engagement / PREPARED_DIR_NAME
-    real = filer._do_op
+    real = intents._do_op
     calls = {"n": 0}
 
     def the_second_move_fails(engagement_dir, op, **kwargs):
@@ -6428,6 +6428,7 @@ def test_a_rename_carries_what_a_consolidated_statement_answers(capsys, demo_roo
     import tracker.actions as actions
     import tracker.filer as filer
     from tests.builders import _consolidated_return
+    from tracker import intents
     from tracker.reasons import IN_CONSOLIDATED, IN_CONSOLIDATED_CLIENT
     from tracker.reminder import draft_reminder
 
@@ -6445,7 +6446,7 @@ def test_a_rename_carries_what_a_consolidated_statement_answers(capsys, demo_roo
             before = {ledger_key(e): entry_to_json(e) for e in entries}
             entries = [replace(e, candidates="E01", evidence="") if e.decision == FILED else e
                        for e in entries]
-            filer._record(engagement, before, entries)
+            intents._record(engagement, before, entries)
         [row] = [r for r in read_index(engagement) if r.decision == FILED]
         assert row.candidate_list == ["E01"] and row.evidence == "" and "A02" in row.answers
 
@@ -6469,7 +6470,7 @@ def test_a_rename_carries_what_a_consolidated_statement_answers(capsys, demo_roo
 
     # Killed after the rename's one write: the list and every row's intent
     # are on the record, and the statement's row is not yet rewritten.
-    real = filer._record
+    real = intents._record
 
     def killed(*args, **kwargs):
         raise PermissionError("the run was stopped")
@@ -7421,13 +7422,13 @@ def test_a_rollover_that_could_not_read_last_years_index_says_so_in_its_reply(
     """E2 (P297): the reply's ``warnings`` - which the page already draws -
     carry the sentence, as the last line, after the one ``create_engagement``
     assigns."""
-    from tracker import filer, index
+    from tracker import copies, index
     from tracker.rollover import UNFILED_LAST_YEAR_UNREAD
 
     engagement, _ = _issuer_return(capsys, demo_root)
 
     def torn(*_args, **_kwargs):
-        raise filer.FilingError("the index is torn")
+        raise copies.FilingError("the index is torn")
 
     monkeypatch.setattr(index, "read_index", torn)
     code, payload = run(capsys, "rollover", stdin={"prior": str(engagement), "year": BASE_YEAR + 1})

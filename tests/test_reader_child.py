@@ -26,7 +26,7 @@ import pytest
 from tests import ocr_helpers
 from tests.children import CRASHED, STOP_IN_TESTS, STOPPED, eventually, no_child_left, running
 from tests.samples import text_pdf
-from tracker import content_check, locking, ocr, reader_child
+from tracker import content_check, locking, ocr, reader_child, verdicts
 
 in_a_child = ocr_helpers.in_a_child
 a_short_stop = ocr_helpers.a_short_stop
@@ -101,7 +101,7 @@ def test_a_long_lived_reader_is_replaced_after_a_crash(tmp_path, in_a_child):
         before = pid_of_the_reader(after)
         answer, failed = content_check.in_a_child(crash, child_readers.a_reader_that_dies_on_a_crash)
         assert answer is None and failed.reason == CRASHED and not failed.transient
-        judgment = content_check.judge_bounded(after, content_check.Questions())
+        judgment = content_check.judge_bounded(after, verdicts.Questions())
         assert judgment.has_words and "w2" in judgment.self_named
         assert pid_of_the_reader(after) != before
     assert no_child_left()

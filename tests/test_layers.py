@@ -1233,3 +1233,95 @@ def test_firm_pages_joins_layer_0_and_reaches_only_the_standard_library_and_the_
     assert load["firm_pages"] == {"errors", "firm_cache", "fsio", "layout", "settings"}, load["firm_pages"]
     assert call["firm_pages"] == set(), call["firm_pages"]
     assert [m for m in load if "firm_pages" in load[m] | call[m]] == ["api"]
+
+
+# ── P4.13 (SPEC-architecture-p4 R4.13.1): moved names are read from home ───
+
+# Where each old module's names went in phase 4 (P331-P338 and SPEC-architecture-p4).
+# P4.13 holds them: a test, a tool or the program reads a moved name from the
+# module that defines it, never through the module it left, because an old
+# module that happens to import the name back for its own use would keep the
+# read working until the day it stops needing the import.
+MOVED_OUT = {
+    "filer": ("copies", "intents", "inbox", "readme_ack", "actions", "index"),
+    "content_check": ("keywords", "verdicts"),
+    "ocr": ("reader_child",),
+}
+
+# A read through an old module that must stay, with the reason. It starts empty:
+# an entry is a stop and ask (SPEC-architecture-p4, P4.13).
+READ_THROUGH_ON_PURPOSE: dict[tuple[str, int, str], str] = {}
+
+# The carry-forward's two names count for the filer too: scaffold's and
+# layout's, so they do not come back.
+_MOVED_BEFORE_PHASE_4 = {"filer": {"OTHER_DOCUMENT", "PREPARED_DIR_NAME"}}
+
+
+def _top_level_names(module: str) -> set[str]:
+    tree = ast.parse((REPO / "tracker" / f"{module}.py").read_text(encoding="utf-8"))
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                names.update(n.id for n in ast.walk(target) if isinstance(n, ast.Name))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+    return names
+
+
+def _moved_names() -> dict[str, set[str]]:
+    moved: dict[str, set[str]] = {}
+    for old, homes in MOVED_OUT.items():
+        names: set[str] = set()
+        for home in homes:
+            # P2.9's decision words moved to index in phase 2; only OPENED is phase 4's.
+            names |= {"OPENED"} if home == "index" else _top_level_names(home)
+        moved[old] = (names - _top_level_names(old)) | _MOVED_BEFORE_PHASE_4.get(old, set())
+    return moved
+
+
+def _reads_of_moved_names(tree: ast.AST, moved: dict[str, set[str]]) -> list[tuple[int, str, str]]:
+    """(line, old module, name) for every code read of a moved name through its old module."""
+    found: list[tuple[int, str, str]] = []
+    alias: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            if node.module == "tracker":
+                for a in node.names:
+                    if a.name in moved:
+                        alias[a.asname or a.name] = a.name
+            elif node.module.startswith("tracker."):
+                old = node.module.split(".", 1)[1]
+                found += [(node.lineno, old, a.name) for a in node.names if a.name in moved.get(old, ())]
+        elif isinstance(node, ast.Import):
+            for a in node.names:
+                old = a.name.split(".", 1)[1] if a.name.startswith("tracker.") else ""
+                if old in moved and a.asname:
+                    alias[a.asname] = old
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in alias:
+            old = alias[node.value.id]
+            if node.attr in moved[old]:
+                found.append((node.lineno, old, node.attr))
+    return found
+
+
+def test_a_name_this_phase_moved_is_read_from_its_home_never_through_the_module_it_left():
+    """P4.13 (R4.13.1): no ``from tracker.filer import room_for`` and no
+    ``filer.room_for`` for a name phase 4 moved out of the filer, the content
+    check or the OCR module. It reads code only: a ``setattr`` target is a
+    string and patch_sites' concern, and a string program is swept by hand."""
+    moved = _moved_names()
+    assert all(moved[old] for old in MOVED_OUT), moved
+    misses = []
+    for root in ("tracker", "tools", "tests"):
+        for path in sorted((REPO / root).rglob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            rel = path.relative_to(REPO).as_posix()
+            for line, old, name in _reads_of_moved_names(tree, moved):
+                if rel == f"tracker/{old}.py" or (rel, line, name) in READ_THROUGH_ON_PURPOSE:
+                    continue
+                misses.append(f"{rel}:{line} {old}.{name}")
+    assert misses == [], "\n".join(misses)

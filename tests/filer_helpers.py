@@ -391,8 +391,9 @@ def moves_made(monkeypatch) -> list[tuple[str, str]]:
     import tracker.actions as actions_module
     import tracker.filer as filer_module
     import tracker.intents as intents_module
+    from tracker import copies
 
-    real = filer_module._move_whole
+    real = copies._move_whole
     made: list[tuple[str, str]] = []
 
     def counted(source, target, *, within):
@@ -416,8 +417,9 @@ def killed_after_ops(monkeypatch, after=1):
     import tracker.actions as actions_module
     import tracker.filer as filer_module
     import tracker.intents as intents_module
+    from tracker import intents
 
-    real = filer_module._do_op
+    real = intents._do_op
     state = {"made": 0, "died": False}
 
     def dying(engagement_dir, op, *, cache=None):
@@ -438,8 +440,9 @@ def killed_after_the_move(monkeypatch):
     import tracker.actions as actions_module
     import tracker.filer as filer_module
     import tracker.intents as intents_module
+    from tracker import copies
 
-    real = filer_module._move_whole
+    real = copies._move_whole
     state = {"died": False}
 
     def dying(source, target, *, within):

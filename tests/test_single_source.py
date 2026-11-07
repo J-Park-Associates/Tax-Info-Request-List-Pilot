@@ -1910,7 +1910,7 @@ def test_tree_diagrams_show_catalog_copies_as_the_filer_names_them():
     """Decision 168: a working copy sits in Prepared itself, so a tree
     diagram shows no folder per request, and every working copy it shows
     is named as the filer names a catalog row's copy."""
-    from tracker.filer import prepared_name_for
+    from tracker.copies import prepared_name_for
     from tracker.templates import FORM_TEMPLATES, TY, item_from_spec
 
     items = [item_from_spec(spec) for rows in FORM_TEMPLATES.values() for spec in rows]

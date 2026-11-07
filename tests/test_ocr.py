@@ -33,7 +33,7 @@ from tests.builders import make_engagement
 from tests.children import CRASHED, STOPPED, eventually, no_child_left, running
 from tests.ocr_helpers import PAGE_WORDS, FakeEngine
 from tests.samples import scanned_pdf, text_pdf
-from tracker import content_check, ocr, reader_child, reasons
+from tracker import content_check, ocr, reader_child, reasons, verdicts
 from tracker.content_check import check_content, extract
 from tracker.keywords import contains_keyword
 from tracker.manifest import RequestItem
@@ -866,9 +866,9 @@ def test_the_shipped_reading_of_a_scan_fits_the_reading_child(tmp_path, in_a_chi
     scan = a_five_page_scan(tmp_path / "five pages.pdf",
                             lines_1099_int("Harbor Test Bank", "John A. Smith", 2025))
 
-    form_number = content_check.RowQuestion(required_keywords=("1099-INT",))
+    form_number = verdicts.RowQuestion(required_keywords=("1099-INT",))
 
-    judgment = content_check.judge_bounded(scan, content_check.Questions(rows=(form_number,)))
+    judgment = content_check.judge_bounded(scan, verdicts.Questions(rows=(form_number,)))
 
     reading = judgment.extraction
     assert reading.reason != CRASHED and not reading.transient, reading.reason
@@ -1022,7 +1022,7 @@ def test_the_document_stop_ends_a_page_the_reader_never_finishes(tmp_path, a_sho
     a_short_stop.setattr(content_check, "_CHILD_READER", child_readers.a_page_read_that_never_finishes)
     scan = w2_scan(tmp_path / "scan.pdf")
 
-    reading = content_check.judge_bounded(scan, content_check.Questions()).extraction
+    reading = content_check.judge_bounded(scan, verdicts.Questions()).extraction
 
     mark = child_readers.reached(scan, "page")
     assert mark.is_file()                                          # it was inside the page

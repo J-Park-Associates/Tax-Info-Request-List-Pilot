@@ -1637,7 +1637,7 @@ def test_the_waiting_files_are_named_and_counted_from_one_walk(tmp_path):
 
 
 def test_a_transfer_still_in_progress_holds_the_reminder(tmp_path):
-    from tracker.filer import iter_drops
+    from tracker.inbox import iter_drops
 
     folder = engagement(tmp_path, SENDABLE)
     inbox = waiting_in(folder)
@@ -1651,7 +1651,7 @@ def test_a_transfer_still_in_progress_holds_the_reminder(tmp_path):
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="APFS refuses the names the machine cannot handle")
 def test_a_name_the_machine_cannot_handle_holds_the_reminder_until_a_person_deals_with_it(tmp_path):
-    from tracker.filer import unreachable_drops
+    from tracker.inbox import unreachable_drops
 
     folder = engagement(tmp_path, SENDABLE)
     inbox = waiting_in(folder)

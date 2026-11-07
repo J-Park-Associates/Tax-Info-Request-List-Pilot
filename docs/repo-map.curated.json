@@ -188,6 +188,10 @@
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
+    "tests/test_layers.py": {
+      "role": "The package's layers, domains and import rules, pinned: no load-time import points to a higher layer, and each module sits in exactly one layer and one domain.",
+      "notes": "SPEC-architecture-p4 P4.13 (R4.13.1): the guard holds every name phase 4 moved to its home (MOVED_OUT says where each old module's names went), so a test cannot reach it through the module it left; READ_THROUGH_ON_PURPOSE, the allow-list, starts empty and an entry is a stop and ask."
+    },
     "tests/test_repo_map.py": {
       "role": "Guards the map's trust contract: derived facts come from source, curated judgment survives regeneration, drift is detected, and the committed map matches the tree.",
       "notes": "test_the_committed_map_is_current fails the suite if someone changed code without running `repo_map.py update`."

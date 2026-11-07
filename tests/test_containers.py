@@ -57,10 +57,8 @@ from tracker.containers import (
     open_container,
     safe_name,
 )
-from tracker.filer import (
-    DUPLICATE_OF_OPENED,
-    FilingError,
-)
+from tracker.copies import FilingError
+from tracker.filer import DUPLICATE_OF_OPENED
 from tracker.index import DUPLICATE, FILED, NEEDS_REVIEW, OPENED, read_index
 from tracker.layout import (
     INBOX_DIR_NAME,
@@ -304,13 +302,14 @@ def test_an_attachment_the_reader_could_not_start_on_waits_and_so_does_its_conta
     unaccounted; pass 2 reopens the email as a stray, reuses both files,
     skips the W-2 and files the 1098."""
     import tracker.content_check as content_check
+    from tracker import verdicts
 
     drop_bytes(engagement, "mail.eml", eml([("w2.pdf", pdf(W2)), ("1098.pdf", pdf(FORM_1098))]))
     real = filer.read_once
 
     def cannot_start_on_the_1098(path, questions):
         if path.name == "1098.pdf":
-            return content_check.unjudged(content_check.could_not_start(0.0, "no more processes", path.name))
+            return verdicts.unjudged(content_check.could_not_start(0.0, "no more processes", path.name))
         return real(path, questions)
 
     monkeypatch.setattr(filer, "read_once", cannot_start_on_the_1098)

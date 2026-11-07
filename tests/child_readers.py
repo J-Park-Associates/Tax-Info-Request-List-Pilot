@@ -22,7 +22,7 @@ import sys
 import threading
 from pathlib import Path
 
-from tracker import content_check
+from tracker import content_check, verdicts
 
 
 def reached(path: Path, stage: str) -> Path:
@@ -96,7 +96,7 @@ def a_page_read_that_never_finishes(path: Path, *, ocr: bool = True):
 def the_childs_process_id(path: Path, *, ocr: bool = True):
     """A reading whose words are the child's own process id: which child
     read it, for the claims about one child serving a pass."""
-    return content_check.Extraction(str(os.getpid()))
+    return verdicts.Extraction(str(os.getpid()))
 
 
 def a_reader_that_dies_on_a_crash(path: Path, *, ocr: bool = True):
@@ -137,10 +137,10 @@ def a_reader_that_starts_a_reader_of_its_own(path: Path, *, ocr: bool = True):
 # the card.
 
 
-def _who_read() -> content_check.Extraction:
+def _who_read() -> verdicts.Extraction:
     from tracker import ocr as reader
 
-    return content_check.Extraction(f"{os.getpid()} {reader._PROCESSOR_ONLY}")
+    return verdicts.Extraction(f"{os.getpid()} {reader._PROCESSOR_ONLY}")
 
 
 def a_reader_that_tells_the_pass(path: Path, *, ocr: bool = True):
@@ -167,7 +167,7 @@ def a_reader_that_keeps_what_it_met(path: Path, *, ocr: bool = True):
         raise ValueError(QUOTED_BY_THE_PARSER)
     except ValueError as exc:
         errors.keep("child_readers: a page", exc, name=path.name)
-    return content_check.Extraction("the words that did read")
+    return verdicts.Extraction("the words that did read")
 
 
 def a_card_that_dies(path: Path, *, ocr: bool = True):
@@ -199,7 +199,7 @@ def a_reader_that_needs_too_much_memory(path: Path, *, ocr: bool = True):
     job allows (SPEC-169 section 9); any other reads."""
     if "big" in path.name:
         hold = bytearray(3 * 1024**3)
-        return content_check.Extraction(str(len(hold)))
+        return verdicts.Extraction(str(len(hold)))
     return _who_read()
 
 
