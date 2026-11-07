@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 359,
     "edges": 1642,
-    "reused": 298
+    "reused": 305
   },
   "node_types": [
     "artifact",
@@ -6626,7 +6626,7 @@
       "id": "tests/test_admission.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8b43568ce13bfb4c",
+      "sha256": "041827ddc690f08b",
       "lines": 1909,
       "exports": [
         "CLASS_MEMBER_MODULE",

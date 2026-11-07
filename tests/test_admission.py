@@ -1454,7 +1454,7 @@ def names_bound_in(tree: ast.Module) -> set[str]:
 def admission_closure(roots=None) -> dict[str, str]:
     """Every part of the admission, by its qualified name: the
     source of every package function reachable from
-    ``admission._refuse_a_malformed_line`` - through the store, ``records``,
+    ``admission._refuse_a_malformed_line`` - through ``records``, ``bounds``,
     ``ledger``, ``layout`` or anything else under ``tracker/``, including
     modules it imports at call time - and the ``repr`` of every package
     constant those functions read (a bound, a limit, a pattern). Found by
