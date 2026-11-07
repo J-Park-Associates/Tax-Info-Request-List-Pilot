@@ -138,7 +138,6 @@ from tracker.filer import (
     hand_over,
     hand_over_copies,
     mark_missing_again,
-    refresh_household_readme,
     rename_request,
     requests_taking,
     restore_working_copy,
@@ -246,6 +245,7 @@ from tracker.manifest import (
 )
 from tracker.names import NO_PEOPLE, propose_spellings
 from tracker.page import PALETTE, slug
+from tracker.readme_ack import refresh_household_readme
 from tracker.reasons import READ_AND_PARKED_CODES
 from tracker.records import (
     DATE_FIELDS,
@@ -3306,7 +3306,7 @@ def _refresh_readmes(*engagements: Path) -> None:
     once each (decision 130): after an action that creates or edits a
     return or changes a document's row, what the client reads is current
     at once rather than at the next pass. A hand-over across households
-    names both. Never raises - :func:`filer.refresh_household_readme`
+    names both. Never raises - :func:`readme_ack.refresh_household_readme`
     says a failure by class in this reply's warnings (decision 193) and
     logs it in full - and is reached only after the action succeeded, so
     a refused action refreshes nothing."""

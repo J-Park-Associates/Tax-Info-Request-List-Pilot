@@ -193,7 +193,6 @@ from tracker.copies import (
 from tracker.errlog import ERROR_LOG_BACKUPS, ERROR_LOG_FILENAME, error_log
 from tracker.filer import (
     file_household_drops,
-    refresh_household_readme,
 )
 from tracker.fsio import append_rotating, full_sync, write_json_atomically, write_text_atomically
 from tracker.hold import one_household, one_reading
@@ -226,6 +225,7 @@ from tracker.manifest import (
 )
 from tracker.page import document, esc, page_text, table, tolerant_console
 from tracker.progress import APP_CLOSED, PASSES_DIRNAME, Watch, failure_reply
+from tracker.readme_ack import refresh_household_readme
 from tracker.records import ENGAGEMENT_LABELS, NO, YES
 from tracker.registry import (
     SKIP_ROLLED_FORWARD,

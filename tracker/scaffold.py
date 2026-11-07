@@ -40,8 +40,8 @@ writes it. Since 130 the README also acknowledges what has arrived - a
 *WHAT WE HAVE RECEIVED* section after the list - and what has arrived is
 the index's to say, which this module may not read (it sits at layer 1,
 the filer at layer 3). So the section is handed in as plain data
-(:class:`tracker.records.Received`, read by ``tracker.filer.received_for``)
-and only rendered here; ``tracker.filer.refresh_household_readme`` is the
+(:class:`tracker.records.Received`, read by ``tracker.readme_ack.received_for``)
+and only rendered here; ``tracker.readme_ack.refresh_household_readme`` is the
 one call every caller makes - the household pass once after its sort, the
 rollover, and every app action that changes a return or a document's row.
 A second writer would be a second opinion of what the client was told.
@@ -336,7 +336,7 @@ def scaffold_household(
     """Create/refresh one household's client side: its folder, its inbox and
     a year folder per open year. **Folders only** (decision 130): the README
     in the inbox is :func:`write_readme`'s, reached through
-    ``tracker.filer.refresh_household_readme`` once what it says is known.
+    ``tracker.readme_ack.refresh_household_readme`` once what it says is known.
 
     ``household_dir`` is the household's folder in the **private** tree -
     the one holding its record - because that is what every caller has in
@@ -444,7 +444,7 @@ def readme_returns(household_dir: Path | str) -> list[_ReturnLine] | None:
     is.
 
     Read once per refresh and handed to both
-    ``tracker.filer.received_for`` and :func:`write_readme` (decision 130,
+    ``tracker.readme_ack.received_for`` and :func:`write_readme` (decision 130,
     the review's F3), so one refresh reads each return's details and list
     once."""
     years, engagements = _open_year_of(Path(household_dir))
@@ -510,7 +510,7 @@ def scaffold_engagement(engagement_dir: Path | str) -> ScaffoldResult:
     still has its inbox and its year folder. The README lists every return
     of the open year and what has arrived for each, which is why neither
     this nor :func:`scaffold_household` writes it: whoever made the change
-    calls ``tracker.filer.refresh_household_readme`` afterwards.
+    calls ``tracker.readme_ack.refresh_household_readme`` afterwards.
     """
     engagement_dir = Path(engagement_dir)
     load_manifest(engagement_dir)       # a return with no recorded list is refused here
@@ -550,7 +550,7 @@ def write_readme(
     open year by the same rule, and renders the steps, *REQUESTED, NOT
     YET RECEIVED* and, when anything has arrived, *WHAT WE HAVE RECEIVED* from
     ``received``: plain data, read out of the index one layer up
-    (``tracker.filer.received_for``). Nothing here reads the index.
+    (``tracker.readme_ack.received_for``). Nothing here reads the index.
 
     Written only when the text changed, whole and with CRLF line ends; a
     write the client's side refuses is a log line and ``None``.

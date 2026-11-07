@@ -1389,7 +1389,7 @@ def test_a_failed_retirement_says_what_was_rolled_and_left_open_and_still_refres
     error, carrying what was done, with the rollover's sentence - and the
     household scaffold and README refresh still run, because the new
     year's returns exist. Every lock is let go."""
-    from tracker import filer, rollover
+    from tracker import readme_ack, rollover
     from tracker.layout import return_dir_for
     from tracker.locking import LOCK_FILENAME
     from tracker.manifest import load_engagement_info
@@ -1406,9 +1406,9 @@ def test_a_failed_retirement_says_what_was_rolled_and_left_open_and_still_refres
         return real_save(folder, *args, **kwargs)
 
     refreshed = []
-    real_refresh = filer.refresh_household_readme
+    real_refresh = readme_ack.refresh_household_readme
     monkeypatch.setattr(rollover, "save_rules", the_first_retirement_fails)
-    monkeypatch.setattr(filer, "refresh_household_readme",
+    monkeypatch.setattr(readme_ack, "refresh_household_readme",
                         lambda folder: (refreshed.append(folder), real_refresh(folder))[1])
 
     with pytest.raises(RolledNotAllRetired) as failed:
@@ -1478,10 +1478,10 @@ def test_a_return_moved_into_another_household_pauses_until_the_folders_name_is_
     from tests.builders import app_stdin
     from tracker import store
     from tracker.api import _carried_payload
-    from tracker.filer import refresh_household_readme
     from tracker.households import HOUSEHOLD_PAUSED, create_household
     from tracker.layout import CLIENTS_TREE, private_household_dir, return_dir_for
     from tracker.manifest import load_engagement_info
+    from tracker.readme_ack import refresh_household_readme
     from tracker.records import HouseholdInfo
     from tracker.rollover import ReturnPlan, roll_household
     from tracker.scaffold import README_NAME

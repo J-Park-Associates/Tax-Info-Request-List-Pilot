@@ -60,8 +60,6 @@ from tracker.containers import (
 from tracker.filer import (
     DUPLICATE_OF_OPENED,
     FilingError,
-    received_for,
-    refresh_household_readme,
 )
 from tracker.index import DUPLICATE, FILED, NEEDS_REVIEW, OPENED, read_index
 from tracker.layout import (
@@ -78,6 +76,7 @@ from tracker.layout import (
     private_household_dir,
     root_of,
 )
+from tracker.readme_ack import received_for, refresh_household_readme
 from tracker.records import Feed
 
 W2 = "Form W-2 Wage and Tax Statement 2025"

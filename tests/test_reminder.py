@@ -1718,8 +1718,8 @@ if sys.argv[4] == "draft":
     from tracker.reminder import draft_reminder, write_draft
     write_draft(draft_reminder(folder), engagement_dir=folder)
 else:
-    from tracker.filer import refresh_household_readme
     from tracker.layout import household_of
+    from tracker.readme_ack import refresh_household_readme
     refresh_household_readme(household_of(folder))
 """
 
@@ -1731,8 +1731,8 @@ def test_the_draft_and_the_readme_are_whole_or_absent_after_a_kill(tmp_path):
     reads is the same kind of file. Each is written whole to a temp and
     swapped in, so a kill leaves the file as it was - absent, or the last
     whole one - and never half of the new one."""
-    from tracker.filer import refresh_household_readme
     from tracker.layout import README_NAME, household_of
+    from tracker.readme_ack import refresh_household_readme
     from tracker.scaffold import scaffold_engagement
     from tracker.store import close
 
@@ -2061,8 +2061,9 @@ def test_no_client_facing_text_carries_a_reason_sentence(tmp_path):
 
     from tests.builders import parked_row, seed_index
     from tracker.api import CAME_FROM_SUBFOLDER
-    from tracker.filer import CONTESTED_BETWEEN_RETURNS, refresh_household_readme
+    from tracker.filer import CONTESTED_BETWEEN_RETURNS
     from tracker.layout import household_of
+    from tracker.readme_ack import refresh_household_readme
     from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
     from tracker.scaffold import README_NAME, scaffold_engagement
 

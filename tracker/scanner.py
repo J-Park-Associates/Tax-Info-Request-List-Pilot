@@ -346,7 +346,7 @@ def _answered(
 
     Read off each filed row's Also Answers cell (``IndexEntry.answered``)
     and off nothing else, so the status, the letter (which reads the
-    status) and the client's received list (``tracker.filer.received_for``,
+    status) and the client's received list (``tracker.readme_ack.received_for``,
     which reads the same cell) cannot disagree. A row counts while the
     record calls it received - Filed, or File Moved, whose own request the
     sweep already tells the firm about (decision 109) - which is the rule

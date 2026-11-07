@@ -170,6 +170,10 @@ sorted or tied to its row - the drops in the inbox's own order, the names,
 folders and transfers that cannot be read, listed or finished, a replaced,
 moved or missing original and a row recorded without its bytes - live in
 :mod:`tracker.inbox` since P333.
+
+What the client README says has arrived - the received list a pass, the
+rollover and every app action render through the one refresh - and the
+refresh itself live in :mod:`tracker.readme_ack` since P334.
 """
 
 from __future__ import annotations
@@ -217,7 +221,6 @@ from tracker.copies import (
     _move_whole,
     _named,
     _on_record,
-    _readme_lock,
     _review_copy_path,
     _room_in,
     _shown,
@@ -331,10 +334,8 @@ from tracker.layout import (
 from tracker.locking import (
     engagement_lock,
     lock_is_held,
-    release_lock,
 )
 from tracker.manifest import (
-    LABEL_SEPARATOR,
     Override,
     RequestItem,
     list_head,
@@ -353,12 +354,16 @@ from tracker.names import (
 )
 from tracker.progress import Watch
 
+# The client README's received list and its refresh live in
+# tracker/readme_ack.py (P334). The filer imports what its own code reads;
+# every reader in tracker/ imports them from tracker.readme_ack.
+from tracker.readme_ack import _counts_as_received, _requests_of
+
 # The records themselves live in tracker/records.py (decision 100). The filer
 # imports the shapes it writes and reads back - the index row and the cells it
-# is written in, the evidence, the engagement's details, the README's received
-# lines, the people and their spellings, a request row's rule - because a row
-# is written in the record's shape, not the filer's. It offers none of them on
-# (P322).
+# is written in, the evidence, the engagement's details, the people and their
+# spellings, a request row's rule - because a row is written in the record's
+# shape, not the filer's. It offers none of them on (P322).
 from tracker.records import (
     CANDIDATE_SEP,
     COL_IDENTIFIER,
@@ -368,10 +373,7 @@ from tracker.records import (
     Evidence,
     IndexEntry,
     Person,
-    Received,
-    ReceivedLine,
     Routing,
-    UnderReview,
     WaitsFor,
     entry_to_json,
     format_answers,
@@ -388,15 +390,12 @@ from tracker.records import (
 )
 from tracker.router import questions_for, read_once, route_file
 from tracker.scaffold import (
-    OTHER_DOCUMENT,
     PREPARED_DIR_NAME,
     REVIEW_DIR_NAME,
     assign_files,
     matches_identifier,
     owner_of,
-    readme_returns,
     sanitize_component,
-    write_readme,
 )
 from tracker.validators import (
     PdfVerdictCache,
@@ -564,212 +563,6 @@ def _taken_in_the_year(first: _ReturnRun, runs: list[_ReturnRun]) -> dict[Path, 
     return {**_year_on_record(first.engagement_dir, held), **dict.fromkeys(first.context.intended, "")}
 
 
-# ------------------------------------------------- what the client is told ----
-# Decision 130. The client README acknowledges what has arrived. The index
-# is the one source of it: nothing new is stored, no counter and no copy,
-# so the README is a rendering of the record and cannot drift from it.
-
-
-#: The decisions a client is told a document was **Received** under: it was
-#: confirmed into its request. A working copy moving afterwards
-#: (``FILE_MOVED``) is the firm's business, not the client's.
-_RECEIVED_DECISIONS = (FILED, FILE_MOVED)
-
-
-def _day_of(stamp: str) -> dt.date | None:
-    """The date part of a row's received stamp, or ``None`` where the stamp
-    does not read as one - never a guessed day."""
-    try:
-        return dt.date.fromisoformat(str(stamp)[:10])
-    except ValueError:
-        return None
-
-
-def _request_of_copy(name: str, items: Sequence[RequestItem]) -> str:
-    """The request an ``also_filed`` copy's own name names, or ``""``.
-
-    Read from the copy's file name since decision 168, by the test decision
-    130 applied to its request folder until then, and only what the name
-    can prove (130, the review's F1): it begins with the request's
-    identifier followed by ``LABEL_SEPARATOR`` - which the canonical prefix
-    (``A01 - W-2``, the identifier and the short name) always does, and is
-    the one shape a working copy is made in and a person renames within.
-    Or its stem is the identifier alone, or the identifier followed by
-    `` (`` - ``A01.pdf``, ``A01 (2).pdf``: a copy whose short name decision
-    131's room cut away whole on a row with no period (the review of 168,
-    N-4). A bare prefix proves nothing: once ``A01-B`` is deleted from the
-    list, ``A01-B - Loan - TY2025.pdf`` starts with ``A01`` too, and the
-    README would tell the client their W-2 arrived. The longest identifier
-    that fits wins, as it does for every file (``tracker.scaffold.owner_of``).
-    Without case, as Windows compares names.
-    """
-    name = name.strip().casefold()
-    stem = Path(name).stem if _AN_EXTENSION.fullmatch(Path(name).suffix) else name
-    separator = LABEL_SEPARATOR.casefold()
-    best = ""
-    for item in items:
-        identifier = sanitize_component(item.identifier).casefold()
-        if not identifier or len(item.identifier) <= len(best):
-            continue
-        if (name.startswith(identifier + separator) or stem == identifier
-                or stem.startswith(identifier + " (")):
-            best = item.identifier
-    return best
-
-
-def _requests_of(entry: IndexEntry, items: Sequence[RequestItem]) -> list[str]:
-    """Every request a filed row satisfied: its identifier, then one per
-    ``also_filed`` copy (decision 94).
-
-    ``also_filed`` holds the copies' locations, not their requests, so each
-    is read back from the copy's own file name by :func:`_request_of_copy`
-    (decision 168; from the request folder it sat in until then). A name
-    no request of today's list provably names answers ``""``, which the
-    README says as :data:`OTHER_DOCUMENT` - never a guessed request. A copy
-    recorded in a request folder before 168 is read by its name too, and
-    its name was always made in the same shape.
-    """
-    found = [entry.identifier]
-    for location in entry.filed_locations[1:]:
-        found.append(_request_of_copy(location.rsplit("/", 1)[-1], items))
-    return found
-
-
-def received_for(returns: Sequence) -> Received:
-    """What has arrived for these returns, as the client README says it
-    (decision 130): one index read and one request-list read per return,
-    plain data out.
-
-    Each of ``returns`` is a return folder, or a return as
-    :func:`tracker.scaffold.readme_returns` read it (its ``path`` and
-    ``items``), whose list is then not read a second time.
-
-    - ``Filed`` and ``File Moved`` are **Received**, once per request the
-      document satisfied, under the request's own label - the words the
-      client read under *REQUESTED, NOT YET RECEIVED* - and never the
-      client's file name or the firm's working name. A request no longer on
-      the list reads :data:`OTHER_DOCUMENT`. Each request the row's Also
-      Answers cell names (decision 146) is Received too, with the
-      statement's own request as its ``inside``; the client's README says it
-      as included in their consolidated brokerage statement
-      (``reasons.IN_CONSOLIDATED_CLIENT``, Jason's Q-L), naming no request.
-    - ``Needs Review`` is **Under Review**, counted by the day it arrived and
-      never named: its only name is the client's own.
-    - ``Duplicate``, ``Not Requested`` and anything else is not shown, and
-      neither is a row a person marked missing because its working copy and
-      its original were both gone (decision 157, :func:`marked_missing`):
-      the letter asks for that document again, and the README agrees.
-
-    A document this household's inbox fed into another household's return
-    - by a person's hand-over, the only road across since decision 204 -
-    is in that return's index and so on that household's list, never on
-    this one (decision 132's F-4 ruling).
-    """
-    lines: list[ReceivedLine] = []
-    waiting: dict[dt.date | None, int] = {}
-    for one in returns:
-        if isinstance(one, (str, Path)):
-            folder, items = Path(one), None
-        else:
-            folder, items = Path(one.path), one.items
-        entries = read_index(folder)
-        if not entries:
-            continue
-        if items is None:
-            items = load_manifest(folder)
-        # Without case, as the status and the letter join a row to its
-        # request (``records.identifier_key``), and under the list's own
-        # spelling: a request respelt C01 -> c01 is the same request here
-        # too, and the README no longer says "not received" of what the
-        # letter counts as received (decision 160, the audit's D-8).
-        requests = {identifier_key(item.identifier): item for item in items}
-        for entry in entries:
-            day = _day_of(entry.received)
-            if _counts_as_received(entry):
-                for identifier in _requests_of(entry, items):
-                    item = requests.get(identifier_key(identifier))
-                    lines.append(ReceivedLine(return_path=folder,
-                                              label=item.label if item else OTHER_DOCUMENT,
-                                              day=day,
-                                              identifier=item.identifier if item else ""))
-                # A consolidated statement answers other asked requests
-                # without a copy (decision 146): each is received, said as
-                # inside the statement's own request. A request no longer
-                # on the list is not said at all - "Other document" would be
-                # a second line for the one document the line above names.
-                # Joined without case, as the line above (decision 160).
-                host = requests.get(identifier_key(entry.identifier))
-                for identifier, _sections in entry.answered:
-                    item = requests.get(identifier_key(identifier))
-                    if item is not None:
-                        lines.append(ReceivedLine(return_path=folder, label=item.label,
-                                                  day=day, identifier=item.identifier,
-                                                  inside=host.label if host else OTHER_DOCUMENT))
-            elif entry.decision == NEEDS_REVIEW:
-                waiting[day] = waiting.get(day, 0) + 1
-    return Received(
-        lines=tuple(lines),
-        under_review=tuple(UnderReview(day=day, count=n) for day, n in waiting.items()),
-    )
-
-
-#: What a pass or an app action says when the client's README could not be
-#: rewritten (decision 193): by class, never by the text, which can name a
-#: client's folder; the whole of it goes to the error log.
-README_NOT_REWRITTEN = "the client's README could not be rewritten this time ({kind})"
-
-
-def refresh_household_readme(household_dir: Path | str, *,
-                             said: list[str] | None = None) -> Path | None:
-    """Rewrite one household's client README from the record - **the one
-    call every caller makes** (decision 130): the household pass once after
-    its sort, the rollover after it rolls a household, and the app after
-    every action that creates or edits a return or changes a document's row.
-
-    The README speaks for the active returns of the household's one open
-    year, read once (:func:`tracker.scaffold.readme_returns`) and handed to
-    :func:`received_for` and :func:`tracker.scaffold.write_readme` both
-    (the review's F3); ``write_readme`` renders and writes only when the
-    text changed. With two open years it is left as it is.
-
-    **Under the household README's lock** (:data:`tracker.copies.README_LOCK_FILENAME`,
-    the review's F2), from the read to the write: two refreshes of one
-    household - the pass and an app action, or two app actions - would
-    otherwise interleave, and the one that read the older record could
-    write last. A refresh waits up to :data:`tracker.copies.README_LOCK_WAIT_SECONDS` for
-    the other to let go, then reads the record itself; one still busy
-    after that skips with a log line, and the holder writes.
-
-    **Never raises.** The README is client-visible and cosmetic; a failure
-    is logged in full and, when the caller hands ``said``, said there by
-    class (:data:`README_NOT_REWRITTEN`, decision 193), and the caller goes
-    on. A refresh skipped because another holds the README's lock says
-    nothing: the holder writes.
-    """
-    household_dir = Path(household_dir)
-    try:
-        lock = _readme_lock(household_dir)
-        if lock is None:
-            log.warning("The README of %s is being refreshed by another run, which "
-                        "writes it; this refresh is skipped", household_dir.name)
-            return None
-        try:
-            returns = readme_returns(household_dir)
-            if returns is None:
-                return None
-            return write_readme(household_dir, received_for(returns), returns=returns)
-        finally:
-            release_lock(lock)
-    except Exception as exc:
-        kind = errors.error_class(exc)
-        errors.keep("filer: the README refresh", exc, name=household_dir.name)
-        log.warning("Could not refresh the README of %s (%s); carrying on",
-                    household_dir.name, kind)
-        if said is not None and (sentence := README_NOT_REWRITTEN.format(kind=kind)) not in said:
-            said.append(sentence)
-        return None
-
-
 # ----------------------------------------------------- the working copies ----
 
 
@@ -829,13 +622,6 @@ UNRECORDED_COPY = ("{location} is not on the record: nothing filed it there and 
                    "a document goes in through the app or a firm-side folder a person controls, "
                    "never a client's folder; anything else, a broken or partial copy included, "
                    "is deleted by hand")
-
-
-def _counts_as_received(entry: IndexEntry) -> bool:
-    """Whether a row is one the client README and a save of the list count
-    as a document the client sent: Filed or File Moved (decision 130), and
-    not a row a person has marked missing (decision 157)."""
-    return entry.decision in _RECEIVED_DECISIONS and not marked_missing(entry)
 
 
 def _spend_a_stray(strays: dict[str, str], digest: str, preferred: str | None = None) -> str | None:

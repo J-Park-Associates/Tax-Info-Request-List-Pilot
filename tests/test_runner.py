@@ -1751,8 +1751,9 @@ def test_the_dropping_households_pass_files_nothing_into_a_fed_return_and_the_do
 def _click(personal, fed, today=FRIDAY):
     """The one click (decision 204) as the app makes it: the waiting row
     handed over, the taking return re-scanned and both READMEs rewritten."""
-    from tracker.filer import hand_over, refresh_household_readme
+    from tracker.filer import hand_over
     from tracker.index import NEEDS_REVIEW
+    from tracker.readme_ack import refresh_household_readme
     from tracker.scanner import scan_engagement
 
     [row] = [one for one in read_index(personal.path)

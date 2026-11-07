@@ -54,13 +54,14 @@ import pytest
 from tests.samples import text_pdf, write_pdf
 from tracker import ledger, reasons, store
 from tracker.content_check import extract_text
-from tracker.filer import file_household_drops, refresh_household_readme
+from tracker.filer import file_household_drops
 from tracker.households import create_household
 from tracker.index import NEEDS_REVIEW, ensure
 from tracker.layout import inbox_of, location_of, lock_order_key, originals_of, private_household_dir, return_dir_for
 from tracker.locking import engagement_lock
 from tracker.manifest import EngagementInfo, RequestItem, Status, create_engagement
 from tracker.names import propose_spellings
+from tracker.readme_ack import refresh_household_readme
 from tracker.reasons import Reason
 from tracker.records import (
     CANDIDATE_SEP,

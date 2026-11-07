@@ -761,8 +761,8 @@ def roll_household(
     is rewritten once at the end, so the client sees the new year's lists
     in the same folder they have always used.
     """
-    from tracker.filer import refresh_household_readme
     from tracker.locking import engagement_lock
+    from tracker.readme_ack import refresh_household_readme
     from tracker.scaffold import scaffold_household
 
     household_dir = Path(household_dir)
@@ -1231,7 +1231,7 @@ if __name__ == "__main__":
     # record, so that folder could not be tried again (decision 108).
     scaffolded = None
     if ns.scaffold:
-        from tracker.filer import refresh_household_readme
+        from tracker.readme_ack import refresh_household_readme
         from tracker.scaffold import scaffold_engagement as scaffold_one
 
         scaffolded = scaffold_one(target)

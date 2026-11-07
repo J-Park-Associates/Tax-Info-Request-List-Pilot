@@ -628,7 +628,7 @@ def ledger_key(entry: IndexEntry) -> str:
 # ------------------------------------------------------- what has arrived ----
 # Decision 130. The client README acknowledges what has arrived, and these
 # are the shapes it is told in: plain data read out of the index by
-# ``tracker.filer.received_for`` (layer 3) and rendered by
+# ``tracker.readme_ack.received_for`` (layer 3) and rendered by
 # ``tracker.scaffold.write_readme`` (layer 1), which never reads the index
 # itself. They live here because both of those may import this module, and
 # because nothing about them is stored: the README is a rendering of the

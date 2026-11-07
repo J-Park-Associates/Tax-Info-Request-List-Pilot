@@ -26,7 +26,7 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of forty-nine modules in six layers.
+`tracker/` is one Python package of fifty modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The scanner never imports the filer; the filer reaches
@@ -145,6 +145,12 @@ the package but each other.
   sync client has not finished, a replaced, moved or missing original and a
   row recorded without its bytes (P333); the filer imports what it reads,
   and the reminder asks it at call time.
+- `readme_ack.py`: what the client README says has arrived, read out of the
+  index alone - a filed document Received under each request it answers, a
+  parked one Under Review by its day, a row a person marked missing not
+  counted - and the one refresh that rewrites the README from it under its
+  lock and never raises (decisions 130 and 193, P334); the pass, the API and
+  the rollover call the refresh, and the filer imports the two rules it reads.
 - `scanner.py`: walks the working copies, runs the three tiers, resolves each
   request's status (override- and revert-aware) and records the result.
 - `reminder.py`: drafts the client's chase email in four stages measured

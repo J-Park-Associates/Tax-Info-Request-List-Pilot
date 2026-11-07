@@ -217,8 +217,14 @@ LAYERS: dict[int, frozenset[str]] = {
     # ``filer`` - ``copies`` (L2) and L1 and L0; the filer imports it, and
     # the reminder at call time. It imports nothing above L2, and sits at L3
     # beside the two it serves.
+    # ``readme_ack`` joins L3 with P334 (SPEC-architecture-p4 P4.8): decision
+    # 130's received list and the README's refresh, out of ``filer`` -
+    # ``copies`` (L2) and L1 and L0; the pass (``runner``), the API and the
+    # filer's ``documents_by_request`` import it, and the rollover at call
+    # time. It imports nothing above L2, and sits at L3 beside the filer and
+    # the rollover that read it.
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review",
-                  "verify", "intents", "inbox"}),
+                  "verify", "intents", "inbox", "readme_ack"}),
     # ``after_install`` joins L4 with decision 209, beside the scheduler it
     # drives: it imports ``scheduling`` (L4), ``store`` (L1), ``registry``
     # (L3) and L0; the API imports it, and nothing lower may.
@@ -251,7 +257,7 @@ DOMAINS: dict[str, frozenset[str]] = {
     # Deciding where a document belongs, or that it belongs nowhere yet, and
     # the shortlist a person gets for the ones that do not.
     "sorting": frozenset({"reasons", "router", "names", "filer", "copies", "intents", "inbox",
-                          "scanner", "review"}),
+                          "readme_ack", "scanner", "review"}),
     # The scheduled run and what it drives: the engagements it finds, the
     # year it rolls over, the reminder it drafts and how it is watched.
     "pass": frozenset({"progress", "registry", "rollover", "reminder", "runner", "scheduling",

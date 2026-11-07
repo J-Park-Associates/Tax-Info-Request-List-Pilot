@@ -6200,7 +6200,7 @@ def test_respelling_an_identifier_with_documents_is_refused_unless_renamed_with_
     letter and the README asked the client again (decision 160, the audit's
     D-7). The save is refused by name and count, and nothing is recorded;
     the rename action is the way, and it carries the documents."""
-    from tracker.filer import OTHER_DOCUMENT
+    from tracker.scaffold import OTHER_DOCUMENT
 
     engagement, state = _filed_documents(capsys, demo_root, tmp_path)
     label = next(i.label for i in load_manifest(engagement) if i.identifier == "A01")
@@ -6589,7 +6589,8 @@ def test_a_case_only_change_reads_the_same_in_the_readme_and_the_letter(capsys, 
     README lists the 1098 as received under its own label - it used to say
     "not received" beside an "Other document"."""
     from tracker import reminder
-    from tracker.filer import OTHER_DOCUMENT, received_for
+    from tracker.readme_ack import received_for
+    from tracker.scaffold import OTHER_DOCUMENT
 
     engagement, state = _filed_documents(capsys, demo_root, tmp_path)
     respelt = [{**rule, "identifier": "c01"} if rule["identifier"] == "C01" else rule
@@ -7626,8 +7627,8 @@ def test_a_draft_beside_an_edited_one_is_said_in_the_app(capsys, demo_root):
 
 
 def test_an_action_whose_readme_cannot_be_rewritten_warns(capsys, demo_root, monkeypatch):
-    import tracker.filer as filer_module
-    from tracker.filer import README_NOT_REWRITTEN
+    import tracker.readme_ack as readme_ack_module
+    from tracker.readme_ack import README_NOT_REWRITTEN
 
     spec = {"household": HOUSEHOLD, "return_name": "Smith",
             "items": [{"identifier": "A01", "document": "W-2"}]}
@@ -7638,7 +7639,7 @@ def test_an_action_whose_readme_cannot_be_rewritten_warns(capsys, demo_root, mon
         raise OSError(13, "a fabricated denial")
 
     state = payload_of_state(capsys, engagement)
-    monkeypatch.setattr(filer_module, "write_readme", cannot_write)
+    monkeypatch.setattr(readme_ack_module, "write_readme", cannot_write)
     code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
         "items": _rows_of(state), "engagement": {"due": "2026-03-15"}, "head": state["list_head"]})
     assert code == 0, payload

@@ -6540,8 +6540,9 @@ def test_received_for_reads_each_index_once(tmp_path, monkeypatch):
     import tracker.copies as copies_module
     import tracker.filer as filer_module
     import tracker.intents as intents_module
+    import tracker.readme_ack as readme_ack_module
     from tests.builders import seed_index
-    from tracker.filer import received_for
+    from tracker.readme_ack import received_for
     from tracker.records import IndexEntry
 
     items = [RequestItem(identifier="A01", document="W-2")]
@@ -6557,11 +6558,12 @@ def test_received_for_reads_each_index_once(tmp_path, monkeypatch):
     read = []
     lists = []
     real_read, real_list = filer_module.read_index, filer_module.load_manifest
-    for module in (filer_module, copies_module, intents_module):
+    for module in (filer_module, copies_module, intents_module, readme_ack_module):
         monkeypatch.setattr(module, "read_index",
                             lambda folder: read.append(Path(folder)) or real_read(folder))
-    monkeypatch.setattr(filer_module, "load_manifest",
-                        lambda folder: lists.append(Path(folder)) or real_list(folder))
+    for module in (filer_module, readme_ack_module):
+        monkeypatch.setattr(module, "load_manifest",
+                            lambda folder: lists.append(Path(folder)) or real_list(folder))
 
     received = received_for([first, second])
 
@@ -6574,8 +6576,8 @@ def test_received_for_reads_each_index_once(tmp_path, monkeypatch):
     # And the refresh reads each return's details and list once, handing
     # that one read to both received_for and write_readme (the review's F3).
     import tracker.scaffold as scaffold_module
-    from tracker.filer import refresh_household_readme
     from tracker.layout import household_of
+    from tracker.readme_ack import refresh_household_readme
 
     read.clear()
     lists.clear()
@@ -6605,7 +6607,7 @@ def test_a_second_copy_whose_request_was_deleted_reads_other_document_never_anot
     after the identifier begins with the label separator. Since decision
     168 the test is made of the copy's own name, in Prepared itself."""
     from tests.builders import seed_index
-    from tracker.filer import received_for
+    from tracker.readme_ack import received_for
     from tracker.records import IndexEntry
     from tracker.scaffold import OTHER_DOCUMENT, PREPARED_DIR_NAME
 
@@ -7341,9 +7343,9 @@ def test_the_statement_answers_the_int_div_row_and_the_letter_does_not_ask_for_i
     as included in their consolidated brokerage statement - naming no
     request, in the client's words (Jason's Q-L) - and a store rebuilt from
     the journal agrees with the live one."""
-    from tracker.filer import received_for
     from tracker.layout import root_of
     from tracker.manifest import Status
+    from tracker.readme_ack import received_for
     from tracker.reasons import IN_CONSOLIDATED, IN_CONSOLIDATED_CLIENT
     from tracker.reminder import draft_reminder
     from tracker.scaffold import write_readme
@@ -7419,10 +7421,11 @@ def test_a_person_can_still_mark_that_row_missing(tmp_path):
     goes back to Missing with the regression note, the letter asks for it
     again, and A04 is still answered. Asking twice is refused by name, and
     a rebuilt store agrees with the person."""
-    from tracker.filer import mark_missing_again, received_for
+    from tracker.filer import mark_missing_again
     from tracker.index import MARKED_MISSING
     from tracker.layout import root_of
     from tracker.manifest import Status
+    from tracker.readme_ack import received_for
     from tracker.reminder import draft_reminder
     from tracker.scanner import REGRESSION_NOTE
 
@@ -7621,7 +7624,7 @@ def test_an_also_filed_copy_is_read_back_by_its_own_name(engagement):
     document", never a guessed request."""
     from tests.builders import seed_index
     from tests.samples import scanned_1098_lines, scanned_w2_lines
-    from tracker.filer import received_for
+    from tracker.readme_ack import received_for
     from tracker.records import IndexEntry
     from tracker.scaffold import OTHER_DOCUMENT
 
@@ -7819,7 +7822,7 @@ def test_a_copy_cut_to_its_identifier_alone_still_reads_under_its_request():
     Such a copy still names its request - its stem is the identifier alone,
     or the identifier and a number - and the longest identifier wins, as it
     does for every file; a bare prefix still proves nothing."""
-    from tracker.filer import _request_of_copy
+    from tracker.readme_ack import _request_of_copy
 
     items = [RequestItem(identifier="A01", document="W-2"),
              RequestItem(identifier="A01-B", document="Loan")]
@@ -8083,8 +8086,8 @@ def test_an_original_dragged_back_into_the_inbox_returns_to_its_place(engagement
     157 it was filed as a Duplicate at the same place, which replaced the
     Filed row, the client's README said the 1098 never arrived, and every
     pass warned about an unrecorded copy."""
-    from tracker.filer import received_for
     from tracker.manifest import Status
+    from tracker.readme_ack import received_for
 
     filed = _filed_1098(engagement)
     original = originals(engagement) / "1098.pdf"
@@ -8212,10 +8215,10 @@ def test_marking_a_both_gone_row_missing_asks_the_client_and_the_readme_agrees(e
     from tracker.filer import (
         REFILED_AFTER_GONE,
         mark_missing_again,
-        received_for,
     )
     from tracker.index import MARKED_MISSING, marked_missing
     from tracker.manifest import Status
+    from tracker.readme_ack import received_for
 
     filed = _filed_1098(engagement)
     with pytest.raises(FilingError, match="does not answer C01"):
@@ -8518,11 +8521,11 @@ def test_a_readme_refresh_that_fails_logs_the_class_never_the_path(engagement, m
     review's S1); the words go to the debug log alone."""
     import logging
 
-    import tracker.filer as filer
+    import tracker.readme_ack as readme_ack
 
-    monkeypatch.setattr(filer, "readme_returns", _refused_with_a_client_path)
+    monkeypatch.setattr(readme_ack, "readme_returns", _refused_with_a_client_path)
     with caplog.at_level(logging.DEBUG):
-        assert filer.refresh_household_readme(household_of(engagement)) is None
+        assert readme_ack.refresh_household_readme(household_of(engagement)) is None
     logged = _logged_outside_the_debug_log(caplog)
     assert "PermissionError (EACCES)" in logged, logged
     assert A_CLIENT_PATH not in logged and "Test Household/Drop" not in logged, logged
@@ -8927,13 +8930,13 @@ def test_a_refused_mark_on_an_interrupted_step_is_said_once_and_the_pass_goes_on
 def test_a_readme_that_cannot_be_rewritten_is_said_by_class(engagement, monkeypatch, caplog):
     import errno
 
-    import tracker.filer as filer_module
-    from tracker.filer import README_NOT_REWRITTEN, refresh_household_readme
+    import tracker.readme_ack as readme_ack_module
+    from tracker.readme_ack import README_NOT_REWRITTEN, refresh_household_readme
 
     def denied(*args, **kwargs):
         raise PermissionError(errno.EACCES, "a fabricated denial", str(engagement))
 
-    monkeypatch.setattr(filer_module, "write_readme", denied)
+    monkeypatch.setattr(readme_ack_module, "write_readme", denied)
     said: list[str] = []
     assert refresh_household_readme(household_of(engagement), said=said) is None
     assert said == [README_NOT_REWRITTEN.format(kind="PermissionError (EACCES)")]

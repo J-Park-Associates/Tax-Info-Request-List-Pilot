@@ -5,9 +5,9 @@ import hashlib
 import pytest
 
 from tests.builders import TEST_HOUSEHOLD, TEST_RETURN, TEST_YEAR, make_engagement
-from tracker.filer import refresh_household_readme
 from tracker.layout import household_of, inbox_of, originals_of
 from tracker.manifest import EXPECTED_PATTERN, ManifestError, Override, RequestItem
+from tracker.readme_ack import refresh_household_readme
 from tracker.scaffold import (
     PREPARED_DIR_NAME,
     README_HEADING,
@@ -701,9 +701,8 @@ def test_an_also_filed_copy_takes_its_request_off_the_list(tmp_path):
 
 def test_an_other_document_line_takes_nothing_off_the_list(tmp_path):
     from tests.builders import seed_index
-    from tracker.filer import OTHER_DOCUMENT
     from tracker.index import FILED
-    from tracker.scaffold import RECEIVED_HEADING
+    from tracker.scaffold import OTHER_DOCUMENT, RECEIVED_HEADING
 
     engagement = make_engagement(tmp_path, ITEMS)
     before = section_of(readme_of(engagement), README_HEADING)
@@ -797,7 +796,7 @@ def test_a_household_with_two_open_years_is_left_alone(tmp_path):
 def test_a_write_failure_is_a_log_line_and_the_caller_goes_on(engagement, monkeypatch, caplog):
     import logging
 
-    import tracker.filer as filer_module
+    import tracker.readme_ack as readme_ack_module
     import tracker.scaffold as scaffold_module
     from tracker import errors
 
@@ -817,7 +816,7 @@ def test_a_write_failure_is_a_log_line_and_the_caller_goes_on(engagement, monkey
     # And anything else that goes wrong reading the record is a log line too.
     def broken(returns):
         raise RuntimeError("the store is away")
-    monkeypatch.setattr(filer_module, "received_for", broken)
+    monkeypatch.setattr(readme_ack_module, "received_for", broken)
     caplog.clear()
     with caplog.at_level(logging.WARNING):
         assert refresh_household_readme(household_of(engagement)) is None
@@ -908,7 +907,7 @@ def test_a_readme_refresh_never_writes_older_text_over_newer(tmp_path, monkeypat
     import threading
 
     import tracker.copies as copies_module
-    import tracker.filer as filer_module
+    import tracker.readme_ack as readme_ack_module
     from tests.builders import seed_index
     from tracker import locking, store
     from tracker.index import FILED
@@ -924,7 +923,7 @@ def test_a_readme_refresh_never_writes_older_text_over_newer(tmp_path, monkeypat
     readme = inbox_of(engagement) / README_NAME
 
     first_has_read, first_may_write, second_waits = (threading.Event() for _ in range(3))
-    real_received_for, real_acquire = filer_module.received_for, locking.acquire_lock
+    real_received_for, real_acquire = readme_ack_module.received_for, locking.acquire_lock
 
     def pausing(returns):
         found = real_received_for(returns)
@@ -941,7 +940,7 @@ def test_a_readme_refresh_never_writes_older_text_over_newer(tmp_path, monkeypat
                 second_waits.set()
             raise
 
-    monkeypatch.setattr(filer_module, "received_for", pausing)
+    monkeypatch.setattr(readme_ack_module, "received_for", pausing)
     monkeypatch.setattr(copies_module, "acquire_lock", watched)
     older = threading.Thread(name="older", target=refresh_household_readme, args=(household,))
     newer = threading.Thread(name="newer", target=refresh_household_readme, args=(household,))
