@@ -44,7 +44,7 @@ from tests.builders import (
     sort_all,
 )
 from tests.samples import msg_bytes, text_pdf
-from tracker import containers, filer, ledger, reasons, store, store_check
+from tracker import actions, containers, filer, ledger, reasons, store, store_check
 from tracker.containers import (
     LIMIT_COUNT,
     LIMIT_DEPTH,
@@ -269,7 +269,8 @@ def test_a_pass_killed_after_writing_attachments_opens_again_and_reuses_them(eng
     # the intent the first attachment's filing wrote before its copy is in
     # the journal.
     monkeypatch.setattr(filer, "_decide_attachment", dies_on_the_second)
-    monkeypatch.setattr(filer, "_record", lambda *a, **k: None)
+    for module in (filer, actions):
+        monkeypatch.setattr(module, "_record", lambda *a, **k: None)
     with pytest.raises(Killed):
         sort(engagement, today=DAY1)
     monkeypatch.undo()

@@ -31,7 +31,7 @@ from pathlib import Path
 
 from tests.builders import DAY1, DAY2, ITEMS, engagement_fixture, make_engagement
 from tests.import_graph import import_edges
-from tracker import copies, filer, inbox, index, intents, ledger, store
+from tracker import actions, copies, filer, inbox, index, intents, ledger, store
 from tracker.index import FILED, NEEDS_REVIEW, ensure, read_index
 from tracker.layout import PREPARED_DIR_NAME, REVIEW_DIR_NAME
 
@@ -89,9 +89,11 @@ def test_exactly_the_three_tail_readers_cross_into_the_filer():
     binds one of the three binds the very object defined here. Since P333
     :mod:`tracker.inbox` is of the family too: following an original the
     client moved puts the row's sentence before any moved sentence, and
-    asks ``_before_the_moved_sentence`` to."""
+    asks ``_before_the_moved_sentence`` to. Since P335 :mod:`tracker.actions`
+    is of the family too: a person's put-back takes the moved sentence off
+    the row it restores, and asks ``_without_moved_sentence`` to."""
     own = _own_names()
-    family = (filer, copies, intents, inbox)
+    family = (filer, copies, intents, inbox, actions)
     crossing = {name for name in own if name.startswith("_")
                 and any(hasattr(module, name) for module in family)}
     assert crossing == PRIVATE_CROSSING, sorted(crossing ^ PRIVATE_CROSSING)

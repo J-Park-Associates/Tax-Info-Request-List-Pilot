@@ -24,10 +24,8 @@ import pytest
 
 from tests.builders import drop, engagement_fixture, make_engagement, sort
 from tracker import bounds, ledger, store, store_check
-from tracker.filer import (
-    ASSIGNED_BY_PERSON,
-    assign_review_file,
-)
+from tracker.actions import assign_review_file
+from tracker.filer import ASSIGNED_BY_PERSON
 from tracker.index import FILED, read_index
 from tracker.locking import engagement_lock
 from tracker.manifest import (

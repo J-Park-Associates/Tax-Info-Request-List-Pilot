@@ -244,9 +244,7 @@ def test_a_document_a_person_said_nothing_asks_for_is_not_a_warning_either(engag
     now who set it aside. A warning of its own would be the scan disagreeing
     with the index about a file the scan cannot see the decision on.
     """
-    from tracker.filer import (
-        dismiss_review_file,
-    )
+    from tracker.actions import dismiss_review_file
     from tracker.index import NOT_REQUESTED, read_index
 
     text_pdf(inbox_of(engagement) / "irs-notice.pdf", "nothing the rules recognise")
@@ -607,7 +605,7 @@ def test_a_document_a_person_filed_is_not_second_guessed_by_the_rules(engagement
     # in it. Their decision stands: Received, not "wrong document" and a
     # client asked for the right file.
     from tests.builders import sort
-    from tracker.filer import assign_review_file
+    from tracker.actions import assign_review_file
     from tracker.scanner import ACCEPTED_NOTE
 
     text_pdf(inbox_of(engagement) / "statement.pdf", "Annual account statement 2025 interest paid")
@@ -631,7 +629,7 @@ def test_a_persons_acceptance_covers_only_the_bytes_they_filed(engagement):
     # the only way a stranger reaches that name is a person putting it
     # there. That is what this writes, and the claim is unchanged.
     from tests.builders import sort
-    from tracker.filer import assign_review_file
+    from tracker.actions import assign_review_file
 
     text_pdf(inbox_of(engagement) / "statement.pdf", "Annual account statement 2025 interest paid")
     parked = sort(engagement, today=DAY1).review[0]
@@ -748,7 +746,7 @@ def test_a_copy_that_disagrees_with_its_original_is_not_counted(engagement):
     It is named in the warnings, firm-side, and the letter does not ask the
     client for a document the client sent correctly."""
     from tests.builders import sort
-    from tracker.filer import assign_review_file
+    from tracker.actions import assign_review_file
     from tracker.index import read_index
     from tracker.reminder import draft_reminder
 
@@ -844,7 +842,7 @@ def test_a_person_filed_copy_is_proved_through_the_memo(engagement, monkeypatch)
     nothing at all."""
     import tracker.content_check as content_check_module
     from tests.builders import sort
-    from tracker.filer import assign_review_file
+    from tracker.actions import assign_review_file
     from tracker.scanner import ACCEPTED_NOTE
 
     text_pdf(inbox_of(engagement) / "statement.pdf",

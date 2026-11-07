@@ -21,6 +21,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - intents       : write down what a decision will do before a file moves, carry it out, record it, and finish an interrupted move from the record
 - inbox         : walk the household's inbox in its own order, and say what in it or the year's folder cannot be sorted or tied to its row
 - readme_ack    : tell the client what has arrived - the README's received list, read out of the index, and the one refresh that rewrites the README from it
+- actions       : a person's actions on the record - file by hand, set aside, unfile, mark missing again, put a copy back, rename a request - and the re-scan after them
 - review        : triage the parked files - a ranked shortlist with its reasons, filing nothing
 - rollover      : build a returning client's list from their prior year
 - reminder      : draft (never send) the client reminder email

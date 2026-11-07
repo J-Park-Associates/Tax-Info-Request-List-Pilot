@@ -806,8 +806,9 @@ def scan_engagement(
 
     # The lock comes before the request list is read (see tracker.locking):
     # a sort that finished in between would otherwise be invisible to this scan.
-    # The index is tracker.index's. This module never imports the filer,
-    # which asks for this scan at call time (tests/test_layers.py holds both).
+    # The index is tracker.index's. This module never imports the filer or a
+    # person's actions (tracker.actions), which ask for this scan at call time
+    # (tests/test_layers.py holds both).
     from tracker.index import ensure
 
     with nullcontext() if dry_run or lock_held else engagement_lock(engagement_dir):

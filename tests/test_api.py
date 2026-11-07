@@ -6301,6 +6301,7 @@ def test_a_rename_carries_duplicates_and_parked_candidates_that_name_it(
     Each gets its own intent in the rename's one write, so a rename a run
     was killed in is finished for them by the next pass as well; and a
     rename that runs through carries them the same way."""
+    import tracker.actions as actions
     import tracker.filer as filer
     import tracker.intents as intents
     from tests.samples import PRIOR_YEAR, YEAR
@@ -6335,14 +6336,14 @@ def test_a_rename_carries_duplicates_and_parked_candidates_that_name_it(
     def killed(engagement_dir, op, **kwargs):
         raise PermissionError("held open by another program")
 
-    for module in (filer, intents):
+    for module in (filer, intents, actions):
         monkeypatch.setattr(module, "_do_op", killed)
     code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"from": "A01", "to": "A1"})
     assert code == 1, payload
     open_keys = {intent[ledger.KEY_KEY] for intent in store.open_intents(store.connect(), engagement)}
     assert {duplicate["pbc_location"], parked["pbc_location"]} <= open_keys
-    for module in (filer, intents):
+    for module in (filer, intents, actions):
         monkeypatch.setattr(module, "_do_op", real)
     code, payload = scan(capsys, engagement)
     assert code == 0, payload
@@ -6364,9 +6365,10 @@ def test_an_interrupted_rename_is_finished_by_the_next_pass(capsys, demo_root, t
     write, and the next pass finishes it (decision 119): nothing lost and
     nothing doubled. Since decision 168 it renames the copies only, in
     Prepared itself: no folder is made and none is left to tidy."""
+    import tracker.actions as actions
     import tracker.filer as filer
     import tracker.intents as intents
-    from tracker.filer import RENAME_UNFINISHED
+    from tracker.actions import RENAME_UNFINISHED
 
     engagement, _ = _filed_documents(capsys, demo_root, tmp_path)
     prepared = engagement / PREPARED_DIR_NAME
@@ -6379,7 +6381,7 @@ def test_an_interrupted_rename_is_finished_by_the_next_pass(capsys, demo_root, t
             raise PermissionError("held open by another program")
         return real(engagement_dir, op, **kwargs)
 
-    for module in (filer, intents):
+    for module in (filer, intents, actions):
         monkeypatch.setattr(module, "_do_op", the_second_move_fails)
     code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"from": "A01", "to": "A1"})
@@ -6390,7 +6392,7 @@ def test_an_interrupted_rename_is_finished_by_the_next_pass(capsys, demo_root, t
     assert len([child for child in prepared.iterdir() if child.name.startswith("A01 - ")]) == 1
     assert len([child for child in prepared.iterdir() if child.name.startswith("A1 - ")]) == 1
 
-    for module in (filer, intents):
+    for module in (filer, intents, actions):
         monkeypatch.setattr(module, "_do_op", real)
     code, payload = scan(capsys, engagement)
     assert code == 0, payload
@@ -6423,6 +6425,7 @@ def test_a_rename_carries_what_a_consolidated_statement_answers(capsys, demo_roo
     alone, through the filer's own writer, and the cell must carry it."""
     from dataclasses import replace
 
+    import tracker.actions as actions
     import tracker.filer as filer
     from tests.builders import _consolidated_return
     from tracker.reasons import IN_CONSOLIDATED, IN_CONSOLIDATED_CLIENT
@@ -6471,13 +6474,15 @@ def test_a_rename_carries_what_a_consolidated_statement_answers(capsys, demo_roo
     def killed(*args, **kwargs):
         raise PermissionError("the run was stopped")
 
-    monkeypatch.setattr(filer, "_record", killed)
+    for module in (filer, actions):
+        monkeypatch.setattr(module, "_record", killed)
     code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"from": "A02", "to": "A02K"})
     assert code == 1, payload
     open_keys = {intent[ledger.KEY_KEY] for intent in store.open_intents(store.connect(), engagement)}
     assert filed["pbc_location"] in open_keys
-    monkeypatch.setattr(filer, "_record", real)
+    for module in (filer, actions):
+        monkeypatch.setattr(module, "_record", real)
     code, payload = scan(capsys, engagement)
     assert code == 0, payload
     assert not store.open_intents(store.connect(), engagement)
@@ -8416,7 +8421,7 @@ def test_a_stale_card_adds_no_row_and_files_nothing(capsys, demo_root):
 
 
 def test_a_list_changed_since_the_card_was_drawn_adds_no_row_and_files_nothing(capsys, demo_root):
-    from tracker.filer import ISSUER_LIST_MOVED
+    from tracker.actions import ISSUER_LIST_MOVED
 
     engagement, row = _issuer_return(capsys, demo_root)
     before = _as_it_stands(engagement)
@@ -8426,7 +8431,7 @@ def test_a_list_changed_since_the_card_was_drawn_adds_no_row_and_files_nothing(c
 
 
 def test_a_card_no_longer_waiting_for_an_issuer_is_refused(capsys, demo_root):
-    from tracker.filer import NOT_AN_ISSUER_CARD
+    from tracker.actions import NOT_AN_ISSUER_CARD
 
     engagement, _ = _issuer_return(capsys, demo_root)
     text_pdf(inbox_of(engagement) / "notice.pdf", ["an agency notice nothing asks for"], style="padded")
@@ -8486,7 +8491,7 @@ def test_an_issuer_row_that_would_not_narrow_this_returns_k1_row_is_refused(caps
     """A return whose K-1 row is its own - no Any Keyword in common with the
     catalog's - has issuer rows copied from that row, in the editor: the
     catalog's issuer row would not be read as one of them."""
-    from tracker.filer import ISSUER_DOES_NOT_NARROW
+    from tracker.actions import ISSUER_DOES_NOT_NARROW
 
     own = [{"identifier": "F01", "document": "K-1 statements", "period": f"TY{BASE_YEAR}",
             "extensions": "pdf", "any_keywords": "k-1 statement"},
@@ -11481,7 +11486,7 @@ def test_a_list_holding_a_long_identifier_stays_editable_and_renames_it_away(cap
     characters used to leave a list the editor would not save."""
     from dataclasses import replace
 
-    from tracker.filer import RENAME_CASE_ONLY
+    from tracker.actions import RENAME_CASE_ONLY
     from tracker.locking import engagement_lock
     from tracker.manifest import list_head, load_manifest
     from tracker.records import rule_to_json

@@ -277,7 +277,7 @@ def test_an_end_to_end_respelling_leaves_the_check_empty(conn, root, engagement)
     filing that teaches, and the first word taken back in the editor."""
     from dataclasses import replace
 
-    from tracker.filer import assign_review_file
+    from tracker.actions import assign_review_file
     from tracker.manifest import unlearn_keyword
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")

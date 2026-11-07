@@ -1898,6 +1898,7 @@ def test_a_resent_file_the_reader_could_not_start_on_waits_for_the_next_pass(
     decision 157 a deleted copy is made again from its original first; the
     re-file road is the one a copy takes while its original cannot be read,
     as here - the first W-2's original still syncing.)"""
+    import tracker.actions as actions_module
     import tracker.content_check as content_check
     import tracker.copies as copies_module
     import tracker.filer as filer_module
@@ -1921,7 +1922,7 @@ def test_a_resent_file_the_reader_could_not_start_on_waits_for_the_next_pass(
     prepared.unlink()                                      # the working copy, deleted by hand
     syncing = locate(engagement, filed.pbc_location)
     real = filer_module.is_cloud_placeholder
-    for module in (filer_module, copies_module, intents_module, inbox_module):
+    for module in (filer_module, copies_module, intents_module, inbox_module, actions_module):
         monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p == syncing or real(p))
 
     text_pdf(inbox_of(engagement) / "w2 again.pdf", page)  # the same document, sent again

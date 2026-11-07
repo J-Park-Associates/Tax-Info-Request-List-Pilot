@@ -65,7 +65,7 @@ def test_a_recovery_copy_is_cut_to_fit_and_one_that_cannot_be_made_names_no_copy
     the interrupted step was making, which is not there - and says why in
     a fixed sentence."""
     from tests.builders import root_for_a_return_of
-    from tracker import filer, intents
+    from tracker import actions, filer, intents
     from tracker.copies import REVIEW_NO_ROOM, NoRoom
     from tracker.layout import path_limit
 
@@ -87,7 +87,7 @@ def test_a_recovery_copy_is_cut_to_fit_and_one_that_cannot_be_made_names_no_copy
     def no_room(_folder, _name, _root):
         raise NoRoom(270, 260, "pdf", sentence=sentence)
 
-    for module in (filer, intents):
+    for module in (filer, intents, actions):
         monkeypatch.setattr(module, "_review_copy_path", no_room)
     assert intents._a_copy_to_act_on(engagement, filed, None) == ("", sentence)
 

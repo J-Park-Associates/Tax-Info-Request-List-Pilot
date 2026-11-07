@@ -1321,7 +1321,7 @@ def test_a_ticked_return_past_the_path_limit_rolls_nothing(park, monkeypatch):
     """The path limit (decisions 125 and 126), asked in the plan too: a
     return whose working copies would not fit refuses the whole roll with
     the filer's sentence, and nothing is made, retired or recorded."""
-    from tracker import copies, filer, layout
+    from tracker import actions, copies, filer, layout
     from tracker.layout import return_dir_for
     from tracker.manifest import load_engagement_info
     from tracker.rollover import NOTHING_ROLLED, ReturnPlan, roll_household
@@ -1330,7 +1330,7 @@ def test_a_ticked_return_past_the_path_limit_rolls_nothing(park, monkeypatch):
     leo = _a_fourth_return(root)
     household = _household(root)
     before = _lines_of(john, sofia, llc, leo, household)
-    for module in (filer, copies):
+    for module in (filer, copies, actions):
         monkeypatch.setattr(module, "path_limit", lambda: 10)
 
     with pytest.raises(ManifestError) as refused:

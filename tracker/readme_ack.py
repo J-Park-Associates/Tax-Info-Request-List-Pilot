@@ -39,9 +39,9 @@ a household, and the API after each action, and the rollover reached the
 sorter only to call it. Nothing here moves, copies, removes or records a
 file. The one file it has written is the client's README, and only
 through the scaffold's one composer (decision 130); nothing here reads a
-name the filer defines. The filer imports back the two names its own
-``documents_by_request`` reads, :func:`_counts_as_received` and
-:func:`_requests_of`, so that a save of the list and the README count a
+name the filer defines. A person's actions (:mod:`tracker.actions`) import
+the two names their ``documents_by_request`` reads, :func:`_counts_as_received`
+and :func:`_requests_of`, so that a save of the list and the README count a
 received document by one rule.
 
 **Why it sits at layer 3.** It reads :mod:`tracker.copies` (layer 2: the
@@ -49,16 +49,16 @@ household README's lock, ``_readme_lock``, and ``_AN_EXTENSION``, what a
 file name's suffix must look like), the index, the request list, the
 record types and the scaffold (layer 1), and the lock's release and the
 error log (layer 0). It may import nothing above layer 2 and nothing of
-the filer, at load time or at call time: the filer, the runner and the API
-import it at load time, and the rollover at call time. Layer 2 would pass
+the filer, at load time or at call time: a person's actions, the runner and
+the API import it at load time, and the rollover at call time. Layer 2 would pass
 the layer test too; layer 3 keeps it beside the filer and the pass it
 serves, and keeps layer 2 to what a reading, a routing or a copy needs
 (SPEC-architecture-p4 section 2.1). The lock itself stays in
 :mod:`tracker.copies`, with the stranded-temp sweep that reads it (P331).
 
-**Every reader asks this module.** The filer imports back from here only
-what its own remaining code reads, and offers none of it on; the runner,
-the API and the rollover import the refresh from here. A stand-in follows
+**Every reader asks this module.** A person's actions import from here only
+what their own code reads, and offer none of it on; the runner, the API and
+the rollover import the refresh from here. A stand-in follows
 the name's readers (the audit's A-4): one for a name this module reads as a
 global is set on this module. So ``received_for``, ``readme_returns`` and
 ``write_readme`` are set here alone, ``read_index`` and ``load_manifest``

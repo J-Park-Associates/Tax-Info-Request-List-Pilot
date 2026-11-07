@@ -66,6 +66,7 @@ def test_received_for_reads_each_index_once(tmp_path, monkeypatch):
     """The README's received list is a rendering of the index and nothing
     else (S-2): one index read and one request-list read per return, and
     no second copy anywhere."""
+    import tracker.actions as actions_module
     import tracker.copies as copies_module
     import tracker.filer as filer_module
     import tracker.intents as intents_module
@@ -87,10 +88,10 @@ def test_received_for_reads_each_index_once(tmp_path, monkeypatch):
     read = []
     lists = []
     real_read, real_list = filer_module.read_index, filer_module.load_manifest
-    for module in (filer_module, copies_module, intents_module, readme_ack_module):
+    for module in (filer_module, copies_module, intents_module, readme_ack_module, actions_module):
         monkeypatch.setattr(module, "read_index",
                             lambda folder: read.append(Path(folder)) or real_read(folder))
-    for module in (filer_module, readme_ack_module):
+    for module in (filer_module, readme_ack_module, actions_module):
         monkeypatch.setattr(module, "load_manifest",
                             lambda folder: lists.append(Path(folder)) or real_list(folder))
 

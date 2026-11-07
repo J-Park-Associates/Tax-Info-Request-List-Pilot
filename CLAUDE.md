@@ -60,8 +60,8 @@ it runs when called, not when the module loads, so a cycle that closes through
 one is a cycle only at call time. `from tracker import ledger` draws both the
 module (`tracker/ledger.py`) and the package it executes (`tracker/__init__.py`).
 The scanner never imports the filer: it reads the index from `index.py`, and
-the filer reaches the scanner only at call time, inside `_rescan()` - a
-curated `calls` edge, stated on both nodes (P313's Q-A). Four two-module
+a person's actions (`actions.py`) reach the scanner only at call time, inside
+`_rescan()` - a curated `calls` edge, stated on both nodes (P313's Q-A, P335). Four two-module
 cycles remain, each closing at call time, and `tests/test_layers.py` names
 them in `CALL_TIME_CYCLES`: registry ↔ store, store ↔ store_check and
 store ↔ verify (each through the store's `__main__` block), and scaffold ↔

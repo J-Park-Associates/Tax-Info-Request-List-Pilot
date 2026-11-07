@@ -874,15 +874,17 @@ def test_the_pipeline_ends_with_the_view_every_pass_writes():
     assert edges(graph, **{"from": "tracker/reminder.py", "to": "tracker/view.py", "type": "precedes"})
 
 
-def test_the_filer_calls_the_scanner_one_way_and_no_load_time_cycle_remains():
+def test_a_persons_actions_call_the_scanner_one_way_and_no_load_time_cycle_remains():
     graph = real_map()
-    assert edges(graph, **{"from": "tracker/filer.py", "to": "tracker/scanner.py",
+    assert edges(graph, **{"from": "tracker/actions.py", "to": "tracker/scanner.py",
                            "type": "calls"})
     assert not edges(graph, type="deliberate_cycle"), "the scanner never imports the filer, so no edge is left to state"
     assert "no load-time cycle" in node(graph, "tracker/__init__.py")["notes"]
-    assert edges(graph, **{"from": "tracker/filer.py", "to": "tracker/scanner.py",
-                           "type": "imports_at_call"}), "the filer reaches the scanner at call time, not load"
-    assert not edges(graph, **{"from": "tracker/filer.py", "to": "tracker/scanner.py",
+    assert edges(graph, **{"from": "tracker/actions.py", "to": "tracker/scanner.py",
+                           "type": "imports_at_call"}), "a person's actions reach the scanner at call time, not load"
+    assert not edges(graph, **{"from": "tracker/actions.py", "to": "tracker/scanner.py",
                                "type": "imports"})
     for kind in ("imports", "imports_at_call"):
+        assert not edges(graph, **{"from": "tracker/filer.py", "to": "tracker/scanner.py", "type": kind})
         assert not edges(graph, **{"from": "tracker/scanner.py", "to": "tracker/filer.py", "type": kind})
+        assert not edges(graph, **{"from": "tracker/scanner.py", "to": "tracker/actions.py", "type": kind})

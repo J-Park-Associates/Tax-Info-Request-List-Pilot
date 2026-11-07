@@ -11,9 +11,9 @@ here in the same commit, with a decision row saying why.
 module loads. An import inside a function, a class body or the module's
 ``if __name__ == "__main__":`` block is a call-time import: it runs when
 called, so it can point anywhere, and the map labels it separately. The
-scanner never imports the filer: the filer reaches it at call time, inside
-``_rescan()``. Four two-module cycles remain, each closing at call time,
-and :data:`CALL_TIME_CYCLES` names them.
+scanner never imports the filer: a person's actions (``actions``) reach it
+at call time, inside ``_rescan()``. Four two-module cycles remain, each
+closing at call time, and :data:`CALL_TIME_CYCLES` names them.
 
 **The layers.** In-layer edges are allowed (``ledger`` and ``manifest``
 are both L1, so ``manifest`` reaching ``ledger`` is legal - and wanted,
@@ -219,12 +219,17 @@ LAYERS: dict[int, frozenset[str]] = {
     # beside the two it serves.
     # ``readme_ack`` joins L3 with P334 (SPEC-architecture-p4 P4.8): decision
     # 130's received list and the README's refresh, out of ``filer`` -
-    # ``copies`` (L2) and L1 and L0; the pass (``runner``), the API and the
-    # filer's ``documents_by_request`` import it, and the rollover at call
-    # time. It imports nothing above L2, and sits at L3 beside the filer and
-    # the rollover that read it.
+    # ``copies`` (L2) and L1 and L0; the pass (``runner``), the API and a
+    # person's actions import it, and the rollover at call time. It imports
+    # nothing above L2, and sits at L3 beside the filer and the rollover that
+    # read it.
+    # ``actions`` joins L3 with P335 (SPEC-architecture-p4 P4.9): a person's
+    # actions on the record and the rescan after them, out of ``filer`` -
+    # ``filer`` (in-layer, the hand-over's shared pieces), ``intents``,
+    # ``inbox``, ``readme_ack``, ``copies`` and L1 and L0 at load, ``scanner``
+    # at call time; only the API imports it.
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review",
-                  "verify", "intents", "inbox", "readme_ack"}),
+                  "verify", "intents", "inbox", "readme_ack", "actions"}),
     # ``after_install`` joins L4 with decision 209, beside the scheduler it
     # drives: it imports ``scheduling`` (L4), ``store`` (L1), ``registry``
     # (L3) and L0; the API imports it, and nothing lower may.
@@ -257,7 +262,7 @@ DOMAINS: dict[str, frozenset[str]] = {
     # Deciding where a document belongs, or that it belongs nowhere yet, and
     # the shortlist a person gets for the ones that do not.
     "sorting": frozenset({"reasons", "router", "names", "filer", "copies", "intents", "inbox",
-                          "readme_ack", "scanner", "review"}),
+                          "readme_ack", "actions", "scanner", "review"}),
     # The scheduled run and what it drives: the engagements it finds, the
     # year it rolls over, the reminder it drafts and how it is watched.
     "pass": frozenset({"progress", "registry", "rollover", "reminder", "runner", "scheduling",
@@ -501,9 +506,12 @@ def test_verify_reads_the_walk_and_the_proof_at_call_time():
 #: P327); a new composer is a decision. ``intents`` joined with P332: the
 #: intent (``ledger.MOVING``), the abandon (``ledger.MOVE_ABANDONED``) and the
 #: finish of an interrupted move compose the record's events, and moved out
-#: of the filer with the code that writes them.
-COMPOSERS: frozenset[str] = frozenset({"filer", "households", "intents", "manifest", "reminder",
-                                       "scanner"})
+#: of the filer with the code that writes them. ``actions`` joined with P335:
+#: a filing's issuer row and taught keyword and a rename's intents are
+#: composed by a person's actions, which left the filer with them; the filer
+#: stays, for the spelling a filing teaches and the hand-over.
+COMPOSERS: frozenset[str] = frozenset({"actions", "filer", "households", "intents", "manifest",
+                                       "reminder", "scanner"})
 
 
 def _composers() -> set[str]:
@@ -624,10 +632,12 @@ def test_the_runner_never_imports_the_scheduler_or_the_api():
     assert not {"scheduling", "api"} & (load["runner"] | call["runner"])
 
 
-def test_the_scanner_never_imports_the_filer_and_the_filer_reaches_it_only_at_call_time():
+def test_the_scanner_never_imports_the_filer_or_a_persons_actions_and_they_reach_it_only_at_call_time():
     load, call = import_edges()
-    assert "filer" not in load["scanner"] and "filer" not in call["scanner"], (load["scanner"], call["scanner"])
-    assert "scanner" not in load["filer"] and "scanner" in call["filer"], (load["filer"], call["filer"])
+    for module in ("filer", "actions"):
+        assert module not in load["scanner"] and module not in call["scanner"], (load["scanner"], call["scanner"])
+    assert "scanner" not in load["filer"] and "scanner" not in call["filer"], (load["filer"], call["filer"])
+    assert "scanner" not in load["actions"] and "scanner" in call["actions"], (load["actions"], call["actions"])
 
 
 #: Every pair of modules that import each other, and the only pairs allowed to.

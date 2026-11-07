@@ -90,7 +90,7 @@ tries again.
 **A process never locks itself out (decision 171, F1's worst case).** One
 process takes the same lock twice in a row in ordinary work: an app command
 that unfiles, marks missing, assigns or renames takes the lock and then
-rescans, which takes it again (``tracker.filer._rescan``); the scheduled
+rescans, which takes it again (``tracker.actions._rescan``); the scheduled
 pass locks a fed return beside the household that fed it, and again when
 it reaches that return's own household; and a release that ran out of
 tries, and could not even mark the file released, leaves this process's

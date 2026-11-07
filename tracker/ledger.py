@@ -408,7 +408,7 @@ KEYWORD_UNLEARNED = "keyword_unlearned"
 #: all is the list. Written by ``tracker.manifest.create_engagement``,
 #: ``save_rules`` and the rename (``renamed_rules``, decision 160), by a
 #: filing that teaches a spelling (decision 128) or adds its issuer row
-#: (decision 201) in ``tracker.filer.assign_review_file``, and by the API's
+#: (decision 201) in ``tracker.actions.assign_review_file``, and by the API's
 #: *Accept the folder's name* (decision 188) - and by nothing else.
 RULES_CHANGED = "rules_changed"
 #: The household's own details were recorded or edited (decision 125): its

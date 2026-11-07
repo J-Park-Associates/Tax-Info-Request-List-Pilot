@@ -792,7 +792,7 @@ UNFILED_BY_PERSON_CODE = "unfiled"
 DISMISSED_BY_PERSON_CODE = "not-requested"
 #: tracker.filer's ``ASSIGNED_BY_PERSON``: a person filed it.
 ASSIGNED_BY_PERSON_CODE = "assigned"
-#: tracker.filer's ``PUT_BACK_REFUSED``: a person asked for a moved copy to
+#: tracker.actions' ``PUT_BACK_REFUSED``: a person asked for a moved copy to
 #: go home, somebody's file was there, and the row parks with a copy.
 PUT_BACK_REFUSED_CODE = "put-back-refused"
 

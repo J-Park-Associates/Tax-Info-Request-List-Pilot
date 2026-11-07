@@ -57,8 +57,8 @@ the next pass - or Run now - clears it.
 architecture audit's A-1, step 3). This code sat in the filer, and the pass
 and a person's actions share it (decision 119): both write an intent, carry
 it out through :func:`_do_op` and record it through :func:`_record`, and a
-person's actions leave the filer for a module of their own in P4.9, so what
-they share sits below both. Nothing here routes or decides where a document
+person's actions left the filer for :mod:`tracker.actions` in P4.9 (P335),
+so what they share sits below both. Nothing here routes or decides where a document
 goes: every function carries out, records or finishes a decision its caller
 made, and none of it reads a name the filer defines. The record's write
 came with the intents because :func:`_finish_interrupted_moves` and the
@@ -83,16 +83,17 @@ down the copy path), the record types, the index, the store, the journal,
 the scaffold's folder names and the validators (layer 1), and the layout,
 the door, the disk writes, the reasons and the errors (layer 0). It may
 import nothing above layer 2 and nothing of the filer, at load time or at
-call time: the filer imports it, and so will a person's actions. Layer 2
+call time: the filer imports it, and so do a person's actions. Layer 2
 would pass the layer test too; layer 3 keeps it beside the filer and the
 actions it serves, and keeps layer 2 to what a reading or a routing needs
 (SPEC-architecture-p4 section 2.1).
 
 **Every reader asks this module.** The filer imports back from here only
-what its own remaining code reads, and offers none of it on. A stand-in
-follows the name's readers (the audit's A-4): one for a name this module
-reads as a global is set on this module, and where the filer reads it too,
-on both.
+what its own remaining code reads, and offers none of it on, and a person's
+actions import only what theirs reads. A stand-in follows the name's readers
+(the audit's A-4): one for a name this module reads as a global is set on
+this module, and where the filer or a person's actions read it too, on them
+as well.
 
 **One private name of the index crosses into it**: the index's
 ``_without_moved_sentence``, which :func:`_finish_interrupted_moves` asks

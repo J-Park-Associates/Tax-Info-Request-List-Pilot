@@ -26,11 +26,11 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of fifty modules in six layers.
+`tracker/` is one Python package of fifty-one modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
-and may point anywhere. The scanner never imports the filer; the filer reaches
-it at call time through a rescan. The four call-time cycles that remain -
+and may point anywhere. The scanner never imports the filer; a person's actions
+reach it at call time through a rescan. The four call-time cycles that remain -
 registry ↔ store, store ↔ store_check and store ↔ verify (each through the
 store's `__main__` block), and scaffold ↔ validators (validators' `__main__`
 block) - are named in `tests/test_layers.py`.
@@ -138,7 +138,7 @@ the package but each other.
   file moves, carried out by one function and recorded in one write, and an
   interrupted move finished from the record by bytes at the start of the next
   pass, never guessed (decision 119, P332); the filer imports what it reads,
-  and a person's actions will too.
+  and so do a person's actions.
 - `inbox.py`: the household's inbox walked in its own order, and what in it
   or in the year's folder cannot be sorted or tied to its row said: a name
   the journal cannot hold, a folder that cannot be listed, a transfer the
@@ -150,7 +150,15 @@ the package but each other.
   parked one Under Review by its day, a row a person marked missing not
   counted - and the one refresh that rewrites the README from it under its
   lock and never raises (decisions 130 and 193, P334); the pass, the API and
-  the rollover call the refresh, and the filer imports the two rules it reads.
+  the rollover call the refresh, and a person's actions import the two rules
+  they read.
+- `actions.py`: a person's actions on the record - a parked document filed by
+  hand (with the keyword, the spelling or the issuer row it teaches), set
+  aside or unfiled, a request marked missing again, a moved or deleted copy
+  put back, a request given another identifier with its documents - each
+  under the lock, checked against the row the person saw, and recorded as
+  theirs, then the re-scan (P335); it imports the hand-over's shared pieces
+  from the filer, the filer never imports it, and only the API does.
 - `scanner.py`: walks the working copies, runs the three tiers, resolves each
   request's status (override- and revert-aware) and records the result.
 - `reminder.py`: drafts the client's chase email in four stages measured

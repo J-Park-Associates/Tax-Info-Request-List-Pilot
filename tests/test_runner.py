@@ -514,7 +514,7 @@ def test_reminders_always_is_held_too(tmp_path, samples, stamped_on):
 
 def test_two_ambiguities_one_resolved_still_holds_and_both_resolved_drafts_on_the_next_pass(
         tmp_path, samples, stamped_on):
-    from tracker.filer import unfile_document
+    from tracker.actions import unfile_document
 
     engagement = build_chased_engagement(tmp_path, samples)
     pass_on(stamped_on, engagement, SATURDAY)            # asked A02, B01, D01 and A01 (1 of 2)
@@ -1537,6 +1537,7 @@ def test_a_household_with_two_open_years_and_a_waiting_file_drafts_no_reminder_a
 
 def test_the_pass_that_sorts_the_inbox_drafts_the_held_reminder_the_same_day(
         tmp_path, samples, stamped_on, monkeypatch):
+    import tracker.actions as actions_module
     import tracker.filer as filer_module
     import tracker.intents as intents_module
     from tracker.layout import README_NAME
@@ -1553,7 +1554,7 @@ def test_the_pass_that_sorts_the_inbox_drafts_the_held_reminder_the_same_day(
 
     # The draft day's first pass: the drop cannot be moved, so it fails to
     # sort and stays in the inbox - and the reminder waits for it.
-    for module in (filer_module, intents_module):
+    for module in (filer_module, intents_module, actions_module):
         monkeypatch.setattr(module, "_move_whole", refused_once)
     held = pass_on(stamped_on, engagement, SATURDAY)
     monkeypatch.undo()

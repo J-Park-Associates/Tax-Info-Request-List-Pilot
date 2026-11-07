@@ -119,6 +119,15 @@ from tracker import (
     settings,
     store,
 )
+from tracker.actions import (
+    assign_review_file,
+    dismiss_review_file,
+    documents_by_request,
+    mark_missing_again,
+    rename_request,
+    restore_working_copy,
+    unfile_document,
+)
 from tracker.containers import is_container
 from tracker.copies import (
     FilingError,
@@ -131,17 +140,10 @@ from tracker.filer import (
     NOT_WAITING,
     Spelling,
     StaleRowError,
-    assign_review_file,
-    dismiss_review_file,
-    documents_by_request,
     find_parked,
     hand_over,
     hand_over_copies,
-    mark_missing_again,
-    rename_request,
     requests_taking,
-    restore_working_copy,
-    unfile_document,
     waiting_target,
 )
 from tracker.fsio import make_new_folders, write_json_atomically
@@ -3710,7 +3712,7 @@ def _cmd_rename(argv: list[str]) -> dict:
     JSON spec on stdin: {"from": "A01", "to": "A1", "head": "..."} - the
     request as the list spells it, the new identifier, and the version of
     the list the editor was opened on (``state``'s ``list_head``). One act
-    through ``filer.rename_request``: the list renamed and each row's
+    through ``actions.rename_request``: the list renamed and each row's
     intent in one write, then the moves, then the rows; refused - nothing
     written, nothing moved - on a stale list, a change of case alone, a
     name already on the list, or a copy that is not where the record put
@@ -5111,7 +5113,7 @@ def _cmd_add_issuer_and_file(argv: list[str]) -> dict:
     (:func:`tracker.templates.issuer_item`), and a name that normalises to
     nothing is refused here, before anything else is read.
 
-    Everything after is one filing (:func:`tracker.filer.assign_review_file`
+    Everything after is one filing (:func:`tracker.actions.assign_review_file`
     with ``adding`` and ``head``): under the one engagement lock the list's
     version, the row's, the card's reason, the editor's own ``validated()``
     and the row's narrowing are judged before a byte is read, and the row's

@@ -301,7 +301,7 @@ def test_a_resend_after_a_dismissal_counts_in_the_files_waiting_warning(tmp_path
     waiting rather than none.
     """
     from tests.builders import make_engagement, seed_statuses, sort
-    from tracker.filer import dismiss_review_file
+    from tracker.actions import dismiss_review_file
     from tracker.reminder import REVIEW_WARNING
 
     rows = [item("A01", "W-2 Wage Statements", Status.MISSING, period="TY2025",
@@ -1028,7 +1028,7 @@ def test_a_parked_file_with_a_firm_side_reason_holds_nothing(tmp_path, monkeypat
 def test_a_set_aside_row_never_holds(tmp_path):
     """A row a person has already answered - "no request asks for this" -
     is their decision, not an open question about the client."""
-    from tracker.filer import dismiss_review_file
+    from tracker.actions import dismiss_review_file
     from tracker.index import NOT_REQUESTED, read_index
 
     folder = engagement(tmp_path, DROPPED, name="Dismissed TY2025")
@@ -1081,7 +1081,7 @@ def test_a_parked_file_whose_copy_and_original_are_both_gone_still_holds(tmp_pat
 def test_a_set_aside_row_whose_copy_and_original_are_both_gone_still_holds_nothing(tmp_path):
     """The other side of the same rule: a person's "no request asks for
     this" stays their answer when the file then goes."""
-    from tracker.filer import dismiss_review_file
+    from tracker.actions import dismiss_review_file
     from tracker.index import both_gone, read_index
 
     folder = engagement(tmp_path, DROPPED, name="Gone dismissed TY2025")

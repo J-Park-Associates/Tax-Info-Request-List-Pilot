@@ -973,7 +973,7 @@ def _a_row(**fields):
 
 
 def test_a_review_copy_that_cannot_be_made_names_the_os_error_not_its_path(tmp_path, monkeypatch, kept):
-    from tracker import copies, filer, inbox, intents
+    from tracker import actions, copies, filer, inbox, intents
 
     where = f"/Clients/{NAME} SSN {NUMBER}/2025/W2.pdf"
 
@@ -982,11 +982,11 @@ def test_a_review_copy_that_cannot_be_made_names_the_os_error_not_its_path(tmp_p
 
     monkeypatch.setattr(intents, "_may_touch", lambda *a, **k: True)
     monkeypatch.setattr(intents, "place_problem", lambda *a, **k: None)     # decision 187's place rule
-    for module in (filer, copies, intents, inbox):
+    for module in (filer, copies, intents, inbox, actions):
         monkeypatch.setattr(module, "locate", lambda folder, _location: folder / "W2.pdf")
-    for module in (filer, intents):
+    for module in (filer, intents, actions):
         monkeypatch.setattr(module, "_existing_copy", lambda *a, **k: None)
-    for module in (filer, intents):
+    for module in (intents, actions):
         monkeypatch.setattr(module, "_copy_whole", refused)
     row = _a_row(original_name="W2.pdf", pbc_location="x/W2.pdf", digest="ab")
     location, reason = intents._a_copy_to_act_on(tmp_path, row, None)

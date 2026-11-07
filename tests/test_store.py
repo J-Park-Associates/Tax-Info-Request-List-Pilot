@@ -1080,7 +1080,7 @@ def test_the_writer_and_the_check_use_one_rule(conn, root):
 
 def test_the_rebuilt_rows_are_the_readers_rows_after_a_person_files_a_parked_one(
         conn, root, engagement):
-    from tracker.filer import assign_review_file
+    from tracker.actions import assign_review_file
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
     parked = sort(engagement, today=DAY1).review[0]
@@ -1444,7 +1444,7 @@ def test_document_seqs_names_the_line_that_last_wrote_each_row_and_agrees_after_
     assert store.document_seqs(conn, engagement) == written
 
     # The row rewritten: its number is the line that rewrote it, and the head.
-    from tracker.filer import dismiss_review_file
+    from tracker.actions import dismiss_review_file
 
     dismiss_review_file(engagement, parked.pbc_location, today=DAY2)
     rewritten = store.document_seqs(conn, engagement)

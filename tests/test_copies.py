@@ -591,12 +591,13 @@ def test_a_sweep_that_cannot_read_a_returns_rows_logs_the_class_never_the_path(e
     import logging
     import time
 
+    import tracker.actions as actions
     import tracker.copies as copies
     import tracker.filer as filer
     import tracker.intents as intents
     import tracker.readme_ack as readme_ack
 
-    for module in (filer, copies, intents, readme_ack):
+    for module in (filer, copies, intents, readme_ack, actions):
         monkeypatch.setattr(module, "read_index", _refused_with_a_client_path)
     with caplog.at_level(logging.DEBUG):
         assert copies.sweep_stranded_temps(household_of(engagement), [engagement],

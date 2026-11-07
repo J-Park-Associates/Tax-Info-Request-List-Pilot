@@ -1,7 +1,7 @@
 """What the staff taught the router, in one list: the learned-keyword report.
 
 When a person files a parked document from the review folder they may type a
-keyword, and :func:`tracker.filer.assign_review_file` records it against
+keyword, and :func:`tracker.actions.assign_review_file` records it against
 **that one engagement's** request (decision 103; until then it was typed
 into that engagement's request list). It is the right place for it - the person
 is deciding about this client's document, and the next such file routes
