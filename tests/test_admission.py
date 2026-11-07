@@ -64,6 +64,8 @@ def test_a_moving_line_in_a_households_record_is_refused():
 #: split_codes' parameter str | None: two annotations, no rule changed.
 #: Pinned again under 5 when P3.2 moved the admission to tracker.admission: nine keys
 #: follow the module, no digest changed.
+#: Pinned again under 5 when P3.3 taught the walker a class's members: Override.ALL and
+#: Override.RETIRED joined, no digest changed.
 ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.layout.CLIENTS": "3b8264d65abeec66",
     "tracker.layout.CLIENTS_TREE": "488530d6164e0dd6",
@@ -899,6 +901,8 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.bounds.MAX_STAGE": "19581e27de7ced00",
     "tracker.bounds.NAME_BOUNDS": "fab0c3e598d1038c",
     "tracker.bounds.NUMBER_BOUNDS": "d7d2f825d092e462",
+    "tracker.bounds.Override.ALL": "86ee29488dc3da24",
+    "tracker.bounds.Override.RETIRED": "9436819b49e5741d",
     "tracker.bounds.SHORT_TITLE_MAX": "f5ca38f748a1d6ea",
     "tracker.bounds.STAMP_BOUNDS": "7c7cf7f161dd3671",
     "tracker.bounds.STAMP_YEAR_MIN": "ad1f3889d0032e7c",
@@ -1152,7 +1156,8 @@ def admission_closure(roots=None) -> dict[str, str]:
     (the re-review's SF1: the rule R3b was built for lives in ``records``,
     not in the two functions a narrower pin hashed). A name the function
     binds itself (:func:`names_bound_in`) is not looked up among the module's
-    names. ``roots`` are the functions to start from, the store's two
+    names. A member read off a class (decision 187's ``Override.ALL``) is
+    part of the rule as a module's constant is. ``roots`` are the functions to start from, the store's two
     admission functions when none are given; a test names a made-up one."""
     import importlib
     import inspect
@@ -1191,6 +1196,17 @@ def admission_closure(roots=None) -> dict[str, str]:
                 module = names[node.value.id]
                 if module.__name__.startswith("tracker") and hasattr(module, node.attr)                         and not node.attr.startswith("__"):
                     found = (f"{module.__name__}.{node.attr}", getattr(module, node.attr))
+            elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and \
+                    isinstance(names.get(node.value.id), type) and \
+                    names[node.value.id].__module__.startswith("tracker"):
+                # A class's member is read as the class holds it, with no descriptor
+                # run, and a static or class method is the function it wraps.
+                cls = names[node.value.id]
+                member = inspect.getattr_static(cls, node.attr, None)
+                if isinstance(member, (staticmethod, classmethod)):
+                    member = member.__func__
+                if member is not None and not node.attr.startswith("__"):
+                    found = (f"{cls.__module__}.{cls.__qualname__}.{node.attr}", member)
             if found is None:
                 continue
             where, value = found
@@ -1364,6 +1380,47 @@ def test_a_name_declared_global_is_still_the_modules(shadowing):
     the walker follows it."""
     assert set(admission_closure([shadowing.by_global_declaration])) == {
         "tracker_shadowing.by_global_declaration", "tracker_shadowing.helper"}
+
+
+#: A made-up module for the walker's reach into a class (SPEC-architecture-p3
+#: P3.3, R3.3.1). ``reader`` reads ``Box.LIMIT`` and calls ``Box.check``, as
+#: ``records.rule_row_fault`` reads ``Override.ALL``. The module is never run
+#: past its definitions - the walker reads source.
+CLASS_MEMBER_MODULE = """
+class Box:
+    LIMIT = 3
+
+    @staticmethod
+    def check(row):
+        return row
+
+
+def reader(row):
+    return Box.check(row) if len(row) <= Box.LIMIT else None
+"""
+
+
+@pytest.fixture(scope="module")
+def class_member(tmp_path_factory):
+    import importlib.util
+
+    path = tmp_path_factory.mktemp("class_member") / "tracker_class_member.py"
+    path.write_text(CLASS_MEMBER_MODULE, encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("tracker_class_member", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_member_read_off_a_class_is_part_of_the_closure(class_member):
+    """Decision 187's rule reads ``Override.ALL`` and ``Override.RETIRED``
+    off a class, not a module, and the walker once saw only a module's
+    names, so the values a rule row's override is held to escaped the pin.
+    A constant read off a class is recorded, and a method called off it -
+    here a static one, which the walker unwraps - is followed."""
+    assert set(admission_closure([class_member.reader])) == {
+        "tracker_class_member.reader", "tracker_class_member.Box.check",
+        "tracker_class_member.Box.LIMIT"}
 
 
 def test_the_store_admits_the_accepted_key_with_one_value():

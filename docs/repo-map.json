@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-10-14",
+  "generated": "2026-11-07",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
   "module_table_sha256": "b1d42e1ca49447dd",
@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 354,
     "edges": 1570,
-    "reused": 297
+    "reused": 299
   },
   "node_types": [
     "artifact",
@@ -4742,7 +4742,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "5809a89118302e23",
+      "sha256": "eb4152e8536c6685",
       "lines": 1716,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -6564,15 +6564,18 @@
       "id": "tests/test_admission.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0a2d3115ad96b9d6",
-      "lines": 1412,
+      "sha256": "6ce5f93d0ceb5e28",
+      "lines": 1469,
       "exports": [
+        "CLASS_MEMBER_MODULE",
         "SHADOWED_BY",
         "SHADOWING_MODULE",
         "admission_closure",
         "admission_digests",
+        "class_member",
         "names_bound_in",
         "shadowing",
+        "test_a_member_read_off_a_class_is_part_of_the_closure",
         "test_a_moving_line_in_a_households_record_is_refused",
         "test_a_name_declared_global_is_still_the_modules",
         "test_a_name_the_function_binds_itself_is_not_followed_as_a_callee",
@@ -6583,10 +6586,11 @@
         "test_the_store_admits_the_accepted_key_with_one_value"
       ],
       "constants": {
-        "SHADOWING_MODULE": "'\\ndef helper(row):\\n    return row\\n\\n\\ndef unshadowed(row):\\n    return helper(row)\\n\\n\\ndef by_parameter(row, helper):\\n    return helper(row)\\n\\n\\ndef by_assignment(row):\\n    helper = len\\n    return helper(row)\\n\\n\\ndef by_augmented_assignment(row):\\n    helper += 1\\n    return helper\\n\\n\\ndef by_annotated_assignment(row):\\n    helper: int = 1\\n    return helper\\n\\n\\ndef by_walrus(row):\\n    return (helper := len) and helper(row)\\n\\n\\ndef by_for_target(rows):\\n    for helper in rows:\\n        helper(rows)\\n\\n\\ndef by_with_target(path):\\n    with open(path) as helper:\\n        return helper(path)\\n\\n\\ndef by_comprehension(rows):\\n    return [helper(row) for helper in rows]\\n\\n\\ndef by_except_clause(row):\\n    try:\\n        return row\\n    except ValueError as helper:\\n        return helper(row)\\n\\n\\ndef by_nested_def(row):\\n    def helper(item):\\n        return item\\n    return helper(row)\\n\\n\\ndef by_nested_class(row):\\n    class helper:\\n        pass\\n    return helper(row)\\n\\n\\ndef by_import_inside(row):\\n    from os.path import join as helper\\n    return helper(row)\\n\\n\\ndef by_global_declaration(row):\\n    global helper\\n    taken = helper\\n    helper = None\\n    return taken(row)\\n'"
+        "SHADOWING_MODULE": "'\\ndef helper(row):\\n    return row\\n\\n\\ndef unshadowed(row):\\n    return helper(row)\\n\\n\\ndef by_parameter(row, helper):\\n    return helper(row)\\n\\n\\ndef by_assignment(row):\\n    helper = len\\n    return helper(row)\\n\\n\\ndef by_augmented_assignment(row):\\n    helper += 1\\n    return helper\\n\\n\\ndef by_annotated_assignment(row):\\n    helper: int = 1\\n    return helper\\n\\n\\ndef by_walrus(row):\\n    return (helper := len) and helper(row)\\n\\n\\ndef by_for_target(rows):\\n    for helper in rows:\\n        helper(rows)\\n\\n\\ndef by_with_target(path):\\n    with open(path) as helper:\\n        return helper(path)\\n\\n\\ndef by_comprehension(rows):\\n    return [helper(row) for helper in rows]\\n\\n\\ndef by_except_clause(row):\\n    try:\\n        return row\\n    except ValueError as helper:\\n        return helper(row)\\n\\n\\ndef by_nested_def(row):\\n    def helper(item):\\n        return item\\n    return helper(row)\\n\\n\\ndef by_nested_class(row):\\n    class helper:\\n        pass\\n    return helper(row)\\n\\n\\ndef by_import_inside(row):\\n    from os.path import join as helper\\n    return helper(row)\\n\\n\\ndef by_global_declaration(row):\\n    global helper\\n    taken = helper\\n    helper = None\\n    return taken(row)\\n'",
+        "CLASS_MEMBER_MODULE": "'\\nclass Box:\\n    LIMIT = 3\\n\\n    @staticmethod\\n    def check(row):\\n        return row\\n\\n\\ndef reader(row):\\n    return Box.check(row) if len(row) <= Box.LIMIT else None\\n'"
       },
-      "role": "Holds the admission's pin: ADMISSION_PIN, the digest of every part tracker/admission.py's rule reaches - each package function _refuse_a_malformed_line and _line_keys_problem call, at any depth, and every constant they read - by ADMISSION_VERSION; the walker that finds them (admission_closure, names_bound_in, admission_digests) with its own shadowing tests; and the tests that call the admission directly, with no store: a moving line in a household's record, the accepted key's one value, and a related list that is not folder names.",
-      "notes": "SPEC-architecture-p3 R3.2.4 and R3.2.5 (P323). Cut and pasted from tests/test_store.py with the admission, because the admission's own file holds the rule and its test file holds the pin; the only edits are ADMISSION_PIN[5]'s nine keys, which follow the module with no digest changed, and the comment line saying so. The three tests are the ones that called the admission directly, took no fixture and read no test_store helper. The tests that drive the admission through the store's door (record, catch_up, check) or take its fixtures stay in tests/test_store.py, because they test the door's wiring as much as the rule; one more direct caller, test_an_event_carried_in_also_is_refused_in_the_wording_of_the_line_that_carries_it, stays there until P3.4 moves its helper _a_rule to a helper module. The bodies still read the admission's names through tracker.store, which holds them by import, and admission_closure()'s default roots are store's two functions (the same objects) until P3.9."
+      "role": "Holds the admission's pin: ADMISSION_PIN, the digest of every part tracker/admission.py's rule reaches - each package function _refuse_a_malformed_line and _line_keys_problem call, at any depth, and every constant they read, off a module or a class - by ADMISSION_VERSION; the walker that finds them (admission_closure, names_bound_in, admission_digests) with its own tests on made-up modules (the shadowing tests, and a member read off a class); and the tests that call the admission directly, with no store: a moving line in a household's record, the accepted key's one value, and a related list that is not folder names.",
+      "notes": "SPEC-architecture-p3 R3.2.4 and R3.2.5 (P323). Cut and pasted from tests/test_store.py with the admission, because the admission's own file holds the rule and its test file holds the pin; the only edits are ADMISSION_PIN[5]'s nine keys, which follow the module with no digest changed, and the comment line saying so. The three tests are the ones that called the admission directly, took no fixture and read no test_store helper. The tests that drive the admission through the store's door (record, catch_up, check) or take its fixtures stay in tests/test_store.py, because they test the door's wiring as much as the rule; one more direct caller, test_an_event_carried_in_also_is_refused_in_the_wording_of_the_line_that_carries_it, stays there until P3.4 moves its helper _a_rule to a helper module. The bodies still read the admission's names through tracker.store, which holds them by import, and admission_closure()'s default roots are store's two functions (the same objects) until P3.9. SPEC-architecture-p3 R3.3.1: the walker also reads a member off a tracker class - looked up with inspect.getattr_static, so no descriptor runs, and a static or class method unwrapped to the function it holds - and keys a constant module.Class.member, so records.rule_row_fault's Override.ALL and Override.RETIRED joined ADMISSION_PIN[5] with no digest moved; test_a_member_read_off_a_class_is_part_of_the_closure proves it on a made-up module."
     },
     {
       "id": "tests/test_after_install.py",
