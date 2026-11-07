@@ -2505,6 +2505,10 @@ P4.12; the Mac check's next scheduled run covers it, and no Mac run is owed by t
 ## 7. Questions for Jason
 
 **Q1. May phase 4 be built on the branch now, with the office backtest run before it merges to `main`?**
+
+**Answered by Jason, 2026-11-07: (A) "Build now".** Phase 4 builds on the branch in section 4's order. Section 6's
+backtest runs at the office on the build at `68b9212` and on the build after P4.13, and both runs must agree, before
+phase 4 merges to `main`.
 The plan said phase 4 needs the office's backtest baseline first, because three of its jobs move code the router uses
 to decide where a document goes (the keyword matching, the shape of a reading's verdict, and the separate process a
 scan is read in). None of them changes what that code does.
@@ -2516,6 +2520,8 @@ scan is read in). None of them changes what that code does.
   to routing is held to it.
 
 **Q2. Do the modules that do the work of a standing rule count as upholding it, or only the ones that decide?**
+
+**Answered by Jason, 2026-11-07: (A) "Workers join".** R4.4.8 and R4.6.8 are built as written; R4.10.13 as written.
 The map records, for each standing rule, which modules uphold it. Today "Originals are never altered" names only the
 filer. Phase 4 moves the byte-for-byte copy and the rename-only move into `copies.py`, and the record of each intended
 move into `intents.py`.

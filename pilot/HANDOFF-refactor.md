@@ -1,9 +1,9 @@
-# Refactor handoff: phase 3 complete (P3.1-P3.9), the phase 4 SPEC committed, its builds waiting on Jason
+# Refactor handoff: phase 3 complete (P3.1-P3.9), the phase 4 SPEC committed, phase 4 building
 
 **Paused 2026-10-14 at Jason's word** ("pause at a good spot and leave notes so you can pick it up next week"); the
 loop resumed on 2026-11-07 and phase 3 is now complete: P3.1-P3.9 have landed on the branch, head `68b9212`, and the
 phase 4 SPEC ([`SPEC-architecture-p4.md`](SPEC-architecture-p4.md), 13 jobs) passed review and is committed at
-`f674d93`. Its builds wait on Jason's two questions (section "Open for Jason"). This file was brought up to date at that
+`f674d93`. Jason answered its two questions on 2026-11-07 (build now; workers join), so phase 4 is building. This file was brought up to date at that
 point and is the whole
 hand-over. A new session reads it, `CLAUDE.md`, [`PROMPT-refactor.md`](PROMPT-refactor.md)
 (sections 1 and 2) and the ledger ([`SPEC-architecture.md`](SPEC-architecture.md) section 13), and nothing of an
@@ -31,9 +31,9 @@ earlier session's transcript.
   for one. When he does, CLAUDE.md's cost rules apply (open it as a draft, mark it ready once), and **P3.8's office
   `verify` must be recorded first** (section "Owed to the office PC").
 - **Next: phase 4's builds**, P4.1 first, in the SPEC's order (section 4's table: tier, dependency, whether it moves
-  routing code, whether it carries the `windows` label). They **wait on Jason's answers** to the SPEC's section 7 Q1
-  (build now, with the office backtest before and after phase 4, or wait for the office baseline) and Q2 (which
-  modules the map lists as upholding "Originals are never altered"; the SPEC's default is (A)). Then phases 5 to 7,
+  routing code, whether it carries the `windows` label). Jason answered both of the SPEC's section 7 questions on
+  2026-11-07: build now (the office backtest before and after phase 4, before the merge to `main`), and (A) for the
+  rule's modules. Then phases 5 to 7,
   each with its own SPEC written when the phase before has landed.
 
 ## What did not survive the session, and where it is now
@@ -173,14 +173,9 @@ None of this can run in the cloud. The ledger's last column is the record; gathe
 - **P313's Q-B** (whether the re-send road's across-household park carries a shortlist) and **Q-F** (if unifying the
   room check would change a save's outcome): kept as today until his word. Q-B touches phase 4, Q-F phase 5.
 - **P3.8's office `verify`** (above): its list, if any, is his before P3.8 merges.
-- **Phase 4's Q1, the build gate** (SPEC-architecture-p4 section 7). The plan holds phase 4's builds until the office
-  has recorded its backtest baseline (`docs/backtest-baseline.json` records no agreement yet). Asked on 2026-11-07:
-  may phase 4 instead build on the branch now, with the backtest run at the office on the build before phase 4 and on
-  the build after (agreement must not move), before phase 4 merges to `main`? Recommended: build now. Until he
-  answers, builds wait.
-- **Phase 4's Q2** (section 7): which modules the map lists as upholding "Originals are never altered" once the copy
-  and the intents leave the filer: (A) the modules that do the work join (`copies`, `intents`; the SPEC's default),
-  (B) only the filer, (C) as (A), and `keywords` also joins the no-AI rule. Map labels only; no behaviour changes.
+- **Phase 4's Q1 and Q2 are answered** (Jason, 2026-11-07; SPEC-architecture-p4 section 7): Q1 (A) "Build now",
+  with the office backtest on the build before phase 4 and the build after, both before phase 4 merges to `main`;
+  Q2 (A) "Workers join" (`copies` and `intents` join the filer under "Originals are never altered").
 - Q1 of phase 3 is answered ("a - the full rule", 2026-10-14) and written into the SPEC.
 
 ## For phase 4: the SPEC brief
