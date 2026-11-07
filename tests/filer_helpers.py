@@ -28,15 +28,29 @@ step may touch and finishing an interrupted move - left for
 the store, as another machine would, and a forged step's tests there and an
 old intent's finish in the filer's tests both write with it.
 
-**No fixture lives here.** The one fixture both files take, ``engagement``,
-is ``tests.builders``' ``engagement_fixture(ITEMS)``, named once in each
-file; a fixture imported by name and then taken as a parameter trips ruff's
-F811 (``tests/store_helpers.py``).
+With P333 (SPEC-architecture-p4 P4.7) the tests that drive only the code
+that moved to ``tracker/inbox.py`` - the walk, the folders it cannot list
+and the folder of originals the household's returns share - left for
+``tests/test_inbox.py``, and the :func:`two_returns` fixture came here from
+``tests/test_filer.py`` with its words: one household with two returns of
+the open year, which the shared folder's test there and the household's
+tests in the filer's file both take.
+
+**The one fixture here is named, not imported.** ``two_returns`` is a
+fixture, and a test file that wants it names it once by assignment
+(``two_returns = filer_helpers.two_returns``), as ``tests/store_helpers.py``'s
+are named: a fixture imported by name and then taken as a parameter trips
+ruff's F811 at every such test. The other fixture both files take,
+``engagement``, is ``tests.builders``' ``engagement_fixture(ITEMS)``, named
+once in each file.
 """
 
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
+from tests.builders import BUSINESS, ITEMS, make_engagement
 from tracker import ledger
 from tracker.layout import originals_of
 from tracker.scaffold import (
@@ -128,3 +142,13 @@ def _forge_line(engagement, event: dict) -> bytes:
     honest = ledger.path_for(engagement).read_bytes()
     written_elsewhere(engagement, event)
     return honest
+
+
+@pytest.fixture
+def two_returns(tmp_path):
+    """One household with two returns of the open year: a 1040 and an 1120S."""
+    personal = make_engagement(tmp_path, ITEMS, household="Park Family",
+                               return_name="1040 - John Park")
+    business = make_engagement(tmp_path, BUSINESS, household="Park Family",
+                               return_name="1120S - Park Landscaping")
+    return personal, business
