@@ -153,20 +153,22 @@ store's gate. ``store._apply`` casts to one only once
 ``_refuse_a_malformed_line`` has returned, and only where it hands the line
 to the writer of that family, which takes the type: :class:`IntentEvent`
 and :class:`RulesChangedEvent` today. The others describe their families'
-shapes; nothing takes them by type yet. A key the admission lets a line omit is ``NotRequired``, a value
-it holds to a rule has that rule's type, and a key it passes over unread is
-``object``. The key constants a typed writer reads a line through are
-``Final`` (:data:`EVENT_KEY`, :data:`KEY_KEY`, :data:`RULES_KEY`,
-:data:`REMOVED_KEY`, :data:`INFO_KEY`), so the type checker reads
-``event.get(KEY_KEY)`` as that key's own type rather than ``object``; the
-rest stay plain until a typed reader needs one. The types are for the type
-checker. Under this module's ``from __future__ import annotations`` a
-class-form ``TypedDict`` cannot see ``NotRequired`` when the class is made,
-so its ``__required_keys__`` names every key at run time. Nothing asks it;
-a test that holds a line to one of these reads
-``typing.get_type_hints(..., include_extras=True)``. They add the standard
-library's ``typing`` and nothing else, so this module still imports nothing
-of the package but :mod:`tracker.locking`.
+shapes and stay descriptions: the admission reads a line before anything
+has proved its shape, so its family functions take ``dict`` (P3.3), and
+:func:`new` returns a plain ``dict`` by design. A key the admission lets a
+line omit is ``NotRequired``, a value it holds to a rule has that rule's
+type, and a key it passes over unread is ``object``. The key constants a
+typed writer reads a line through are ``Final`` (:data:`EVENT_KEY`,
+:data:`KEY_KEY`, :data:`RULES_KEY`, :data:`REMOVED_KEY`, :data:`INFO_KEY`),
+so the type checker reads ``event.get(KEY_KEY)`` as that key's own type
+rather than ``object``; the rest stay plain until a typed reader needs one.
+The types are for the type checker. Under this module's
+``from __future__ import annotations`` a class-form ``TypedDict`` cannot
+see ``NotRequired`` when the class is made, so its ``__required_keys__``
+names every key at run time. Nothing asks it; a test that holds a line to
+one of these reads ``typing.get_type_hints(..., include_extras=True)``.
+They add the standard library's ``typing`` and nothing else, so this module
+still imports nothing of the package but :mod:`tracker.locking`.
 """
 
 from __future__ import annotations

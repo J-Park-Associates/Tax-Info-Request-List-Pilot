@@ -66,6 +66,9 @@ def test_a_moving_line_in_a_households_record_is_refused():
 #: follow the module, no digest changed.
 #: Pinned again under 5 when P3.3 taught the walker a class's members: Override.ALL and
 #: Override.RETIRED joined, no digest changed.
+#: Pinned again under 5 when P3.3 split the admission into one function per family (B-7): the
+#: entry function, fifteen new parts and two docstrings moved, and the equivalence run found no
+#: line judged differently. No rule changed.
 ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.layout.CLIENTS": "3b8264d65abeec66",
     "tracker.layout.CLIENTS_TREE": "488530d6164e0dd6",
@@ -867,8 +870,23 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.admission.REFUSED_CHANGE": "ab4d86d9b8b2fffa",
     "tracker.admission.RULE_LIST_FIELDS": "8b3d25ca8662bd02",
     "tracker.admission.UNKNOWN_EVENT": "099e89ceccd1e5e9",
+    "tracker.admission._a_code": "ba12728f1db79b61",
+    "tracker.admission._a_place": "f596cc3ac5877557",
+    "tracker.admission._a_row": "a7b72319b9e47615",
+    "tracker.admission._a_segment": "aaa3449d00fb6f4e",
+    "tracker.admission._admit_abandoned": "723712654f5f9a98",
+    "tracker.admission._admit_draft": "d93be95fa6627832",
+    "tracker.admission._admit_household": "94c02c4d7296aae4",
+    "tracker.admission._admit_intent": "483f08dee6be2a7b",
+    "tracker.admission._admit_keyword": "c0f5129dbe994bbb",
+    "tracker.admission._admit_line": "b3f96c2a32b44bfd",
+    "tracker.admission._admit_release": "363e03ab7dcb934c",
+    "tracker.admission._admit_row": "ee01f8f2b00b7984",
+    "tracker.admission._admit_rules": "0998f9a359f7877d",
+    "tracker.admission._admit_scan": "405d1aa39d24dcd7",
+    "tracker.admission._admit_sharing": "db6f5038adaed277",
     "tracker.admission._line_keys_problem": "5f41ce8742ce125e",
-    "tracker.admission._refuse_a_malformed_line": "e8a42feeadda2854",
+    "tracker.admission._refuse_a_malformed_line": "dd8b76c429431698",
     "tracker.bounds.COUNT_BOUNDS": "66fbd6100ed5379b",
     "tracker.bounds.DATE_BOUNDS": "14ca9c3c8c63da08",
     "tracker.bounds.DATE_PATTERN_ALTERNATES": "6d1924b141e16df5",
@@ -1086,7 +1104,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.records._RULE_TEXT": "4dbd8ce696bb0f8e",
     "tracker.records._objects_from_json": "150fd8d193ee1603",
     "tracker.records.entry_problem": "a79ea9e62a85223a",
-    "tracker.records.feed_from_json": "b2e5148af638d97c",
+    "tracker.records.feed_from_json": "a4eba4d06934ee87",
     "tracker.records.feeds_from_json": "73f791f77660a6d8",
     "tracker.records.format_waits_for": "a9f50749433f46ce",
     "tracker.records.household_problem": "d341e98e6700e560",
@@ -1096,7 +1114,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.records.name_words": "888ff2df30e14d73",
     "tracker.records.parse_waits_for": "fe2da49df5b9f8ce",
     "tracker.records.people_from_json": "bd021c769cc1a5d8",
-    "tracker.records.person_from_json": "d6e448c24d1dd1a5",
+    "tracker.records.person_from_json": "3fcf78177d79784b",
     "tracker.records.rule_row_fault": "40478ee286dbf2db",
     "tracker.records.rule_row_problem": "bfbfa65df0936781",
     "tracker.records.split_codes": "312e8af4bdb2dc38",

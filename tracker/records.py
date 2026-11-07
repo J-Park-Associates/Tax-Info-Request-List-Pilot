@@ -848,7 +848,7 @@ def person_from_json(raw: object) -> Person:
 
     A kind this version does not know, or a spelling of one word, is a
     line the matcher would either ignore or misfile on, so it is refused
-    here - which is where :func:`tracker.store._refuse_a_malformed_line`
+    here - which is where :func:`tracker.admission._refuse_a_malformed_line`
     sends a hand-edited journal's people to be judged.
     """
     if not isinstance(raw, dict):
@@ -1207,7 +1207,7 @@ def feed_from_json(raw: object) -> Feed:
 
     A feed naming no household or no return line points at nothing the
     pass could resolve, so it is refused here - where
-    :func:`tracker.store._refuse_a_malformed_line` sends a hand-edited
+    :func:`tracker.admission._refuse_a_malformed_line` sends a hand-edited
     journal's feeds to be judged - rather than written into a column a
     later pass trusts.
     """
