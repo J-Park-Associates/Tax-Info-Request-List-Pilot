@@ -19,6 +19,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - filer         : sort the drop folder, preserve originals, record where every one went
 - copies        : how a file is named, measured, copied and moved - the working copy's name, the room, the copy proved against its bytes, the move by rename only, the README's lock and the stranded-temp sweep
 - intents       : write down what a decision will do before a file moves, carry it out, record it, and finish an interrupted move from the record
+- inbox         : walk the household's inbox in its own order, and say what in it or the year's folder cannot be sorted or tied to its row
 - review        : triage the parked files - a ranked shortlist with its reasons, filing nothing
 - rollover      : build a returning client's list from their prior year
 - reminder      : draft (never send) the client reminder email

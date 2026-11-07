@@ -469,10 +469,10 @@ def refuse_a_path_past_the_limit(engagement_dir: Path, items: Sequence[RequestIt
     list the call is about to record
     and the longest extension each row allows - :func:`room_for`'s
     ``need``. The client's own file names are not measured - they are the
-    client's, and :func:`unreachable_drops` already says a name the index
-    cannot hold - and neither are the ``..`` locations that cross the
-    trees, because Windows normalises them away before the limit applies
-    and :func:`tracker.layout.locate` normalises them first too.
+    client's, and :func:`tracker.inbox.unreachable_drops` already says a
+    name the index cannot hold - and neither are the ``..`` locations that
+    cross the trees, because Windows normalises them away before the limit
+    applies and :func:`tracker.layout.locate` normalises them first too.
 
     Creation, the household rollover and the editor's save all refuse
     through this one (decisions 125, 126 and 131). It lives here rather

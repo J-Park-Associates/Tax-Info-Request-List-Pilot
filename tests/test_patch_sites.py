@@ -1447,7 +1447,7 @@ def test_every_stand_in_in_the_suite_lands_where_the_code_reads_it(the_suite):
 
 #: The filer and the modules carved out of it (SPEC-architecture-p4 section
 #: 4.1): each later filer job adds its module here.
-FILER_FAMILY = ("tracker.filer", "tracker.copies", "tracker.intents")
+FILER_FAMILY = ("tracker.filer", "tracker.copies", "tracker.intents", "tracker.inbox")
 
 
 def test_the_report_on_filer_holds_every_filer_site_a_plain_search_finds(the_suite):

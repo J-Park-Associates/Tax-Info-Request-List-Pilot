@@ -1901,6 +1901,7 @@ def test_a_resent_file_the_reader_could_not_start_on_waits_for_the_next_pass(
     import tracker.content_check as content_check
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.inbox as inbox_module
     import tracker.intents as intents_module
     from tests.builders import named_page
     from tracker.index import read_index
@@ -1920,7 +1921,7 @@ def test_a_resent_file_the_reader_could_not_start_on_waits_for_the_next_pass(
     prepared.unlink()                                      # the working copy, deleted by hand
     syncing = locate(engagement, filed.pbc_location)
     real = filer_module.is_cloud_placeholder
-    for module in (filer_module, copies_module, intents_module):
+    for module in (filer_module, copies_module, intents_module, inbox_module):
         monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p == syncing or real(p))
 
     text_pdf(inbox_of(engagement) / "w2 again.pdf", page)  # the same document, sent again

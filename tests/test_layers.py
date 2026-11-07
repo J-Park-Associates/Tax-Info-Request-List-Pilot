@@ -212,8 +212,13 @@ LAYERS: dict[int, frozenset[str]] = {
     # ``filer`` - ``copies`` and ``content_check``'s ``ContentCache`` (L2), and
     # L1 and L0; the filer and a person's actions import it. It imports
     # nothing above L2, and sits at L3 beside the two it serves.
+    # ``inbox`` joins L3 with P333 (SPEC-architecture-p4 P4.7): the inbox's
+    # walk and the drops that cannot be read, listed or tied to a row, out of
+    # ``filer`` - ``copies`` (L2) and L1 and L0; the filer imports it, and
+    # the reminder at call time. It imports nothing above L2, and sits at L3
+    # beside the two it serves.
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review",
-                  "verify", "intents"}),
+                  "verify", "intents", "inbox"}),
     # ``after_install`` joins L4 with decision 209, beside the scheduler it
     # drives: it imports ``scheduling`` (L4), ``store`` (L1), ``registry``
     # (L3) and L0; the API imports it, and nothing lower may.
@@ -245,8 +250,8 @@ DOMAINS: dict[str, frozenset[str]] = {
     "reading": frozenset({"validators", "containers", "content_check", "ocr"}),
     # Deciding where a document belongs, or that it belongs nowhere yet, and
     # the shortlist a person gets for the ones that do not.
-    "sorting": frozenset({"reasons", "router", "names", "filer", "copies", "intents", "scanner",
-                          "review"}),
+    "sorting": frozenset({"reasons", "router", "names", "filer", "copies", "intents", "inbox",
+                          "scanner", "review"}),
     # The scheduled run and what it drives: the engagements it finds, the
     # year it rolls over, the reminder it drafts and how it is watched.
     "pass": frozenset({"progress", "registry", "rollover", "reminder", "runner", "scheduling",

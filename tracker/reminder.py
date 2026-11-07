@@ -1368,11 +1368,12 @@ def _parked_index_rows(engagement_dir: Path) -> list:
 
 def unsorted_in_inbox(engagement_dir: Path | str) -> int:
     """How many files this return's own household inbox holds that the sort
-    has not taken (decision 133): every distinct path the filer's three
-    walks name - a drop waiting to be sorted (``iter_drops``), a transfer
-    still in progress (``unfinished_drops``) and a name the machine cannot
-    handle (``unreachable_drops``). The README the firm writes there and a
-    sync client's junk are none of them. 0 when there is no inbox.
+    has not taken (decision 133): every distinct path the three walks of
+    :mod:`tracker.inbox` name - a drop waiting to be sorted
+    (``iter_drops``), a transfer still in progress (``unfinished_drops``)
+    and a name the machine cannot handle (``unreachable_drops``). The
+    README the firm writes there and a sync client's junk are none of
+    them. 0 when there is no inbox.
 
     **Only the return's own household's inbox** (decision 133's ruling 4).
     A drop folder in another household that also feeds this return
@@ -1381,8 +1382,9 @@ def unsorted_in_inbox(engagement_dir: Path | str) -> int:
 
     The one place the count is made - :func:`draft_reminder` asks it, so
     the pass, the command line and the app all hold alike - and the
-    household card asks it too, for the same answer. The filer is imported
-    here, at call time, as the rest of this module reaches it.
+    household card asks it too, for the same answer. The walks are
+    imported here from :mod:`tracker.inbox` (P333), at call time, as this
+    module reaches :mod:`tracker.copies` and :mod:`tracker.review`.
 
     **Two corrections from the review.** A temporary file the README's own
     atomic write left behind when it was killed (``README_NAME`` in
@@ -1407,7 +1409,7 @@ def unsorted_files_in_inbox(engagement_dir: Path | str) -> list[str]:
     (P134). A name only - the file's own, never its folder path, which the
     screen never shows (SPEC-shell 11.1). Two files of one name in
     different subfolders are two entries."""
-    from tracker.filer import iter_drops, unfinished_drops, unlistable_folders, unreachable_drops
+    from tracker.inbox import iter_drops, unfinished_drops, unlistable_folders, unreachable_drops
 
     inbox = inbox_of(Path(engagement_dir))
     waiting = {*iter_drops(inbox), *unfinished_drops(inbox), *unreachable_drops(inbox),

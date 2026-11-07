@@ -11,7 +11,8 @@ what it reads and offers nothing on, so a stand-in on ``filer.read_index``
 reaches the filer's own callers and nobody else's. Three private names
 cross from here to the filer's family, the readers of the moved tail the
 filer's writer asks (one of them asked by :mod:`tracker.intents` too since
-P332), and no other private name does.
+P332, and one by :mod:`tracker.inbox` since P333), and no other private
+name does.
 
 The index's own tests came with it from ``tests/test_filer.py``: those
 whose bodies drive only the moved readers - a new engagement's index, the
@@ -30,7 +31,7 @@ from pathlib import Path
 
 from tests.builders import DAY1, DAY2, ITEMS, engagement_fixture, make_engagement
 from tests.import_graph import import_edges
-from tracker import copies, filer, index, intents, ledger, store
+from tracker import copies, filer, inbox, index, intents, ledger, store
 from tracker.index import FILED, NEEDS_REVIEW, ensure, read_index
 from tracker.layout import PREPARED_DIR_NAME, REVIEW_DIR_NAME
 
@@ -85,9 +86,12 @@ def test_exactly_the_three_tail_readers_cross_into_the_filer():
     :mod:`tracker.intents`, and a fourth private name crossing into a
     module carved out of the filer would go unseen if only the filer were
     asked. So the union over the family is compared, and each module that
-    binds one of the three binds the very object defined here."""
+    binds one of the three binds the very object defined here. Since P333
+    :mod:`tracker.inbox` is of the family too: following an original the
+    client moved puts the row's sentence before any moved sentence, and
+    asks ``_before_the_moved_sentence`` to."""
     own = _own_names()
-    family = (filer, copies, intents)
+    family = (filer, copies, intents, inbox)
     crossing = {name for name in own if name.startswith("_")
                 and any(hasattr(module, name) for module in family)}
     assert crossing == PRIVATE_CROSSING, sorted(crossing ^ PRIVATE_CROSSING)

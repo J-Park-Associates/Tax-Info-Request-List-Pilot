@@ -50,7 +50,9 @@ whether a row already says its bytes are nowhere, it asks
 :func:`_says_it_is_nowhere`. Each reads only the moved tail's grammar
 (:func:`_moved_part`), so each lives beside it, and the filer imports them
 by those names; finishing an interrupted move, in :mod:`tracker.intents`,
-asks :func:`_without_moved_sentence` too. They stay private: they are for
+asks :func:`_without_moved_sentence` too, and following an original the
+client moved, in :mod:`tracker.inbox`, asks
+:func:`_before_the_moved_sentence` (P333). They stay private: they are for
 the writer of a Reason, not for its readers.
 
 The comments and docstrings below came with the code, word for word.

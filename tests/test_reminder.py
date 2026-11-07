@@ -1785,13 +1785,13 @@ def test_a_readme_write_left_behind_by_a_crash_does_not_hold_the_reminder(tmp_pa
 def test_a_folder_the_pass_cannot_list_holds_the_reminder(tmp_path, monkeypatch):
     """What the client put in a folder the pass cannot list is not sorted,
     so the letter could ask for it: one count per such folder."""
-    from tracker import filer
+    import tracker.inbox as inbox_module
 
     folder = engagement(tmp_path, SENDABLE)
     inbox = waiting_in(folder)
     locked = inbox / "From my accountant"
     locked.mkdir()
-    monkeypatch.setattr(filer, "unlistable_folders",
+    monkeypatch.setattr(inbox_module, "unlistable_folders",
                         lambda path: [locked] if path == inbox else [])
 
     draft = draft_reminder(folder)
