@@ -6482,7 +6482,7 @@
       "id": "tests/plugin_isolation.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c6ea56441a92fb54",
+      "sha256": "13ec9a7b97575056",
       "lines": 110,
       "exports": [
         "APP_FOLDER",
