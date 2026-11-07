@@ -3,7 +3,7 @@
   "generated": "2026-11-07",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
-  "module_table_sha256": "65a2f5ada1a17ed8",
+  "module_table_sha256": "a83727cdf0332757",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 376,
-    "edges": 1910,
-    "reused": 0
+    "nodes": 378,
+    "edges": 1919,
+    "reused": 324
   },
   "node_types": [
     "artifact",
@@ -4845,8 +4845,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "a459d88b9f59e208",
-      "lines": 1895,
+      "sha256": "bff115fe653ce5c1",
+      "lines": 1903,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -6269,6 +6269,18 @@
       "lines": 26,
       "role": "Registers the suite's four plugins (`pytest_plugins`), in the order that keeps the autouse fixtures' order (P329).",
       "notes": "SPEC-architecture-p4 P4.2 (E-6; P329). It was the one 1,383-line file every test paid for; it now holds a docstring and the list, and nothing is re-exported from it, so a test names the plugin or builder that holds what it uses. pytest sets a plugin's autouse fixtures up in the list's order and, inside one, by name, so the list's order and the cut keep the order the suite was built on, which tests/test_suite_shape.py's AUTOUSE_ORDER pins. The list is here and not in the root conftest.py because tests/conftest.py is loaded at start-up for every run under tests/; pytest 9.1.1 accepted it there (a plain run, one file, another directory, -n 2)."
+    },
+    {
+      "id": "tests/content_check_helpers.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "bcb13bb67c23850f",
+      "lines": 18,
+      "exports": [
+        "item"
+      ],
+      "role": "What content_check's test files share: item(), the one-row request (identifier A01, document Doc) a test gives the rule fields it is trying.",
+      "notes": "SPEC-architecture-p4 R4.10.7 (P336), in tests/store_helpers.py's form. tests/test_content_check.py wrote item() for itself; with P336 the matcher's and the rules' tests left it for tests/test_keywords.py, each still building its rows with it, and a test file may not import another (tests/test_suite_shape.py), so it sits in a module that is not a test file and both import it - the map draws 'exercised by'. It came with its words. It is not a fixture, so its users import it by name rather than naming it by assignment."
     },
     {
       "id": "tests/css_rules.py",
@@ -7939,53 +7951,36 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a3cee0e1c70c7d1b",
-      "lines": 2757,
+      "sha256": "48cfae5cd257c4ef",
+      "lines": 2283,
       "exports": [
         "A_PASS_READING",
         "BOMB_REFUSED",
         "MARKER",
-        "TWO_PAGE_W2",
         "a_short_stop",
         "an_engagement",
         "an_engagement_run",
         "catching_the_reading",
         "in_a_child",
-        "item",
         "page_tree_bomb",
         "replace_seconds",
         "saved",
-        "test_a_1099b_section_is_read_as_a_form_label_not_as_the_word_consolidated",
         "test_a_cache_for_an_engagement_the_store_does_not_hold_is_refused_by_name",
         "test_a_cache_with_no_engagement_never_touches_the_store",
         "test_a_cached_verdict_starts_no_child",
         "test_a_catastrophic_date_pattern_costs_one_stop_and_the_next_pass_takes_the_kept_verdict",
-        "test_a_date_pattern_runs_line_by_line_and_skips_lines_over_the_limit",
-        "test_a_deep_any_keyword_says_it_was_deep_and_which_page",
-        "test_a_document_does_not_ask_for_itself",
         "test_a_drop_the_reader_could_not_start_on_is_routed_next_pass",
-        "test_a_failing_verdict_keeps_what_did_match",
         "test_a_file_in_flight_when_the_child_is_retired_or_killed_is_read_again_next_pass_and_never_marked_read",
         "test_a_file_that_is_a_link_is_keyed_by_where_it_leads",
         "test_a_files_cache_key_is_its_folders_held_answer_and_its_own_name",
-        "test_a_footer_hit_names_the_footer_and_the_page_it_was_on",
-        "test_a_form_after_a_comma_continues_a_list",
-        "test_a_form_names_itself_with_its_year_or_revision",
-        "test_a_form_number_in_the_title_counts_only_when_named_in_its_own_right",
-        "test_a_form_quoted_in_a_sentence_is_a_reference",
-        "test_a_form_told_to_the_reader_is_a_reference_whatever_follows_it",
         "test_a_giant_pdf_page_is_rendered_within_the_pixel_budget",
-        "test_a_keyword_may_name_alternatives_and_the_words_one_of_them_wants_together",
-        "test_a_keywords_words_are_on_one_line_or_wrap_as_a_heading",
         "test_a_long_text_file_is_read_to_the_cap_and_says_so",
         "test_a_mac_asks_ps_and_reads_its_state_letters_not_proc",
-        "test_a_menu_line_names_neither_the_form_nor_its_title",
         "test_a_one_line_workbook_parks_within_the_stop_and_never_stalls_the_pass",
         "test_a_page_is_handed_to_the_reader_as_it_comes_and_never_turned",
         "test_a_page_is_rendered_at_the_settings_dpi_within_the_pixel_budget",
         "test_a_page_tree_bomb_cannot_stall_the_pass",
         "test_a_parser_error_crosses_the_pipe_as_its_class_only",
-        "test_a_pattern_the_record_calls_derived_runs_line_by_line_unless_it_is",
         "test_a_pdf_reads_to_the_budget_and_says_it_was_cut",
         "test_a_photo_is_read_by_ocr_like_a_scanned_pdf_and_never_has_a_text_layer",
         "test_a_photo_past_the_pixel_budget_is_read_smaller",
@@ -7999,11 +7994,8 @@
         "test_a_resent_file_the_reader_could_not_start_on_waits_for_the_next_pass",
         "test_a_save_that_fails_leaves_the_previous_verdicts",
         "test_a_sheets_row_is_a_line_and_its_cells_are_set_apart",
-        "test_a_single_dash_set_off_form_beside_its_year_names_itself",
         "test_a_slow_reading_is_said_and_never_cut_short",
         "test_a_text_layer_that_never_finishes_is_stopped_and_abandoned",
-        "test_a_title_self_mention_is_evidence_from_the_title",
-        "test_a_title_that_lists_three_forms_names_none_of_them",
         "test_a_transient_judgment_is_neither_kept_nor_recorded",
         "test_a_transient_verdict_is_still_never_cached",
         "test_a_verdict_is_served_from_the_store_and_the_document_read_once",
@@ -8018,7 +8010,6 @@
         "test_cache_prune",
         "test_csv_extraction",
         "test_date_pattern",
-        "test_evaluate_rules_lists_all_missing",
         "test_every_verdict_is_the_same_judged_in_the_child_as_in_the_pass",
         "test_exif_rotation_is_undone_before_reading",
         "test_image_only_pdf_without_ocr",
@@ -8031,24 +8022,16 @@
         "test_ocr_text_used_when_available",
         "test_on_every_corpus_form_the_scans_miss_verdict_equals_the_routers_kept_verdict",
         "test_one_wide_workbook_row_stops_at_the_budget",
-        "test_only_a_staff_date_pattern_runs_line_by_line",
         "test_only_the_first_pages_of_a_pdf_are_read",
-        "test_own_forms_is_none_for_one_family_and_the_named_set_for_two",
         "test_required_keywords",
         "test_running_out_of_memory_is_never_a_retry_or_a_corrupt_file",
         "test_the_alternatives_of_a_keyword_are_read_where_a_keyword_cell_is_read",
-        "test_the_any_keywords_are_read_apart_from_every_other_rule",
         "test_the_cache_is_keyed_on_content_not_path",
         "test_the_cache_save_refuses_outside_the_engagement_lock",
         "test_the_cache_version_moved_so_a_verdict_read_sideways_is_read_again",
-        "test_the_compact_evidence_parses_back_to_what_was_formatted",
         "test_the_cut_mark_is_exact_at_the_budget",
-        "test_the_date_rule_records_the_period_it_checked_never_the_document",
-        "test_the_dominant_form_is_the_heaviest_then_the_first_mentioned",
         "test_the_form_scan_runs_once_per_judgment",
         "test_the_key_is_the_one_a_whole_resolve_gives",
-        "test_the_line_a_mention_is_on_is_found_as_before_without_walking_the_text",
-        "test_the_line_finder_is_quick_on_a_text_with_no_line_feed",
         "test_unsupported_extension",
         "test_xlsx_extraction_with_dates"
       ],
@@ -8058,7 +8041,7 @@
         "MARKER": "'Quendrilvax'"
       },
       "role": "Tests for the content check: the rules, the verdict cache, the reading child's stops and what it leaves behind.",
-      "notes": "The process helper `running(pid)` (now in tests/children.py) asks whether a process has ended without reading anything Linux-only (SPEC-mac R36): a zombie has ended, and where there is no /proc - a Mac - the state comes from `ps -o stat=` through the seam `PROC`, which a test points at a place that is not there to stand in for a Mac. Before this a Mac took every zombie for a live process and each wait-for-the-child test waited out its fifteen seconds."
+      "notes": "The process helper `running(pid)` (now in tests/children.py) asks whether a process has ended without reading anything Linux-only (SPEC-mac R36): a zombie has ended, and where there is no /proc - a Mac - the state comes from `ps -o stat=` through the seam `PROC`, which a test points at a place that is not there to stand in for a Mac. Before this a Mac took every zombie for a live process and each wait-for-the-child test waited out its fifteen seconds. Since P336 (SPEC-architecture-p4 P4.10) the matcher's and the rules' own tests are tests/test_keywords.py's - the tests whose highest home is tracker/keywords.py, cut and pasted with their names - and item(), the one-row request both files build, is tests/content_check_helpers.py's; what stays reads, judges or caches a document. Its reads of names content_check imports back from tracker.keywords (evaluate_rules, has_content_rules, rules_fingerprint, ContentResult and the judgment's questions) are P4.13's to point at their home."
     },
     {
       "id": "tests/test_copies.py",
@@ -8763,6 +8746,45 @@
         "test_the_irs_blank_corpus_keeps_every_placement_and_every_park",
         "test_the_w3_family_and_the_w2c_park_on_the_1040"
       ]
+    },
+    {
+      "id": "tests/test_keywords.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "2a05074874509747",
+      "lines": 478,
+      "exports": [
+        "TWO_PAGE_W2",
+        "test_a_1099b_section_is_read_as_a_form_label_not_as_the_word_consolidated",
+        "test_a_date_pattern_runs_line_by_line_and_skips_lines_over_the_limit",
+        "test_a_deep_any_keyword_says_it_was_deep_and_which_page",
+        "test_a_document_does_not_ask_for_itself",
+        "test_a_failing_verdict_keeps_what_did_match",
+        "test_a_footer_hit_names_the_footer_and_the_page_it_was_on",
+        "test_a_form_after_a_comma_continues_a_list",
+        "test_a_form_names_itself_with_its_year_or_revision",
+        "test_a_form_number_in_the_title_counts_only_when_named_in_its_own_right",
+        "test_a_form_quoted_in_a_sentence_is_a_reference",
+        "test_a_form_told_to_the_reader_is_a_reference_whatever_follows_it",
+        "test_a_keyword_may_name_alternatives_and_the_words_one_of_them_wants_together",
+        "test_a_keywords_words_are_on_one_line_or_wrap_as_a_heading",
+        "test_a_menu_line_names_neither_the_form_nor_its_title",
+        "test_a_pattern_the_record_calls_derived_runs_line_by_line_unless_it_is",
+        "test_a_single_dash_set_off_form_beside_its_year_names_itself",
+        "test_a_title_self_mention_is_evidence_from_the_title",
+        "test_a_title_that_lists_three_forms_names_none_of_them",
+        "test_evaluate_rules_lists_all_missing",
+        "test_only_a_staff_date_pattern_runs_line_by_line",
+        "test_own_forms_is_none_for_one_family_and_the_named_set_for_two",
+        "test_the_any_keywords_are_read_apart_from_every_other_rule",
+        "test_the_compact_evidence_parses_back_to_what_was_formatted",
+        "test_the_date_rule_records_the_period_it_checked_never_the_document",
+        "test_the_dominant_form_is_the_heaviest_then_the_first_mentioned",
+        "test_the_line_a_mention_is_on_is_found_as_before_without_walking_the_text",
+        "test_the_line_finder_is_quick_on_a_text_with_no_line_feed"
+      ],
+      "role": "The matcher's and the rules' own tests, on made-up text: evaluate_rules naming every missing keyword; own_forms None for one family and the named set for two; a form naming itself with its year or revision, a form quoted in a sentence, the dominant form (the heaviest, then the first mentioned), a form told to the reader, a title that lists three forms, a form number in the title only in its own right, a dash-set-off form beside its year, a form after a comma, a menu line and a document that asks for itself; a keyword's alternatives, the any-keywords read apart from every other rule, and a keyword's words on one line or wrapping as a heading; the evidence a verdict keeps - the title, the footer and its page, deep and its page, the Period a date rule checked, what matched on a failing verdict, the compact cell parsing back; a Date Pattern run line by line, and only a staff pattern so; the 1099-B section read as a form label; and the line finder giving decision 178's old answer without walking the text, quickly with no line feed.",
+      "notes": "SPEC-architecture-p4 R4.10.7 (P336). Cut and pasted from tests/test_content_check.py with the code, names, decorators and comments kept, in the order they stood: the 27 tests (46 ids) whose highest home, by the SPEC's section 4.1 rule, is tracker/keywords.py - a test's homes being the modules that define the old module's functions and classes it calls or constructs, in its body or through a fixture of its own file, with exception classes, sentences and stand-in targets not counted - with _FILLER and TWO_PAGE_W2 (the two-page W-2 the evidence tests read) and _the_old_line_of (_line_of as it was before decision 178), which only they read. Their bodies are byte for byte as P4.10's first commit left them, which pointed every read of a name content_check no longer binds at tracker.keywords; three still read a name content_check imports back, through content_check (dominant_forms, any_keyword_matched, carries_a_1099b_section). No section header moved: each section the tests came from keeps a test that stays (P4.8's precedent). item(), the one-row request both files build their rows with, is tests/content_check_helpers.py's."
     },
     {
       "id": "tests/test_layers.py",
@@ -13576,6 +13598,12 @@
       "source": "derived"
     },
     {
+      "from": "tests/content_check_helpers.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
       "from": "tests/filer_helpers.py",
       "to": "pkg:pytest",
       "type": "depends_on",
@@ -15515,6 +15543,12 @@
     },
     {
       "from": "tests/test_content_check.py",
+      "to": "tests/content_check_helpers.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_content_check.py",
       "to": "tests/routing_cases.py",
       "type": "imports",
       "source": "derived"
@@ -16873,6 +16907,48 @@
       "from": "tests/test_irs_forms.py",
       "to": "tests/samples.py",
       "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_keywords.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_keywords.py",
+      "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_keywords.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_keywords.py",
+      "to": "tracker/records.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_keywords.py",
+      "to": "tests/content_check_helpers.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_keywords.py",
+      "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_keywords.py",
+      "to": "tracker/keywords.py",
+      "type": "tests",
       "source": "derived"
     },
     {
