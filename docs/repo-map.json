@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 375,
     "edges": 1898,
-    "reused": 321
+    "reused": 320
   },
   "node_types": [
     "artifact",
@@ -4970,8 +4970,8 @@
       "id": "pilot/HANDOFF-refactor.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "329381f3a819b40e",
-      "lines": 1122
+      "sha256": "0e76aae55b1b96dd",
+      "lines": 1108
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -5041,8 +5041,8 @@
       "id": "pilot/SPEC-architecture.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3d925e741c443be2",
-      "lines": 1009
+      "sha256": "1531ddf7bba14f9d",
+      "lines": 1010
     },
     {
       "id": "pilot/SPEC-check-notes-0.3.md",
