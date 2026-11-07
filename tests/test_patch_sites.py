@@ -1445,17 +1445,31 @@ def test_every_stand_in_in_the_suite_lands_where_the_code_reads_it(the_suite):
     assert any(site.module == "tests.children" for site, _mark in marked)
 
 
+#: The filer and the modules carved out of it (SPEC-architecture-p4 section
+#: 4.1): each later filer job adds its module here.
+FILER_FAMILY = ("tracker.filer", "tracker.copies")
+
+
 def test_the_report_on_filer_holds_every_filer_site_a_plain_search_finds(the_suite):
     """The accept line names filer's stand-ins (73 when the audit counted).
     A plain search of the suite for ``setattr(filer, "...")`` and its
     alias finds fewer than the tool, which also follows loops and strings;
-    every line the search finds is a site of the report."""
+    every line the search finds is a site of the report.
+
+    Counted over :data:`FILER_FAMILY` since P331: a stand-in follows the
+    name's readers, so one that was the filer's sits on the module its
+    reader moved to, and the filer's own count falls although no stand-in
+    is lost. Over the family the floor still holds: a site on the filer and
+    a module carved out of it stays a site."""
     marked, _unplaced, _unaccounted = the_suite
-    reported = {(site.file, site.line) for site, _mark in marked if site.module == "tracker.filer"}
+    reported = {(site.file, site.line) for site, _mark in marked if site.module in FILER_FAMILY}
+    names = [module.split(".")[1] for module in FILER_FAMILY]
+    aliases = "|".join(alias for name in names for alias in (name, f"{name}_module"))
+    strings = tuple(f"setattr(\"tracker.{name}." for name in names)
     searched = set()
     for path in sorted((REPO / "tests").glob("*.py")):
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-            if re.search(r"\.setattr\((filer|filer_module), \"", line) or "setattr(\"tracker.filer." in line:
+            if re.search(rf"\.setattr\(({aliases}), \"", line) or any(s in line for s in strings):
                 searched.add((path.relative_to(REPO).as_posix(), number))
     assert searched and searched <= reported, sorted(searched - reported)
     assert len(reported) >= 73

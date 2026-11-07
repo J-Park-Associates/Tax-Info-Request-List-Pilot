@@ -1321,7 +1321,7 @@ def test_a_ticked_return_past_the_path_limit_rolls_nothing(park, monkeypatch):
     """The path limit (decisions 125 and 126), asked in the plan too: a
     return whose working copies would not fit refuses the whole roll with
     the filer's sentence, and nothing is made, retired or recorded."""
-    from tracker import filer
+    from tracker import copies, filer, layout
     from tracker.layout import return_dir_for
     from tracker.manifest import load_engagement_info
     from tracker.rollover import NOTHING_ROLLED, ReturnPlan, roll_household
@@ -1330,7 +1330,8 @@ def test_a_ticked_return_past_the_path_limit_rolls_nothing(park, monkeypatch):
     leo = _a_fourth_return(root)
     household = _household(root)
     before = _lines_of(john, sofia, llc, leo, household)
-    monkeypatch.setattr(filer, "path_limit", lambda: 10)
+    for module in (filer, copies):
+        monkeypatch.setattr(module, "path_limit", lambda: 10)
 
     with pytest.raises(ManifestError) as refused:
         roll_household(household, target_year=2027,
@@ -1338,7 +1339,7 @@ def test_a_ticked_return_past_the_path_limit_rolls_nothing(park, monkeypatch):
     said = str(refused.value)
     assert said.startswith("1040 - John Park: ") and said.endswith(
         NOTHING_ROLLED.format(prior="", why="").lstrip(": ."))
-    assert filer.PATH_TOO_LONG.split("{")[0].strip() in said
+    assert layout.PATH_TOO_LONG.split("{")[0].strip() in said
     for one in (john, sofia):
         assert not return_dir_for(root, PARK, 2027, one.name).exists()
     assert load_engagement_info(leo).active is True

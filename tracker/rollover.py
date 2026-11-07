@@ -587,7 +587,7 @@ def _unfiled_last_year(prior_dir: Path) -> tuple[list[str], str]:
     a reason anything was not filed.
     """
     from tracker import ledger, store
-    from tracker.filer import FilingError
+    from tracker.copies import FilingError
     from tracker.index import NEEDS_REVIEW, ensure, read_index
 
     try:
@@ -961,7 +961,7 @@ def _plan_one(prior: Path, prior_info: EngagementInfo, plan: ReturnPlan,
     with nothing written (decision 159): last year's rows, the target the
     layout computes, the refusals creation makes, the details carried and
     refilled from the household, and the dates the form implies."""
-    from tracker.filer import refuse_a_path_past_the_limit
+    from tracker.copies import refuse_a_path_past_the_limit
 
     report = roll_forward(prior, target_year=target_year,
                           template=template_items(plan.form) if plan.form else [])

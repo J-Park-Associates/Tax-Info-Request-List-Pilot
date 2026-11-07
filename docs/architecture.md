@@ -26,7 +26,7 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of forty-six modules in six layers.
+`tracker/` is one Python package of forty-seven modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The scanner never imports the filer; the filer reaches
@@ -122,6 +122,12 @@ the package but each other.
 - `router.py`: which single request a dropped file belongs to, judged on the
   evidence in order, refusing to guess; everything unclear parks with its
   reason and its shortlist.
+- `copies.py`: how the sorter names, measures, copies and moves a file: the
+  working copy's name and the one numbering function, the room a return's
+  list has under its folder, the copy proved against its bytes before it
+  takes its name (decision 155), the move by rename only (decision 137), the
+  client README's lock and the sweep of what a killed write left (P331); the
+  filer imports what it reads and offers none of it on.
 
 **Layer 3: the stages of a pass.**
 

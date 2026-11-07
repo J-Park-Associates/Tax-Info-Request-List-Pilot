@@ -907,9 +907,10 @@ def test_a_readme_refresh_never_writes_older_text_over_newer(tmp_path, monkeypat
     import sqlite3
     import threading
 
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
     from tests.builders import seed_index
-    from tracker import store
+    from tracker import locking, store
     from tracker.index import FILED
     from tracker.locking import EngagementLockedError
 
@@ -923,7 +924,7 @@ def test_a_readme_refresh_never_writes_older_text_over_newer(tmp_path, monkeypat
     readme = inbox_of(engagement) / README_NAME
 
     first_has_read, first_may_write, second_waits = (threading.Event() for _ in range(3))
-    real_received_for, real_acquire = filer_module.received_for, filer_module.acquire_lock
+    real_received_for, real_acquire = filer_module.received_for, locking.acquire_lock
 
     def pausing(returns):
         found = real_received_for(returns)
@@ -941,7 +942,7 @@ def test_a_readme_refresh_never_writes_older_text_over_newer(tmp_path, monkeypat
             raise
 
     monkeypatch.setattr(filer_module, "received_for", pausing)
-    monkeypatch.setattr(filer_module, "acquire_lock", watched)
+    monkeypatch.setattr(copies_module, "acquire_lock", watched)
     older = threading.Thread(name="older", target=refresh_household_readme, args=(household,))
     newer = threading.Thread(name="newer", target=refresh_household_readme, args=(household,))
 
@@ -967,9 +968,9 @@ def test_a_refresh_that_finds_the_readme_busy_waits_briefly_then_skips_with_a_lo
     finds it held past the brief wait leaves the README alone and says so."""
     import logging
 
-    import tracker.filer as filer_module
+    import tracker.copies as copies_module
     from tests.builders import seed_index
-    from tracker.filer import README_LOCK_FILENAME
+    from tracker.copies import README_LOCK_FILENAME
     from tracker.index import FILED
     from tracker.layout import client_household_dir, root_of
     from tracker.locking import acquire_lock, release_lock
@@ -979,7 +980,7 @@ def test_a_refresh_that_finds_the_readme_busy_waits_briefly_then_skips_with_a_lo
     readme = inbox_of(engagement) / README_NAME
     before = readme.read_bytes()
     seed_index(engagement, [arrived("A01", FILED, original="bank.pdf")])
-    monkeypatch.setattr(filer_module, "README_LOCK_WAIT_SECONDS", 0.2)
+    monkeypatch.setattr(copies_module, "README_LOCK_WAIT_SECONDS", 0.2)
 
     held = acquire_lock(household, README_LOCK_FILENAME)
     try:

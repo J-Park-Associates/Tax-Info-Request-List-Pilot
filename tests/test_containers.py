@@ -989,7 +989,7 @@ def test_a_recorded_attachment_named_like_a_temp_survives_the_sweep(engagement):
     import os
     import time
 
-    from tracker.filer import sweep_stranded_temps
+    from tracker.copies import sweep_stranded_temps
     from tracker.fsio import TEMP_NAME
     from tracker.layout import household_of, opened_dir_of
 

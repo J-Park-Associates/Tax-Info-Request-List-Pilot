@@ -1911,7 +1911,7 @@ def set_aside_other_draft(engagement_dir: Path | str, today: dt.date) -> Path | 
     filer's own ``(2)`` name, so nothing is ever overwritten either.
     Returns where it went, or None when there was nothing beside it.
     """
-    from tracker.filer import numbered
+    from tracker.copies import numbered
 
     engagement_dir = Path(engagement_dir)
     standing = engagement_dir / NEW_DRAFT_FILENAME

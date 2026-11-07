@@ -2018,7 +2018,7 @@ def test_a_return_with_requests_that_cannot_receive_says_how_many(tmp_path, path
     """A request that Prepared leaves no room for even its shortest name is
     counted and said: a document for it parks until the root is shorter."""
     from tests.builders import ROOM_ITEMS, no_room_return, root_for_a_return_of, with_the_long_period
-    from tracker.filer import ROOM_PARKS, room_for
+    from tracker.copies import ROOM_PARKS, room_for
     from tracker.manifest import load_manifest
 
     engagement = make_engagement(root_for_a_return_of(tmp_path, no_room_return()),
@@ -2040,7 +2040,7 @@ def test_a_household_with_no_room_for_a_review_copy_is_skipped_whole_before_anyt
     the inbox is untouched, no lock is taken, and nothing is scaffolded,
     scanned, drafted or drawn - the held-lock shape."""
     from tests.builders import ROOM_ITEMS, drop, floor_return, root_for_a_return_of
-    from tracker.filer import HOUSEHOLD_NO_ROOM
+    from tracker.copies import HOUSEHOLD_NO_ROOM
     from tracker.layout import README_NAME, path_limit
     from tracker.locking import LOCK_FILENAME
     from tracker.page import esc

@@ -842,7 +842,7 @@ def test_every_function_a_curated_note_names_exists_in_the_tree():
 #: module joining one, is a decision, and this is where it is recorded.
 ENFORCERS = {
     "rule:no-AI-on-client-documents": {"tracker/content_check.py", "tracker/validators.py"},
-    "rule:originals-are-never-altered": {"tracker/filer.py"},
+    "rule:originals-are-never-altered": {"tracker/filer.py", "tracker/copies.py"},
     "rule:nothing-is-guessed": {"tracker/router.py", "tracker/filer.py", "tracker/review.py"},
     "rule:nothing-is-ever-sent": {"tracker/reminder.py", "tracker/runner.py",
                                   "tracker/scheduling.py"},

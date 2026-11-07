@@ -101,7 +101,7 @@ the tracker writes goes through a temp beside it and is renamed into
 place whole, so a pass killed half way - Task Scheduler's limit, a power
 cut, a restart - leaves a temp and never half a file under its name. The
 household pass takes those temps away under its locks before anything is
-read (``tracker.filer.sweep_stranded_temps``): only the tracker's own
+read (``tracker.copies.sweep_stranded_temps``): only the tracker's own
 exact shape, only in the household's firm folders and beside the README,
 never in a year's folder where the originals rest.
 
@@ -184,14 +184,16 @@ from tracker import (
     settings,
     store,
 )
-from tracker.errlog import ERROR_LOG_BACKUPS, ERROR_LOG_FILENAME, error_log
-from tracker.filer import (
+from tracker.copies import (
     HOUSEHOLD_NO_ROOM,
     ROOM_PARKS,
-    file_household_drops,
-    refresh_household_readme,
     room_for,
     sweep_stranded_temps,
+)
+from tracker.errlog import ERROR_LOG_BACKUPS, ERROR_LOG_FILENAME, error_log
+from tracker.filer import (
+    file_household_drops,
+    refresh_household_readme,
 )
 from tracker.fsio import append_rotating, full_sync, write_json_atomically, write_text_atomically
 from tracker.hold import one_household, one_reading
@@ -1495,7 +1497,7 @@ def _no_room(working: list[EngagementRun]) -> bool:
     say whether the household must stop (decision 131).
 
     Each return's room is one number from one function
-    (``filer.room_for``), measured from the list :func:`_worth_a_pass`
+    (``copies.room_for``), measured from the list :func:`_worth_a_pass`
     already loaded. A return merely short of room is **not warned** (the
     lead's L-1 on decision 131): its names are cut to fit where they are
     written and everything still files, and with a reader's 218 for

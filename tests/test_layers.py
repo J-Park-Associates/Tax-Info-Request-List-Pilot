@@ -195,7 +195,12 @@ LAYERS: dict[int, frozenset[str]] = {
     # command line asks it at call time.
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
                   "templates", "validators", "index", "admission", "store_check"}),
-    2: frozenset({"containers", "content_check", "names", "ocr", "router"}),
+    # ``copies`` joins L2 with P331 (SPEC-architecture-p4 P4.4): the filer's
+    # naming, room, byte-proved copy and rename-only move, the client README's
+    # lock and the stranded-temp sweep - L1 and L0, and ``containers`` and
+    # ``content_check``'s ``ContentCache`` in-layer; the filer and a person's
+    # actions import it.
+    2: frozenset({"containers", "content_check", "copies", "names", "ocr", "router"}),
     # ``verify`` joins L3 with P325 (SPEC-architecture-p3 P3.5): decision 159's
     # read-only firm-wide proof out of ``store`` - ``admission``, ``ledger``,
     # ``records`` and ``store`` (L1) and ``checkpoint`` (L0) at load time, and
@@ -235,7 +240,7 @@ DOMAINS: dict[str, frozenset[str]] = {
     "reading": frozenset({"validators", "containers", "content_check", "ocr"}),
     # Deciding where a document belongs, or that it belongs nowhere yet, and
     # the shortlist a person gets for the ones that do not.
-    "sorting": frozenset({"reasons", "router", "names", "filer", "scanner", "review"}),
+    "sorting": frozenset({"reasons", "router", "names", "filer", "copies", "scanner", "review"}),
     # The scheduled run and what it drives: the engagements it finds, the
     # year it rolls over, the reminder it drafts and how it is watched.
     "pass": frozenset({"progress", "registry", "rollover", "reminder", "runner", "scheduling",

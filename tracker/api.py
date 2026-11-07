@@ -120,13 +120,17 @@ from tracker import (
     store,
 )
 from tracker.containers import is_container
+from tracker.copies import (
+    FilingError,
+    _may_carry_code,
+    refuse_a_path_past_the_limit,
+    room_for,
+)
 from tracker.errlog import ERROR_LOG_FILENAME, error_log, error_log_path
 from tracker.filer import (
     NOT_WAITING,
-    FilingError,
     Spelling,
     StaleRowError,
-    _may_carry_code,
     assign_review_file,
     dismiss_review_file,
     documents_by_request,
@@ -135,11 +139,9 @@ from tracker.filer import (
     hand_over_copies,
     mark_missing_again,
     refresh_household_readme,
-    refuse_a_path_past_the_limit,
     rename_request,
     requests_taking,
     restore_working_copy,
-    room_for,
     unfile_document,
     waiting_target,
 )
@@ -2375,7 +2377,7 @@ def _review_copy_key(entry: IndexEntry) -> str:
 
 def _code_copies(engagement: Path, entries: list[IndexEntry]) -> list[str]:
     """The paths of the review copies the card can open that may carry code
-    (P240, R8): the ones ``filer._may_carry_code`` marks for Protected View on
+    (P240, R8): the ones ``copies._may_carry_code`` marks for Protected View on
     Windows - a macro-capable Office file, an email, a zip.
 
     Nothing on Windows or Linux: there the copy is marked, and there is nothing
@@ -3636,7 +3638,7 @@ def _refuse_a_changed_row_past_the_limit(engagement: Path, items: list) -> None:
     ``i̇01`` are one key and two lengths, and that row counts as changed.
     A row whose document, short title, period or file types differ from the
     stored list, and every new row, is measured as creation measures a
-    list (``filer.room_for``); one whose canonical working copy would pass
+    list (``copies.room_for``); one whose canonical working copy would pass
     what Windows opens refuses the save with creation's own sentence, and
     nothing is recorded - the person shortens the label and saves again.
     A row the person did not touch is never refused: it is already in the

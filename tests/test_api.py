@@ -4811,11 +4811,11 @@ def test_a_waiting_row_whose_return_has_no_room_offers_no_click_and_says_so_in_t
     """The review's S-1: a click bound to fail on the taking return's room is
     not offered. The card says why in the sentence the click would be
     refused with, naming that return - never "this request's Short name"."""
-    import tracker.filer as filer_module
+    import tracker.copies as copies_module
 
     father, llc = two_households(capsys, demo_root)
     waiting_document(capsys, father)
-    monkeypatch.setattr(filer_module, "limit_for", lambda _extension: 10)
+    monkeypatch.setattr(copies_module, "limit_for", lambda _extension: 10)
 
     _code, state = run(capsys, "state", api.ENGAGEMENT_FLAG, str(father))
 
@@ -5247,7 +5247,7 @@ def test_set_root_answers_with_every_return_short_of_room_under_the_new_root(
     numbers, in label order - and records the root regardless."""
     from tests.builders import TEST_YEAR
     from tracker.api import ROOM_SHORT_WORDS as ROOM_SHORT
-    from tracker.filer import room_for
+    from tracker.copies import room_for
     from tracker.manifest import RequestItem
     from tracker.settings import ENV_SETTINGS_DIR, clients_root
 
@@ -5279,7 +5279,7 @@ def test_state_carries_the_returns_room_as_information_and_warns_only_what_canno
     receive at all are a warning."""
     from tracker.api import ROOM_PARKS_WORDS as ROOM_PARKS
     from tracker.api import ROOM_SHORT_WORDS as ROOM_SHORT
-    from tracker.filer import room_for
+    from tracker.copies import room_for
     from tracker.layout import path_limit
     from tracker.manifest import RequestItem
 
@@ -5299,7 +5299,7 @@ def test_state_carries_the_returns_room_as_information_and_warns_only_what_canno
 
     # A return with room: no note at all. It keeps FITS_MARGIN to spare
     # below the tightest limit its copies meet, measured, on any machine.
-    from tracker.filer import _extensions_of, prepared_name_for
+    from tracker.copies import _extensions_of, prepared_name_for
     from tracker.layout import PREPARED_DIR_NAME, limit_for
 
     fits = make_engagement(root, [RequestItem(identifier="A01", document="W-2")],
@@ -5504,7 +5504,7 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
     a copy is in, and it is shallower than the review folder, so a request
     is left no room only by a period as long as test_filer's LONG_PERIOD."""
     from tests.builders import LONG_PERIOD, named_page, no_room_prepared, no_room_return, root_for_a_return_of, sort
-    from tracker.filer import PATH_NO_ROOM
+    from tracker.copies import PATH_NO_ROOM
     from tracker.layout import path_limit
     from tracker.manifest import RequestItem
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root

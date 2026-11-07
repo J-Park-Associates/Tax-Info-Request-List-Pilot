@@ -779,7 +779,7 @@ FILED_WHOLE_CODE = "filed-whole"
 #: tracker.filer's ``CONTESTED_BETWEEN_RETURNS``: requests in two returns
 #: accepted it and the name did not tell them apart.
 CONTESTED_BETWEEN_RETURNS_CODE = "between-returns"
-#: tracker.filer's ``PATH_NO_ROOM`` and ``PATH_NO_ROOM_IN``: no room for
+#: tracker.copies' ``PATH_NO_ROOM`` and ``PATH_NO_ROOM_IN``: no room for
 #: even the request's shortest name.
 NO_ROOM_CODE = "no-room"
 #: The filer's catch-all: "could not be filed (...) - file it by hand".

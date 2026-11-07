@@ -973,7 +973,7 @@ def _a_row(**fields):
 
 
 def test_a_review_copy_that_cannot_be_made_names_the_os_error_not_its_path(tmp_path, monkeypatch, kept):
-    from tracker import filer
+    from tracker import copies, filer
 
     where = f"/Clients/{NAME} SSN {NUMBER}/2025/W2.pdf"
 
@@ -982,7 +982,8 @@ def test_a_review_copy_that_cannot_be_made_names_the_os_error_not_its_path(tmp_p
 
     monkeypatch.setattr(filer, "_may_touch", lambda *a, **k: True)
     monkeypatch.setattr(filer, "place_problem", lambda *a, **k: None)     # decision 187's place rule
-    monkeypatch.setattr(filer, "locate", lambda folder, _location: folder / "W2.pdf")
+    for module in (filer, copies):
+        monkeypatch.setattr(module, "locate", lambda folder, _location: folder / "W2.pdf")
     monkeypatch.setattr(filer, "_existing_copy", lambda *a, **k: None)
     monkeypatch.setattr(filer, "_copy_whole", refused)
     row = _a_row(original_name="W2.pdf", pbc_location="x/W2.pdf", digest="ab")

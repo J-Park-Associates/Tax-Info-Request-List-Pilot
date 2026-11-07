@@ -951,7 +951,7 @@ def test_gitignore_knows_both_client_trees_and_every_file_written_inside_them():
     trees themselves - the record, the lock, the page, the README and what
     was taken out of an email - so each is ignored by the constant that
     names it, and both trees whole."""
-    from tracker.filer import README_LOCK_FILENAME
+    from tracker.copies import README_LOCK_FILENAME
     from tracker.layout import CLIENTS_TREE, OPENED_DIR_NAME, PRIVATE_TREE, README_NAME
     from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME
@@ -1736,8 +1736,8 @@ def test_documents_name_only_runtime_files_the_code_owns():
 
     from tracker.after_install import BUILD_INFO_FILENAME, RECORD_FILENAME
     from tracker.checkpoint import CHECKPOINT_FILENAME
+    from tracker.copies import README_LOCK_FILENAME
     from tracker.errlog import ERROR_LOG_FILENAME
-    from tracker.filer import README_LOCK_FILENAME
     from tracker.firm_cache import CACHE_FILENAME
     from tracker.firm_pages import PAGES_FILENAME
     from tracker.ledger import LEDGER_FILENAME
@@ -2214,7 +2214,7 @@ def test_the_package_prose_names_constants_rather_than_their_values():
     """A docstring or comment may name LEDGER_FILENAME; it may not spell the value."""
     import ast
 
-    from tracker.filer import README_LOCK_FILENAME
+    from tracker.copies import README_LOCK_FILENAME
     from tracker.layout import (
         CLIENTS_TREE,
         INBOX_DIR_NAME,

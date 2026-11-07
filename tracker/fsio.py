@@ -413,7 +413,7 @@ def stranded_temps(
 
     **It only finds; it removes nothing.** Which folders may be swept, and
     whether the process a temp names may still be writing it, is the
-    owner's to say (``tracker.filer.sweep_stranded_temps``). ``recursive``
+    owner's to say (``tracker.copies.sweep_stranded_temps``). ``recursive``
     walks the folders below too, never through a link or a junction;
     ``target`` narrows it to one file's temps (:func:`temp_owner`). A
     folder that is not there, or cannot be listed, has none.

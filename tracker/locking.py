@@ -542,7 +542,7 @@ def acquire_lock(engagement_dir: Path, name: str = LOCK_FILENAME) -> EngagementL
     :func:`engagement_lock` unless there is a reason not to. ``name`` is
     the lock file's name: the engagement's own by default; another name
     is another lock with the same guarantees, in whatever folder it guards
-    (the household README's, ``tracker.filer.README_LOCK_FILENAME``).
+    (the household README's, ``tracker.copies.README_LOCK_FILENAME``).
     """
     lock = engagement_dir / name
     for _attempt in (1, 2):

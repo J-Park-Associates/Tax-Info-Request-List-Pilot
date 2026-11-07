@@ -517,8 +517,12 @@ def test_name_collision_in_pbc_never_overwrites(engagement):
 
 
 def test_placeholders_are_left_where_they_are(engagement, monkeypatch):
+    import tracker.copies as copies_module
+    import tracker.filer as filer_module
+
     waiting = drop(engagement, "big.pdf", "Form W-2 Wage and Tax Statement 2025")
-    monkeypatch.setattr("tracker.filer.is_cloud_placeholder", lambda p: True)
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: True)
 
     report = sort(engagement, today=DAY1)
 
@@ -1038,19 +1042,21 @@ def test_the_filer_reads_nothing_before_it_holds_the_lock(engagement, monkeypatc
     # What a run decides from - the manifest, the index, the drop folder -
     # must be read after the lock, or a run that finished in between is
     # invisible and its rows get rewritten from a stale picture.
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
     from tracker.locking import LOCK_FILENAME
 
     lock = engagement / LOCK_FILENAME
     seen = []
-    for name in ("load_manifest", "read_index", "iter_drops"):
-        real = getattr(filer_module, name)
+    for module, name in ((filer_module, "load_manifest"), (filer_module, "read_index"),
+                         (copies_module, "read_index"), (filer_module, "iter_drops")):
+        real = getattr(module, name)
 
         def under_the_lock(*args, _real=real, _name=name, **kwargs):
             seen.append((_name, lock.exists()))
             return _real(*args, **kwargs)
 
-        monkeypatch.setattr(filer_module, name, under_the_lock)
+        monkeypatch.setattr(module, name, under_the_lock)
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     assert sort(engagement, today=DAY1).handled == 1
@@ -1165,13 +1171,15 @@ def test_a_resend_is_refiled_when_the_working_copy_was_deleted(engagement, monke
     the copy home and is a duplicate; so the road this pins is the one a
     copy takes when its original cannot be read to make it again - the sync
     client still holding the year's folder as placeholders."""
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     first = sort(engagement, today=DAY1).filed[0]
     real = filer_module.is_cloud_placeholder
-    monkeypatch.setattr(filer_module, "is_cloud_placeholder",
-                        lambda p: p.parent == originals(engagement) or real(p))
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "is_cloud_placeholder",
+                            lambda p: p.parent == originals(engagement) or real(p))
     working = engagement / first.prepared_location
     working.unlink()                                          # a preparer's slip
     drop(engagement, "w2 again.pdf", "Form W-2 Wage and Tax Statement 2025")
@@ -1406,15 +1414,18 @@ def test_a_same_size_replacement_with_an_old_date_is_still_noticed(engagement):
 
 
 def test_an_original_the_sync_client_dehydrated_is_not_downloaded_to_be_checked(engagement, monkeypatch):
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     sort(engagement, today=DAY1)
-    monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p.name == "w2.pdf")
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p.name == "w2.pdf")
 
     def never(path):
         raise AssertionError(f"hashed {path.name}")
-    monkeypatch.setattr(filer_module, "sha256_of", never)
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "sha256_of", never)
     assert sort(engagement, today=DAY2).errors == []
 
 
@@ -1506,6 +1517,7 @@ def test_a_persons_filing_of_an_original_recorded_without_its_bytes_records_them
     # filing with no digest still, so the scanner never honoured the person
     # and the client was asked again. Assign records the bytes; and a later
     # pass that can read the original records them too.
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
     from tracker.filer import assign_review_file
     from tracker.validators import sha256_of
@@ -1523,7 +1535,8 @@ def test_a_persons_filing_of_an_original_recorded_without_its_bytes_records_them
             held.add(path)
             raise PermissionError("held by the sync client")
         return real(path)
-    monkeypatch.setattr(filer_module, "sha256_of", unreadable_once)
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "sha256_of", unreadable_once)
     parked = sort(engagement, today=DAY1).review[0]
     monkeypatch.undo()
     assert parked.digest == "" and parked.size_kb == 0.0
@@ -1536,7 +1549,8 @@ def test_a_persons_filing_of_an_original_recorded_without_its_bytes_records_them
 
     # And a pass, with nothing to sort, fills in the row the earlier pass could not.
     drop(engagement, "scan0013.pdf", "nothing the rules recognise either")
-    monkeypatch.setattr(filer_module, "sha256_of", unreadable_once)
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "sha256_of", unreadable_once)
     sort(engagement, today=DAY2)
     monkeypatch.undo()
     assert [r.digest for r in read_index(engagement) if r.original_name == "scan0013.pdf"] == [""]
@@ -1553,6 +1567,7 @@ def test_bytes_recorded_after_the_fact_are_tied_to_the_row_or_not_recorded(engag
     # called the same. A row is tied to its bytes only while its copy and
     # its original still agree; where they do not, nothing is adopted and
     # the row is said out loud, every pass.
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
     from tracker.filer import UNTIED_IN_PBC, assign_review_file
     from tracker.validators import sha256_of
@@ -1572,7 +1587,8 @@ def test_bytes_recorded_after_the_fact_are_tied_to_the_row_or_not_recorded(engag
             held.add(path)
             raise PermissionError("held by the sync client")
         return real(path)
-    monkeypatch.setattr(filer_module, "sha256_of", unreadable)
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "sha256_of", unreadable)
     report = sort(engagement, today=DAY1)
     monkeypatch.undo()
     filed = report.filed[0]
@@ -1608,6 +1624,7 @@ def test_a_persons_filing_moves_the_parked_copy_only_while_it_holds_the_rows_byt
     # Since decision 157 the pass makes a parked copy that went again from
     # its original before it parks anything, so the freed name is taken
     # only while A's original cannot be read - still syncing, here.
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
     from tracker.filer import assign_review_file
     from tracker.validators import sha256_of
@@ -1619,7 +1636,8 @@ def test_a_persons_filing_moves_the_parked_copy_only_while_it_holds_the_rows_byt
     syncing = locate(engagement, row_a.pbc_location)
     real = filer_module.is_cloud_placeholder
     with pytest.MonkeyPatch.context() as sync:
-        sync.setattr(filer_module, "is_cloud_placeholder", lambda p: p == syncing or real(p))
+        for module in (filer_module, copies_module):
+            sync.setattr(module, "is_cloud_placeholder", lambda p: p == syncing or real(p))
         row_b = sort(engagement, today=DAY2).review[0]
     assert row_b.prepared_location == row_a.prepared_location         # the freed name, taken
 
@@ -1636,6 +1654,7 @@ def test_a_parked_path_a_later_row_claims_means_the_earlier_copy_is_gone(engagem
     # removed, then a same-named drop B parked under the freed name, was
     # "untied" every pass and refused for ever - though the index itself
     # says whose the file at that path is.
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
     from tracker.filer import assign_review_file
     from tracker.validators import sha256_of
@@ -1653,7 +1672,8 @@ def test_a_parked_path_a_later_row_claims_means_the_earlier_copy_is_gone(engagem
             held.add(path)
             raise PermissionError("held by the sync client")
         return real(path)
-    monkeypatch.setattr(filer_module, "sha256_of", unreadable)
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "sha256_of", unreadable)
     row_a = sort(engagement, today=DAY1).review[0]
     monkeypatch.undo()
     assert row_a.digest == ""
@@ -1890,6 +1910,7 @@ def test_a_duplicate_rows_own_original_is_watched_like_every_other(engagement):
 def test_a_row_recorded_without_its_bytes_is_never_moved_onto_another_file(engagement, monkeypatch):
     # Decision 65: an empty digest is nobody's. Nothing proves a stray is
     # this row's original, so the row is said and left where it is.
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
     from tracker.filer import MISSING_IN_PBC
 
@@ -1906,7 +1927,8 @@ def test_a_row_recorded_without_its_bytes_is_never_moved_onto_another_file(engag
             held.add(path)
             raise PermissionError("held by the sync client")
         return real(path)
-    monkeypatch.setattr(filer_module, "sha256_of", unreadable)
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "sha256_of", unreadable)
     row = sort(engagement, today=DAY1).filed[0]
     monkeypatch.undo()
     assert row.digest == ""
@@ -1924,11 +1946,13 @@ def test_a_row_recorded_without_its_bytes_is_never_moved_onto_another_file(engag
 def test_an_original_the_sync_client_dehydrated_is_not_called_gone(engagement, monkeypatch):
     # A placeholder is a file the sync client has not brought down, which
     # is not the same as the client having deleted it.
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     sort(engagement, today=DAY1)
-    monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p.parent == originals(engagement))
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p.parent == originals(engagement))
     report = sort(engagement, today=DAY2)
     assert report.attention == [] and report.errors == []
 
@@ -2996,19 +3020,22 @@ def drag(path, folder):
 def counting_hashes(monkeypatch) -> list[str]:
     """Every path anything in the package hashes, as it is hashed.
 
-    Four modules hold the name now, and each holds its own: the memo's is
+    Five modules hold the name now, and each holds its own: the memo's is
     the content check's, and a pass that reached around it would show up
     here and nowhere else. The scanner held one until decision 109 and
     holds none; the index's is the one ``holds_the_row`` reads, since that
-    proof moved out of the filer (P319).
+    proof moved out of the filer (P319), and copies' is the one a working
+    copy is found and proved with, since that code did (P331).
     """
     import tracker.content_check as content_check_module
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
     import tracker.index as index_module
     import tracker.validators as validators_module
 
     read: list[str] = []
-    for module in (filer_module, content_check_module, index_module, validators_module):
+    for module in (filer_module, copies_module, content_check_module, index_module,
+                   validators_module):
         real = module.sha256_of
 
         def counted(path, _real=real):
@@ -3340,6 +3367,7 @@ def test_a_second_and_a_third_pass_over_an_unchanged_tree_hash_only_the_pbc_orig
 def test_a_dehydrated_home_is_not_read_and_not_called_absent(engagement, monkeypatch):
     """Hashing a placeholder downloads it. A home the sync client has let go
     of is not looked at this pass, which is not the same as being gone."""
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
@@ -3347,7 +3375,8 @@ def test_a_dehydrated_home_is_not_read_and_not_called_absent(engagement, monkeyp
     home = engagement / filed.prepared_location
     lines = len(ledger.read_events(engagement))
 
-    monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p == home)
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p == home)
     read = counting_hashes(monkeypatch)
     report = sort(engagement, today=DAY2)
 
@@ -3387,6 +3416,7 @@ def test_a_row_without_a_digest_is_never_swept(engagement, monkeypatch):
     """Decision 65: a row recorded without its bytes is nobody's. Nothing can
     prove a file is that row's copy, so the row is left exactly as it is -
     and the file nothing accounts for is said as what it is."""
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
     from tracker.filer import UNRECORDED_COPY
 
@@ -3404,7 +3434,8 @@ def test_a_row_without_a_digest_is_never_swept(engagement, monkeypatch):
             raise PermissionError("held by the sync client")
         return real(path)
 
-    monkeypatch.setattr(filer_module, "sha256_of", unreadable)
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "sha256_of", unreadable)
     filed = sort(engagement, today=DAY1).filed[0]
     monkeypatch.undo()
     assert filed.digest == ""
@@ -3675,6 +3706,7 @@ def test_put_it_back_refuses_a_stale_seq_and_touches_nothing(engagement):
 def test_put_it_back_refuses_a_row_without_a_digest(engagement, monkeypatch):
     """Decision 65: a row recorded without its bytes is tied to nothing, so
     nothing can be proved to be its working copy and nothing here may move."""
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
     from tracker.filer import FilingError, restore_working_copy
     from tracker.index import FILE_MOVED
@@ -3682,8 +3714,9 @@ def test_put_it_back_refuses_a_row_without_a_digest(engagement, monkeypatch):
     filed, wanderer = a_moved_filed_row(engagement)
     [row] = read_index(engagement)
     assert row.decision == FILE_MOVED
-    monkeypatch.setattr(filer_module, "read_index",
-                        lambda *a, **k: [replace(row, digest="")])
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "read_index",
+                            lambda *a, **k: [replace(row, digest="")])
     files = every_byte(engagement)
 
     with pytest.raises(FilingError) as raised:
@@ -4247,7 +4280,7 @@ def test_the_trackers_own_temp_files_are_swept_and_nothing_else(engagement):
     import subprocess
     import time
 
-    from tracker.filer import sweep_stranded_temps
+    from tracker.copies import sweep_stranded_temps
     from tracker.layout import opened_dir_of
 
     pid = os.getpid()
@@ -4307,7 +4340,7 @@ def test_the_sweep_never_walks_through_a_junction(engagement, tmp_path):
     import _winapi
     import time
 
-    from tracker.filer import sweep_stranded_temps
+    from tracker.copies import sweep_stranded_temps
     from tracker.fsio import is_link
     from tracker.layout import opened_dir_of
 
@@ -4352,9 +4385,9 @@ def test_a_client_file_shaped_like_the_readme_temp_is_never_deleted(engagement, 
     file of that name is left byte for byte and counted with the files
     still arriving - a short one too, when it is not a start of the
     README's first line."""
-    import tracker.filer as filer_module
+    import tracker.copies as copies_module
 
-    monkeypatch.setattr(filer_module, "pid_alive", lambda pid: False)
+    monkeypatch.setattr(copies_module, "pid_alive", lambda pid: False)
     theirs = inbox_of(engagement) / f"{README_NAME}.4242.0f1e2d3c.tmp"
     theirs.write_bytes(b"%PDF-1.4 a client's own document")
     short = inbox_of(engagement) / f"{README_NAME}.4243.1a2b3c4d.tmp"
@@ -4375,10 +4408,10 @@ def test_a_readme_temp_the_firm_left_empty_or_cut_in_its_first_line_is_swept(
     the client's shared inbox for good, counted as still arriving every
     pass (the review's S5). Empty, or a start of the README's first line,
     it holds nothing of the client's, and the sweep takes it."""
-    import tracker.filer as filer_module
+    import tracker.copies as copies_module
     from tracker.scaffold import README_FIRST_LINE
 
-    monkeypatch.setattr(filer_module, "pid_alive", lambda pid: False)
+    monkeypatch.setattr(copies_module, "pid_alive", lambda pid: False)
     empty = inbox_of(engagement) / f"{README_NAME}.4243.1a2b3c4d.tmp"
     empty.write_bytes(b"")
     cut = inbox_of(engagement) / f"{README_NAME}.4244.2b3c4d5e.tmp"
@@ -5351,6 +5384,7 @@ def test_a_re_send_after_a_set_aside_is_name_checked_before_it_files(
     exists to stop, arriving by the back door. (Since decision 157 a deleted
     copy is made again from its original first; the re-file road is the
     one a copy takes while its original cannot be read, as here.)"""
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
     from tracker.filer import dismiss_review_file
 
@@ -5376,7 +5410,8 @@ def test_a_re_send_after_a_set_aside_is_name_checked_before_it_files(
         (engagement / filed.prepared_location).unlink()
         syncing = locate(engagement, filed.pbc_location)
         real = filer_module.is_cloud_placeholder
-        monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p == syncing or real(p))
+        for module in (filer_module, copies_module):
+            monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p == syncing or real(p))
         rows = [w2]
     save_rules(engagement, rows, load_engagement_info(engagement))
 
@@ -5659,6 +5694,7 @@ def test_a_re_send_through_a_feed_of_a_document_the_other_household_lost_parks_a
     it again (still syncing). The father sends the same bytes: routed afresh
     in the LLC's record, it parks at home for the click rather than filing
     there, and after the click the LLC's request counts the document once."""
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
     from tracker.scanner import scan_engagement
 
@@ -5667,7 +5703,8 @@ def test_a_re_send_through_a_feed_of_a_document_the_other_household_lost_parks_a
     (llc / first.prepared_location).unlink()
     syncing = locate(llc, first.pbc_location)
     real = filer_module.is_cloud_placeholder
-    monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p == syncing or real(p))
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p == syncing or real(p))
 
     drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
     done = sort_all([father, llc], home=[father], today=DAY3)
@@ -6674,6 +6711,7 @@ def test_received_for_reads_each_index_once(tmp_path, monkeypatch):
     """The README's received list is a rendering of the index and nothing
     else (S-2): one index read and one request-list read per return, and
     no second copy anywhere."""
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
     from tests.builders import seed_index
     from tracker.filer import received_for
@@ -6692,8 +6730,9 @@ def test_received_for_reads_each_index_once(tmp_path, monkeypatch):
     read = []
     lists = []
     real_read, real_list = filer_module.read_index, filer_module.load_manifest
-    monkeypatch.setattr(filer_module, "read_index",
-                        lambda folder: read.append(Path(folder)) or real_read(folder))
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "read_index",
+                            lambda folder: read.append(Path(folder)) or real_read(folder))
     monkeypatch.setattr(filer_module, "load_manifest",
                         lambda folder: lists.append(Path(folder)) or real_list(folder))
 
@@ -6780,7 +6819,7 @@ def test_the_room_is_measured_from_the_list_alone_and_creations_figure_is_unchan
     name is a hundred characters - each copy in Prepared itself (decision
     168; 164, 163 and 316 while each request had a folder, 223 for the core
     list with the full titles before decision 144)."""
-    from tracker.filer import Room, room_for, shortest_name_for
+    from tracker.copies import Room, room_for, shortest_name_for
     from tracker.layout import (
         deepest_path_length,
         folder_need,
@@ -6908,7 +6947,7 @@ def test_a_request_with_no_room_for_its_shortest_name_parks_with_the_sentence(tm
     both numbers, the request as its candidate, a review copy a person can
     open and the original where every original rests."""
     from tests.builders import root_for_a_return_of
-    from tracker.filer import PATH_NO_ROOM
+    from tracker.copies import PATH_NO_ROOM
     from tracker.layout import path_limit
 
     # Prepared is 216 characters: 43 left for a name that needs 44 (215,
@@ -7032,7 +7071,7 @@ def test_creation_and_the_rollover_still_refuse_the_canonical_name_past_the_limi
     name at each row's longest extension, against Windows's 260 (259 with
     long paths off) - not a reader's 218, which only cuts a name - with
     decision 125's words."""
-    from tracker.filer import refuse_a_path_past_the_limit
+    from tracker.copies import refuse_a_path_past_the_limit
     from tracker.layout import PATH_TOO_LONG, path_limit, return_dir_for
     from tracker.manifest import ManifestError
     from tracker.templates import template_items
@@ -7062,7 +7101,7 @@ def test_a_return_that_fits_on_windows_fits_on_a_mac_and_one_character_more_does
     is refused in Windows's numbers - whatever the Mac's own root."""
     from pathlib import PureWindowsPath
 
-    from tracker.filer import refuse_a_path_past_the_limit, room_for
+    from tracker.copies import refuse_a_path_past_the_limit, room_for
     from tracker.layout import (
         PATH_TOO_LONG,
         PREPARED_DIR_NAME,
@@ -7110,7 +7149,7 @@ def test_a_mac_cuts_a_working_copys_name_to_the_room_a_windows_desk_leaves(on_a_
     under the Windows root (names and parks match on both)."""
     from pathlib import PureWindowsPath
 
-    from tracker.filer import REVIEW_NO_ROOM, NoRoom, _review_copy_path, _room_in, _unique_path
+    from tracker.copies import REVIEW_NO_ROOM, NoRoom, _review_copy_path, _room_in, _unique_path
 
     root = Path("/Users/jpark/Library/CloudStorage/GoogleDrive-a@b.com/Shared drives/JPA Clients")
     folder = root / "J Park & Associates" / "Park Family" / "2026" / "1040 - John Park" / "Prepared"
@@ -7167,7 +7206,7 @@ def test_a_recovery_copy_is_cut_to_fit_and_one_that_cannot_be_made_names_no_copy
     a fixed sentence."""
     from tests.builders import root_for_a_return_of
     from tracker import filer
-    from tracker.filer import REVIEW_NO_ROOM, NoRoom
+    from tracker.copies import REVIEW_NO_ROOM, NoRoom
     from tracker.layout import path_limit
 
     engagement = make_engagement(root_for_a_return_of(tmp_path, 180), ROOM_ITEMS)
@@ -7196,7 +7235,7 @@ def test_a_spreadsheet_limit_is_never_called_what_windows_allows(path_setting):
     """F2: since the owner's Q-A a workbook's limit is a reader's 218, so
     every sentence of decision 131 names the limit as that kind of copy's,
     never as what Windows allows."""
-    from tracker.filer import (
+    from tracker.copies import (
         HOUSEHOLD_NO_ROOM,
         PATH_NO_ROOM,
         PATH_NO_ROOM_IN,
@@ -7227,7 +7266,7 @@ def test_a_review_copy_with_an_odd_suffix_is_cut_to_fit_or_said_as_a_review_copy
     extension is cut as one stem to fit; a real extension is kept whole,
     and where not even one character of stem fits beside it the sentence
     says a *review copy* could not be made - never a request's label."""
-    from tracker.filer import REVIEW_NO_ROOM, NoRoom, _review_copy_path, _unique_path
+    from tracker.copies import REVIEW_NO_ROOM, NoRoom, _review_copy_path, _unique_path
     from tracker.layout import path_limit
 
     folder = tmp_path / "review"
@@ -7282,7 +7321,7 @@ def test_a_filing_that_parks_for_room_leaves_nothing_it_made(short_root, path_se
     request folder to make either, only the copy."""
     from tests.builders import root_for_a_return_of
     from tests.samples import scanned_1098_lines, scanned_w2_lines
-    from tracker.filer import PATH_NO_ROOM
+    from tracker.copies import PATH_NO_ROOM
     from tracker.layout import path_limit
 
     # C01's period leaves it no room in a Prepared of 216 characters (215
@@ -7307,7 +7346,7 @@ def test_a_filing_that_parks_for_room_leaves_nothing_it_made(short_root, path_se
 def test_the_period_survives_a_long_label():
     """F6: the cap on a working copy's name cuts the document label, never
     the period - the one part that says which year a copy belongs to."""
-    from tracker.filer import _MAX_STEM
+    from tracker.copies import _MAX_STEM
 
     long = RequestItem(identifier="A01", document="X" * 120, short_title="X" * 120, period="TY2026")
     name = prepared_name_for(long, "pdf", set())
@@ -7322,7 +7361,7 @@ def test_a_workbook_review_copy_fitted_past_a_readers_limit_says_so(tmp_path):
     is fitted to Windows's own - but the row says the copy is longer than
     a spreadsheet program may open, and what to do about it."""
     from tests.builders import root_for_a_return_of
-    from tracker.filer import REVIEW_COPY_PAST_READER
+    from tracker.copies import REVIEW_COPY_PAST_READER
 
     engagement = make_engagement(root_for_a_return_of(tmp_path, 200), ROOM_ITEMS)   # review: 227
     assert len(str(review_dir(engagement))) == 227
@@ -7556,6 +7595,7 @@ def test_an_unnamed_re_send_already_held_in_another_household_parks_too(tmp_path
     cannot be read, as here.)"""
     import shutil
 
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
     from tracker.filer import hand_over
     from tracker.records import Feed
@@ -7575,7 +7615,8 @@ def test_an_unnamed_re_send_already_held_in_another_household_parks_too(tmp_path
     (llc / taken.prepared_location).unlink()                             # the copy went
     shutil.copyfile(held, inbox_of(father) / "tb again.pdf")              # the same bytes again
     real = filer_module.is_cloud_placeholder
-    monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p == held or real(p))
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p == held or real(p))
 
     sort_all([father, llc], home=[father], today=DAY3)
 
@@ -7782,7 +7823,7 @@ def _intake_refusals(asked_every_row: bool) -> tuple[int, int]:
     """(refused, deepest) over the intake's 39 under the real root, with the
     wizard's default rows asked or every row asked."""
     from tracker.api import default_return_name
-    from tracker.filer import room_for
+    from tracker.copies import room_for
     from tracker.layout import MAX_PATH_LENGTH, return_dir_for
     from tracker.templates import FORM_TEMPLATES, template_items
 
@@ -8025,6 +8066,7 @@ def test_a_name_an_open_intent_will_write_to_is_not_given_to_a_new_drop(fed, mon
     take that name: its row would carry the waiting filing's key and close
     it, and the move would later meet other bytes there. It rests beside
     it, and the waiting filing stays open for the next pass."""
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
 
     father, llc = fed
@@ -8039,7 +8081,8 @@ def test_a_name_an_open_intent_will_write_to_is_not_given_to_a_new_drop(fed, mon
     assert locate(llc, move[ledger.TO_KEY]) == originals(llc) / "tb.pdf"
     waiting = originals(father) / "tb.pdf"
     real = filer_module.is_cloud_placeholder
-    monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p == waiting or real(p))
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p == waiting or real(p))
     drop(llc, "tb.pdf", "Trial balance as of December 31 2025 restated", who="Park & Lee LLC")
 
     sort_all([llc], today=DAY2)
@@ -8283,7 +8326,7 @@ def test_room_is_measured_without_a_request_folder():
     firm's 28-character root is decision 144's figure (163) less the folder
     the deepest copy sat in: 138. The deepest row is still B01, whose
     folder ``B01 - Prior-Year Returns/`` was 25 characters."""
-    from tracker.filer import room_for
+    from tracker.copies import room_for
     from tracker.layout import return_dir_for
     from tracker.manifest import label_for
     from tracker.scaffold import sanitize_component
@@ -8855,6 +8898,7 @@ def test_an_original_that_cannot_be_read_holds_the_request_and_is_never_read(
     (that would download it), nothing is made and nothing is written. The
     request is held firm-side - a missing copy is never by itself a letter
     to the client - and the pass after the original is back makes the copy."""
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
     from tracker.manifest import Status
 
@@ -8863,7 +8907,8 @@ def test_an_original_that_cannot_be_read_holds_the_request_and_is_never_read(
     copy.unlink()
     original = originals(engagement) / "1098.pdf"
     real = filer_module.is_cloud_placeholder
-    monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p == original or real(p))
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p == original or real(p))
     read = counting_hashes(monkeypatch)
     lines = len(ledger.read_events(engagement))
 
@@ -8892,6 +8937,7 @@ def test_a_statement_whose_copy_is_not_counted_answers_nothing_until_it_is_made_
     the statement and why, and the letter asks for none of the three. The
     pass that can read the original makes the copy again and every answer
     heals with it."""
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
     from tracker.manifest import Status
     from tracker.reasons import IN_CONSOLIDATED
@@ -8902,7 +8948,8 @@ def test_a_statement_whose_copy_is_not_counted_answers_nothing_until_it_is_made_
     (engagement / row.prepared_location).unlink()
     original = locate(engagement, row.pbc_location)
     real = filer_module.is_cloud_placeholder
-    monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p == original or real(p))
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p == original or real(p))
 
     sort(engagement, today=DAY2)
     scan_engagement(engagement, today=DAY2)
@@ -9465,12 +9512,14 @@ def test_a_sweep_that_cannot_read_a_returns_rows_logs_the_class_never_the_path(e
     import logging
     import time
 
+    import tracker.copies as copies
     import tracker.filer as filer
 
-    monkeypatch.setattr(filer, "read_index", _refused_with_a_client_path)
+    for module in (filer, copies):
+        monkeypatch.setattr(module, "read_index", _refused_with_a_client_path)
     with caplog.at_level(logging.DEBUG):
-        assert filer.sweep_stranded_temps(household_of(engagement), [engagement],
-                                          started=time.time() + 1) == []
+        assert copies.sweep_stranded_temps(household_of(engagement), [engagement],
+                                           started=time.time() + 1) == []
     logged = _logged_outside_the_debug_log(caplog)
     assert "PermissionError (EACCES)" in logged, logged
     assert A_CLIENT_PATH not in logged and "Test Household/Drop" not in logged, logged
@@ -9611,6 +9660,7 @@ def test_an_original_held_for_the_whole_pass_is_parked_and_said_so(engagement, m
     """The review's S6: an original the pass cannot read at all this pass is
     never copied unproved. It is kept, recorded for a person, and the
     sentence says it could not be read - not that the record needs checking."""
+    import tracker.copies as copies_module
     import tracker.filer as filer_module
     from tracker.filer import COPY_UNREAD
 
@@ -9622,7 +9672,8 @@ def test_an_original_held_for_the_whole_pass_is_parked_and_said_so(engagement, m
             raise PermissionError("held by the sync client")
         return real(path)
 
-    monkeypatch.setattr(filer_module, "sha256_of", unreadable)
+    for module in (filer_module, copies_module):
+        monkeypatch.setattr(module, "sha256_of", unreadable)
     report = sort(engagement, today=DAY1)
     monkeypatch.undo()
 
@@ -9756,10 +9807,10 @@ def test_a_direction_override_is_not_kept_in_any_recorded_name(engagement):
 def test_a_macro_workbook_copy_is_marked_for_protected_view(engagement, monkeypatch):
     """A review copy that can carry macros is marked as from the internet
     on its temp, before it takes its name; a copy of a plain PDF is not."""
-    import tracker.filer as filer_module
+    import tracker.copies as copies_module
 
     marked = []
-    monkeypatch.setattr(filer_module, "mark_from_internet", lambda path: marked.append(path) or True)
+    monkeypatch.setattr(copies_module, "mark_from_internet", lambda path: marked.append(path) or True)
     (inbox_of(engagement) / "budget.docm").write_bytes(b"PK not really a document")
     drop(engagement, "vacation.pdf", "Photos from Maui, the hotel pool and the beach at sunset")
 
@@ -9773,13 +9824,13 @@ def test_a_macro_copy_that_cannot_be_marked_is_not_made(engagement, monkeypatch)
     """Fail closed (decision 190): on a volume that will not hold the mark,
     no review copy is made - the drop is a "could not be filed" row the
     pass report names - and the original rests safe."""
-    import tracker.filer as filer_module
+    import tracker.copies as copies_module
     from tracker.filer import MARK_REFUSED_STEP
 
     def refused(path):
         raise OSError(95, "Operation not supported", str(path))
 
-    monkeypatch.setattr(filer_module, "mark_from_internet", refused)
+    monkeypatch.setattr(copies_module, "mark_from_internet", refused)
     original = inbox_of(engagement) / "budget.docm"
     original.write_bytes(b"PK not really a document")
 
@@ -9823,7 +9874,7 @@ def test_no_review_copy_is_ever_named_for_a_program(tmp_path):
     """The review's M1, in depth: the one function that names a review copy
     refuses a program - whatever road asked, and whatever the row says -
     loudly, as a FilingError naming it."""
-    from tracker.filer import REVIEW_OF_A_PROGRAM, _review_copy_path
+    from tracker.copies import REVIEW_OF_A_PROGRAM, _review_copy_path
 
     with pytest.raises(FilingError) as refused:
         _review_copy_path(tmp_path, "Pay.scr\ufeff", tmp_path)
@@ -9898,7 +9949,7 @@ def test_a_macro_working_copy_moved_into_review_is_marked_or_not_moved(engagemen
     unfiling, a refused put-back - goes through the one marking path, like
     a copy made there: marked before the rename, and a mark refused moves
     nothing (fail closed)."""
-    import tracker.filer as filer_module
+    import tracker.copies as copies_module
     from tracker.filer import MarkRefusedError, _do_op, _op
 
     marked = []
@@ -9909,7 +9960,7 @@ def test_a_macro_working_copy_moved_into_review_is_marked_or_not_moved(engagemen
         marked.append(path.name)
         return True
 
-    monkeypatch.setattr(filer_module, "mark_from_internet", mark)
+    monkeypatch.setattr(copies_module, "mark_from_internet", mark)
     working = engagement / PREPARED_DIR_NAME / "A01 - W-2 Wage Statements.xlsm"
     working.parent.mkdir(parents=True, exist_ok=True)
     working.write_bytes(b"PK a workbook with macros")
@@ -9928,10 +9979,10 @@ def test_a_macro_working_copy_moved_into_review_is_marked_or_not_moved(engagemen
 def _a_filed_macro_workbook(engagement, monkeypatch):
     """A macro workbook parked, then filed under A01 by a person, with the
     mark working; returns its row."""
-    import tracker.filer as filer_module
+    import tracker.copies as copies_module
     from tracker.filer import assign_review_file
 
-    monkeypatch.setattr(filer_module, "mark_from_internet", lambda path: True)
+    monkeypatch.setattr(copies_module, "mark_from_internet", lambda path: True)
     (inbox_of(engagement) / "budget.xlsm").write_bytes(b"PK a workbook with macros")
     sort(engagement, today=DAY1)
     [parked] = read_index(engagement)
@@ -9942,12 +9993,12 @@ def _a_filed_macro_workbook(engagement, monkeypatch):
 
 
 def _refuse_the_mark(monkeypatch):
-    import tracker.filer as filer_module
+    import tracker.copies as copies_module
 
     def refused(path):
         raise OSError(95, "Operation not supported", str(path))
 
-    monkeypatch.setattr(filer_module, "mark_from_internet", refused)
+    monkeypatch.setattr(copies_module, "mark_from_internet", refused)
 
 
 def test_a_refused_mark_on_an_unfile_records_nothing_and_the_next_pass_runs(engagement, monkeypatch):
@@ -10031,8 +10082,8 @@ def test_a_temp_that_cannot_be_swept_is_counted_not_named(engagement, monkeypatc
     import time
     from pathlib import Path
 
-    import tracker.filer as filer_module
-    from tracker.filer import TEMPS_NOT_SWEPT, sweep_stranded_temps
+    import tracker.copies as copies_module
+    from tracker.copies import TEMPS_NOT_SWEPT, sweep_stranded_temps
 
     stuck = engagement / f"view.html.{os.getpid()}.1a2b3c4d.tmp"
     stuck.write_bytes(b"half")
@@ -10044,7 +10095,7 @@ def test_a_temp_that_cannot_be_swept_is_counted_not_named(engagement, monkeypatc
         return real(self, *args, **kwargs)
 
     monkeypatch.setattr(Path, "unlink", refused)
-    monkeypatch.setattr(filer_module, "make_writable", lambda path: None)
+    monkeypatch.setattr(copies_module, "make_writable", lambda path: None)
     said: list[str] = []
     assert sweep_stranded_temps(household_of(engagement), [engagement],
                                 started=time.time() + 1, said=said) == []
