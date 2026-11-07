@@ -5877,6 +5877,254 @@ def test_a_cross_household_original_mid_recovery_is_never_a_stray_of_the_droppin
     rows_rest_at_home(father, llc)
 
 
+# ---------- one after-routing road: the household road and the re-send road ----------
+#
+# A drop is settled after the router answers by one sequence - the name tier,
+# the park across households, the filing, the park for no room - and two roads
+# reach it: a first arrival, routed against every return the drop may feed
+# (the household road), and a re-send whose earlier row a person set aside,
+# routed afresh in the one return whose record holds the bytes (the re-send
+# road, decision 111). The table is what each road writes today, written out
+# rather than computed. The roads agree but for the park across households,
+# where the re-send road carries no shortlist, none of the home's evidence and
+# none of the name's on the wanting return, and lands in the household's first
+# own return: that is Q-B, Jason's and open (P313), and the table holds it.
+
+FATHER_LABEL = "Park Family 2025 1040 - John Park"
+
+#: Two of the father's own rows that both take a trial balance, so his list
+#: cannot choose between them and its routing names both: the home's
+#: shortlist and evidence the household road's park across households
+#: carries, and the re-send road's does not.
+TWO_TRIAL_BALANCES = [
+    RequestItem(identifier="D01", document="Schedule C Trial Balance", period="TY2025",
+                allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("trial balance",)),
+    RequestItem(identifier="D02", document="Rental Trial Balance", period="TY2025",
+                allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("trial balance",)),
+]
+
+TRIAL_BALANCE = "Trial balance as of December 31 2025"
+NEWSLETTER = "Garden club newsletter for the spring"
+
+
+def _households(tmp_path, case, *, first):
+    """The case's returns, by folder, with the label each is named by: the
+    father's, and the LLC's in a household of its own, fed from his drop
+    folder, where the case has one. ``first`` gives the return holding the
+    re-send's earlier row the list it had at the first arrival."""
+    from tests.builders import root_for_a_return_of
+    from tracker.records import Feed
+
+    root = tmp_path
+    if case["deep"]:
+        root = root_for_a_return_of(tmp_path, no_room_return(), household="Park Family",
+                                    return_name="1040 - John Park")
+
+    def rows(whose, final):
+        return case["first"] if first and case["holder"] == whose and case["first"] is not None else final
+
+    father = make_engagement(root, rows("father", case["home"]), household="Park Family",
+                             return_name="1040 - John Park", people=FATHER)
+    returns = {father: FATHER_LABEL}
+    if case["llc"] is not None:
+        llc = make_engagement(root, rows("llc", case["llc"]), household="Park & Lee LLC",
+                              return_name="1120S - Park & Lee LLC", people=LLC_PEOPLE)
+        feeding(root, [Feed("Park & Lee LLC", "1120S - Park & Lee LLC")])
+        returns[llc] = LLC_LABEL
+    return returns
+
+
+def _settled(returns, case):
+    """The father drops the case's page and the household's pass sorts it:
+    the one row the pass wrote, and the label of the return whose record
+    holds it."""
+    father = next(iter(returns))
+    before = {folder: read_index(folder) for folder in returns}
+    drop(father, "page.pdf", case["text"], who=case["who"])
+    sort_all(list(returns), home=[father], today=DAY2)
+    [(label, row)] = [(label, row) for folder, label in returns.items()
+                      for row in read_index(folder) if row not in before[folder]]
+    return _row(label, row.decision, row.reason, row.code, candidates=row.candidates,
+                evidence=row.evidence, waits_for=row.waits_for, filed_to=row.identifier)
+
+
+def _by_the_household_road(tmp_path, case):
+    """A first arrival: routed against every return the father's drop folder
+    feeds."""
+    return _settled(_households(tmp_path / "household", case, first=False), case)
+
+
+def _by_the_resend_road(tmp_path, case):
+    """The same page sent again: its first arrival parked in the holding
+    return's own inbox and a person set it aside, the list gained what takes
+    it where the case says so, and the father's drop is routed afresh in the
+    return whose record holds the bytes (decision 111)."""
+    from tracker.filer import dismiss_review_file
+
+    returns = _households(tmp_path / "resend", case, first=True)
+    holder = list(returns)[0 if case["holder"] == "father" else 1]
+    drop(holder, "page.pdf", case["text"], who=case["who"])
+    [parked] = sort_all([holder], today=DAY1)[holder].review
+    dismiss_review_file(holder, parked.pbc_location, "nothing asks for it yet", today=DAY1)
+    if case["first"] is not None:
+        final = case["home"] if case["holder"] == "father" else case["llc"]
+        save_rules(holder, final, load_engagement_info(holder))
+    return _settled(returns, case)
+
+
+#: The sentence every row the re-send road writes carries, written out: the
+#: earlier row quoted whole (decision 111) - first in a park's reason, after
+#: the routing's own in a filing's.
+SET_ASIDE = ("set aside as not requested (not requested, by a person on 2026-07-01 "
+             "(nothing asks for it yet); was: matched no request); the client sent it again")
+
+
+def _row(record, decision, reason, code, *, candidates="", evidence="", waits_for="", filed_to=""):
+    """One row as the table writes it, with the label of the return whose
+    record holds it: the cells R4.3.1 names, and the decision. ``filed_to``
+    is the request the row is filed under, empty for a park."""
+    return {"record": record, "decision": decision, "reason": reason, "code": code,
+            "candidates": candidates, "waits_for": waits_for, "evidence": evidence,
+            "filed_to": filed_to}
+
+
+def _settle_table():
+    """Each case: what it is made of, the household road's row (None where
+    that road has no counterpart) and the re-send road's, written out.
+
+    The no-room sentence's two numbers are the machine's limit
+    (``layout.path_limit``: 260, or 259 with long paths off), read the way
+    every claim about room reads them; nothing else here is computed."""
+    from tracker.layout import path_limit
+
+    limit = path_limit()
+    w2 = "A01: W-2@title:1 required, TY2025@title:1 date, John Park@first_page:1 name"
+    homes = ("D01: trial balance@title:1 required, TY2025@title:1 date; "
+             "D02: trial balance@title:1 required, TY2025@title:1 date")
+    wanted = f"{LLC_LABEL} / B01: trial balance@title:1 required, TY2025@title:1 date"
+    named = f"Names Park & Lee LLC, who is on {LLC_LABEL}, a return in another household; " \
+            "it waits here for a person to file it there."
+    unnamed = "Unnamed, so it was not filed into another household's return."
+    no_room = (f"the working copy's path would be {limit + 1} characters at its shortest, past the "
+               f"{limit} characters a .pdf copy may have; shorten the clients root, or this request's "
+               "Short name in the editor")
+    long_w2 = "A01: W-2@title:1 required, January 01 2025 - December 31 2025@title:1 date, " \
+              "John Park@first_page:1 name"
+    waits = "Park & Lee LLC / 1120S - Park & Lee LLC / B01"
+    return {
+        # 1. Filed: the father's own W-2, naming him.
+        "1 filed": (
+            dict(home=ITEMS, llc=None, holder="father", first=[ITEMS[1]], deep=False,
+                 text="Form W-2 Wage and Tax Statement 2025", who="John Park"),
+            _row(FATHER_LABEL, FILED,
+                 "content matched this request's required keywords; name confirmed (John Park)",
+                 "matched", candidates="A01", evidence=w2, filed_to="A01"),
+            _row(FATHER_LABEL, FILED,
+                 f"content matched this request's required keywords; {SET_ASIDE}; "
+                 "name confirmed (John Park)",
+                 "matched", candidates="A01", evidence=w2, filed_to="A01"),
+        ),
+        # 2. Parked as unrecognised: nothing on the list takes the page.
+        "2 unrecognised": (
+            dict(home=ITEMS, llc=None, holder="father", first=None, deep=False,
+                 text=NEWSLETTER, who="John Park"),
+            _row(FATHER_LABEL, NEEDS_REVIEW, "matched no request", "unmatched"),
+            _row(FATHER_LABEL, NEEDS_REVIEW, f"{SET_ASIDE}; matched no request", "unmatched"),
+        ),
+        # 3. Parked across households, named: only the LLC's list takes it and
+        # the page names the LLC. Q-B: the household road's row carries the
+        # home's shortlist and evidence before the wanting return's, whose part
+        # holds the name's RULE_NAME entry; the re-send road's carries neither.
+        "3 across, named": (
+            dict(home=[*ITEMS, *TWO_TRIAL_BALANCES], llc=BUSINESS, holder="llc", first=[], deep=False,
+                 text=TRIAL_BALANCE, who="Park & Lee LLC"),
+            _row(FATHER_LABEL, NEEDS_REVIEW, named, "named-across", candidates="D01, D02",
+                 evidence=f"{homes}; {wanted}, Park & Lee LLC@first_page:1 name", waits_for=waits),
+            _row(FATHER_LABEL, NEEDS_REVIEW, f"{SET_ASIDE}; {named}", "named-across",
+                 evidence=wanted, waits_for=waits),
+        ),
+        # 4. Parked across households, unnamed: the LLC's row is unnamed and the
+        # page names nobody. Q-B's shortlist and home evidence, as in case 3;
+        # the wanting return's part is the same on both roads.
+        "4 across, unnamed": (
+            dict(home=[*ITEMS, *TWO_TRIAL_BALANCES], llc=[replace(BUSINESS[0], named=False)],
+                 holder="llc", first=[], deep=False, text=TRIAL_BALANCE, who=""),
+            _row(FATHER_LABEL, NEEDS_REVIEW, unnamed, "unnamed-across", candidates="D01, D02",
+                 evidence=f"{homes}; {wanted}"),
+            _row(FATHER_LABEL, NEEDS_REVIEW, f"{SET_ASIDE}; {unnamed}", "unnamed-across",
+                 evidence=wanted),
+        ),
+        # 5. Parked for no room: Prepared leaves no room for the request's
+        # shortest name (decision 131). The re-send road reaches it only with
+        # the holding return at home.
+        "5 no room": (
+            dict(home=[replace(ROOM_ITEMS[0], period=LONG_PERIOD)], llc=None, holder="father",
+                 first=[], deep=True, text="Form W-2 Wage and Tax Statement 2025", who="John Park"),
+            _row(FATHER_LABEL, NEEDS_REVIEW, no_room, "no-room", candidates="A01", evidence=long_w2),
+            _row(FATHER_LABEL, NEEDS_REVIEW, f"{SET_ASIDE}; {no_room}", "no-room", candidates="A01",
+                 evidence=long_w2),
+        ),
+        # 6. Re-send only: the LLC's record holds the bytes, its named row takes
+        # the page and the page names nobody, so the name keeps nothing. The row
+        # lands in the LLC's own record, with what the name tier made of it.
+        "6 the name keeps nothing": (
+            dict(home=ITEMS, llc=BUSINESS, holder="llc", first=[], deep=False,
+                 text=TRIAL_BALANCE, who=""),
+            None,
+            _row(LLC_LABEL, NEEDS_REVIEW,
+                 f"{SET_ASIDE}; the page names none of this return's people ({LLC_LABEL}); "
+                 "a person should confirm",
+                 "name-absent", candidates="B01",
+                 evidence="B01: trial balance@title:1 required, TY2025@title:1 date"),
+        ),
+        # 7. Re-send only: the LLC's record holds the bytes and nothing on its
+        # list takes the page. The row lands in the LLC's own record, with the
+        # routing's own reason.
+        "7 nothing accepts": (
+            dict(home=ITEMS, llc=BUSINESS, holder="llc", first=None, deep=False,
+                 text=NEWSLETTER, who="Park & Lee LLC"),
+            None,
+            _row(LLC_LABEL, NEEDS_REVIEW, f"{SET_ASIDE}; matched no request", "unmatched"),
+        ),
+    }
+
+
+SETTLE_CASES = ("1 filed", "2 unrecognised", "3 across, named", "4 across, unnamed", "5 no room",
+                "6 the name keeps nothing", "7 nothing accepts")
+
+
+@pytest.mark.parametrize("name", SETTLE_CASES)
+def test_the_household_road_and_the_resend_road_settle_a_drop_the_same_way_but_for_the_across_park(
+        tmp_path, name):
+    """SPEC-architecture P4.3 (R4.3.1): one made-up page settled by both
+    roads, and the literal row each writes, with the return whose record
+    holds it. Written before the two roads became one function and kept
+    unchanged across it, so the fold is shown to change neither road.
+
+    The roads agree but in three things, each today's and each kept: the
+    re-send road's rows say the client sent it again (decision 111); in a
+    park across households (cases 3 and 4) the re-send road carries no
+    shortlist, none of the home's evidence and, where the page named the
+    other return's person, none of the name's evidence on the wanting
+    return - Q-B, Jason's and open (P313); and a re-send whose bytes a
+    return in another household holds parks there when the name keeps
+    nothing or nothing accepts it (cases 6 and 7), which the household road
+    has no counterpart for."""
+    case, household_row, resend_row = _settle_table()[name]
+
+    if household_row is not None:
+        assert _by_the_household_road(tmp_path, case) == household_row
+    assert _by_the_resend_road(tmp_path, case) == resend_row
+
+    wanting = f"{LLC_LABEL} / B01"
+    if name == "3 across, named":      # difference 10, by each road's own cell
+        assert any(found.rule == RULE_NAME and found.term == "Park & Lee LLC"
+                   for found in parse_evidence(household_row["evidence"])[wanting])
+        assert not any(found.rule == RULE_NAME for found in parse_evidence(resend_row["evidence"])[wanting])
+    if name == "4 across, unnamed":
+        assert parse_evidence(household_row["evidence"])[wanting] == parse_evidence(resend_row["evidence"])[wanting]
+
+
 # ------------- File under another return (decisions 129 and 132) -----------
 
 
