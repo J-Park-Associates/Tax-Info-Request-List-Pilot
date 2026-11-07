@@ -37,14 +37,15 @@ So this module does four things with that list:
   :func:`tracker.store.follow_the_journal` has brought the store up to
   the journal. A folder with no journal is nobody's engagement and is
   refused by sentence (:data:`NOT_AN_ENGAGEMENT`);
-- **it writes it, at three moments and no others**: :func:`create_engagement`
+- **it writes it, at four moments and no others**: :func:`create_engagement`
   writes an engagement's first list and details as one ``rules_changed``
   event, :func:`save_rules` writes a person's edit as one - exactly
   the rows that changed, the identifiers removed, the details that moved,
-  and nothing at all when nothing did - and :func:`unlearn_keyword` takes
-  back a keyword a filing taught the row, as one ``keyword_unlearned``
-  (decision 113), which is the only one of the three that does not touch
-  the rules the person typed. All three go through
+  and nothing at all when nothing did - :func:`accept_folder_name` writes
+  decision 188's accept of the folder's names as one, those names its only
+  details (P327), and :func:`unlearn_keyword` takes back a keyword a
+  filing taught the row, as one ``keyword_unlearned`` (decision 113). The
+  last two leave the rules the person typed untouched. All four go through
   :func:`tracker.store.record` under the engagement lock, so the journal
   is written first and the fold is one transaction. The app's editor is
   the only way a rule is entered; there is no import and no export.
@@ -96,6 +97,7 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 # The value rule's bounds (decision 187), tracker/bounds.py's since P2.4: the
 # editor holds a person's values to the ones the store's gate holds a line to.
@@ -145,6 +147,9 @@ from tracker.records import (
     rule_to_json,
     split_codes,
 )
+
+if TYPE_CHECKING:
+    import sqlite3
 
 # ---------------------------------------------------------------- schema ----
 
@@ -1614,6 +1619,34 @@ def save_rules(
     )
 
 
+def accept_folder_name(
+    conn: sqlite3.Connection,
+    return_dir: Path | str,
+    household: str,
+    *,
+    return_name: str | None = None,
+) -> None:
+    """Record the folder's names as a return's details, with the person's
+    word (``ledger.ACCEPTED_KEY``): decision 188's *Accept the folder's
+    name*, for one return.
+
+    One ``rules_changed`` line whose details are the household's folder
+    name and, for a return's own accept, the return's (``return_name``),
+    and nothing else. **Never through** :func:`save_rules`: its
+    :func:`validated` runs over the whole list and rewrites rows, and its
+    line would carry a ``rules`` key the accept's line has never carried.
+    The caller holds the locks and has made every check (P327).
+    """
+    from tracker import ledger, store
+
+    named = {"household": household}
+    if return_name is not None:
+        named["return_name"] = return_name
+    store.record(conn, Path(return_dir), ledger.new(
+        ledger.RULES_CHANGED, **{ledger.INFO_KEY: named},
+        **{ledger.ACCEPTED_KEY: ledger.FOLDER_NAME_ACCEPTED}))
+
+
 def _head_of(conn, folder: Path) -> str:
     """The version of one engagement's list: a digest of the rules and the
     details the store holds for it, in the one shape the store hands them
@@ -1775,9 +1808,9 @@ def unlearn_keyword(
     wherever the list still spells the request as the teaching line did.
     After a respelling by case it does not: the journal's fold keeps the
     word under the old spelling.
-    The gate does not depend on it: ``store.check()`` folds the words by
-    the store's case rule (decision 136), so a line spelt either way is
-    the same request to it.
+    The gate does not depend on it: ``store_check.check()`` folds the
+    words by the store's case rule (decision 136), so a line spelt either
+    way is the same request to it.
 
     Unfiling still unlearns nothing (decision 77): the request wanted the
     word when the document was filed and wants it still, and guessing

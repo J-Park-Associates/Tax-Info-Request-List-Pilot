@@ -147,11 +147,13 @@ from tracker.fsio import make_new_folders, write_json_atomically
 from tracker.hold import one_reading
 from tracker.households import (
     HOUSEHOLD_PAUSED_YEAR,
+    accept_name,
     claim_disagrees,
     create_household,
     fed_by,
     household_returns,
     load_household_info,
+    mark_shared,
     open_years,
     pause_of,
     resolve_feeds,
@@ -221,6 +223,7 @@ from tracker.manifest import (
     ManifestError,
     Override,
     Status,
+    accept_folder_name,
     check_rules,
     check_tax_year,
     create_engagement,
@@ -4710,7 +4713,8 @@ def _cmd_mark_shared(argv: list[str]) -> dict:
 
     ``--engagement`` names any return of the household; no stdin. One
     ``sharing_confirmed`` event goes on the household's record, under its
-    lock, carrying nothing but the day (decision 126).
+    lock, carrying nothing but the day (decision 126), written by
+    :func:`tracker.households.mark_shared`.
 
     **The tracker cannot see Drive's sharing**, so this records a person's
     word and claims nothing more. The one part of the checklist it *can*
@@ -4727,7 +4731,7 @@ def _cmd_mark_shared(argv: list[str]) -> dict:
     with engagement_lock(household_dir):
         # The store is brought up to the household's journal before a line
         # is written, which is what load_household_info() has just done.
-        store.record(store.connect(), household_dir, ledger.new(ledger.SHARING_CONFIRMED))
+        mark_shared(household_dir)
     marked = shared_on(household_dir)
     return {"shared_on": marked.isoformat() if marked else None, "state": _state(engagement)}
 
@@ -4745,7 +4749,9 @@ def _cmd_accept_folder_name(argv: list[str]) -> dict:
     claim disagrees, or - for ``return`` - one with ``info.household`` and
     ``info.return_name`` for that return - never the household's name.
     Every line carries
-    ``accepted: folder_name``, the person's word, dated by its own stamp.
+    ``accepted: folder_name``, the person's word, dated by its own stamp,
+    and is written by :func:`tracker.households.accept_name` or
+    :func:`tracker.manifest.accept_folder_name`.
     **Nothing is moved or renamed.** Refused, with nothing written, when a
     year disagrees (:data:`YEAR_NOT_ACCEPTED`: a return's year is its
     record's) and, whatever the scope, when a recorded original of an
@@ -4762,7 +4768,6 @@ def _cmd_accept_folder_name(argv: list[str]) -> dict:
         raise ManifestError("Say what to accept: the household's name or this return's")
     household_dir = household_of(engagement)
     folder_name = household_dir.name
-    accepted = {ledger.ACCEPTED_KEY: ledger.FOLDER_NAME_ACCEPTED}
     returns = household_returns(household_dir)
     written: list[str] = []
     with ExitStack() as locks:
@@ -4786,18 +4791,15 @@ def _cmd_accept_folder_name(argv: list[str]) -> dict:
         # Only an accept of the household renames it: a return's accept
         # writes that return's own line and never the household's name.
         if scope == "household" and claim_disagrees(info.name, folder_name):
-            store.record(conn, household_dir, ledger.new(
-                ledger.HOUSEHOLD_CHANGED, **{ledger.HOUSEHOLD_KEY: {"name": folder_name}}, **accepted))
+            accept_name(conn, household_dir, folder_name)
             written.append(str(household_dir))
         for one in judged:
             if scope == "household":
                 if not claim_disagrees(details[one].household, folder_name):
                     continue
-                named = {"household": folder_name}
+                accept_folder_name(conn, one, folder_name)
             else:
-                named = {"household": folder_name, "return_name": one.name}
-            store.record(conn, one, ledger.new(
-                ledger.RULES_CHANGED, **{ledger.INFO_KEY: named}, **accepted))
+                accept_folder_name(conn, one, folder_name, return_name=one.name)
             written.append(str(one))
     # An accepted name is the list's name now (decision 194).
     return _with_list({"accepted": written, "state": _state(engagement)})

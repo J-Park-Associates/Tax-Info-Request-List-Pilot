@@ -24,8 +24,8 @@ pattern that reads it back, because how a sentence the machine wrote is
 read is a fact about the shape it was stored in, and two modules read one
 back (decisions 108 and 109) without retyping a word of either. The writers
 stay where they are: the journal is written by :mod:`tracker.filer`, the
-scanner and :mod:`tracker.manifest`, which is where the lock and the
-atomic replace belong.
+scanner, :mod:`tracker.manifest`, :mod:`tracker.households` and the
+reminder, which is where the lock and the atomic replace belong.
 
 It sits at layer 1 and imports nothing of the package but the layout's
 character and device rule and the value rule's bounds

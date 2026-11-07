@@ -39,10 +39,11 @@ each level of the layout is) rather than by a file name.
 **The firm's word about the share** (decision 126) is the one thing here
 that is not a field. The tracker cannot see Drive's sharing, so pressing
 *Mark as shared* records a :data:`tracker.ledger.SHARING_CONFIRMED` event
-carrying nothing but its stamp, folded by nothing and read back by day
-(:func:`shared_on`) - the pattern an approved draft uses. A field would
-have claimed the household *is* shared; a dated event says only that a
-person said so, which is the whole of what can honestly be recorded.
+(:func:`mark_shared`) carrying nothing but its stamp, folded by nothing and
+read back by day (:func:`shared_on`) - the pattern an approved draft uses.
+A field would have claimed the household *is* shared; a dated event says
+only that a person said so, which is the whole of what can honestly be
+recorded.
 
 **What is never in it.** Not one word of a client's document, and no
 document at all: a household record is about the folder, not about the
@@ -61,10 +62,14 @@ import datetime as dt
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from tracker.layout import CLIENT_FOLDER_MISSING as _CLIENT_FOLDER_MISSING
 from tracker.layout import household_name_of, household_of, is_year_folder, name_key, year_of
 from tracker.records import HouseholdInfo, household_to_json, link_problem
+
+if TYPE_CHECKING:
+    import sqlite3
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,9 +146,10 @@ def save_household(
     record of decisions rather than of clicks.
 
     The name is never a field that moves here: the folder is the name
-    (decision 188). The one writer of it after creation is the app's
-    *Accept the folder's name*, which records the folder's name with the
-    person's word (``ledger.ACCEPTED_KEY``) when a record claimed another.
+    (decision 188). The one writer of it after creation is
+    :func:`accept_name`, the app's *Accept the folder's name*, which records
+    the folder's name with the person's word (``ledger.ACCEPTED_KEY``) when
+    a record claimed another.
     """
     from contextlib import nullcontext
 
@@ -169,6 +175,37 @@ def save_household(
             ledger.HOUSEHOLD_KEY: moved,
         }))
     return HouseholdSaved(fields=tuple(moved), recorded=True)
+
+
+def mark_shared(household_dir: Path | str) -> None:
+    """Record the person's word that the household is shared: one
+    ``sharing_confirmed`` line carrying nothing but the day (decision 126).
+
+    The caller holds the household's lock and has already refused a
+    household with no link (the API's ``SHARE_LINK_FIRST``), because what
+    to refuse is the door's decision and what to write is this module's
+    (P327).
+    """
+    from tracker import ledger, store
+
+    store.record(store.connect(), Path(household_dir), ledger.new(ledger.SHARING_CONFIRMED))
+
+
+def accept_name(conn: sqlite3.Connection, household_dir: Path | str, folder_name: str) -> None:
+    """Record the household's folder name as its name, with the person's
+    word (``ledger.ACCEPTED_KEY``): decision 188's *Accept the folder's
+    name*, the one writer of a household's name after creation.
+
+    One ``household_changed`` line carrying the name and the word, never
+    through :func:`save_household`, which has no word to carry and never
+    moves the name. The caller holds the locks and has made every check
+    (P327).
+    """
+    from tracker import ledger, store
+
+    store.record(conn, Path(household_dir), ledger.new(
+        ledger.HOUSEHOLD_CHANGED, **{ledger.HOUSEHOLD_KEY: {"name": folder_name}},
+        **{ledger.ACCEPTED_KEY: ledger.FOLDER_NAME_ACCEPTED}))
 
 
 def shared_on(household_dir: Path | str) -> dt.date | None:

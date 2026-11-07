@@ -6959,6 +6959,72 @@ def test_a_returns_accept_writes_only_that_returns_line(capsys, demo_root):
     last = ledger.read_events(engagement)[-1]
     assert last[ledger.INFO_KEY] == {"household": "Park Household", "return_name": engagement.name}
     assert household_pause(household) == HOUSEHOLD_PAUSED
+
+
+def test_the_accept_and_the_share_write_the_lines_they_wrote_before(capsys, demo_root):
+    """P327 (SPEC-architecture-p3 R3.7.4): the API asks the household's and
+    the return's own writers for the share and the accept, and every line
+    they write is the line the API composed itself before - pasted here as
+    the dicts it built. A line is compared less its stamp and the keys every
+    append adds (``ledger.LINE_KEYS``), each named by its constant. The
+    journal writes a line's keys sorted, so their order is not on disk to
+    compare: the comparison is the dict's."""
+    from tracker.households import household_pause
+    from tracker.layout import private_household_dir
+
+    def written(folder, since):
+        return [{key: value for key, value in line.items()
+                 if key != ledger.AT_KEY and key not in ledger.LINE_KEYS}
+                for line in ledger.read_events(folder)[since:]]
+
+    items = [{"identifier": "A01", "document": "W-2"}]
+    assert run(capsys, "create", stdin={"household": "Park Family", "return_name": "1040 - John Park",
+                                        "items": items})[0] == 0
+    assert run(capsys, "create", stdin={
+        "household_path": str(private_household_dir(demo_root, "Park Family")),
+        "return_name": "1040 - Maria Park", "items": items})[0] == 0
+    private = demo_root / PRIVATE_TREE
+    (private / "Park Family").rename(private / "Park Household")
+    household = private / "Park Household"
+    john, maria = (where(demo_root, name, household="Park Household")
+                   for name in ("1040 - John Park", "1040 - Maria Park"))
+
+    # One return's accept: that return's two names, and nothing on the
+    # household's record or the other return's.
+    lines = {one: len(ledger.read_events(one)) for one in (household, john, maria)}
+    code, payload = run(capsys, "accept-folder-name", api.ENGAGEMENT_FLAG, str(john),
+                        stdin={"seq": lines[household], "scope": "return"})
+    assert code == 0, payload
+    assert written(john, lines[john]) == [{
+        "event": "rules_changed",
+        "info": {"household": "Park Household", "return_name": "1040 - John Park"},
+        "accepted": "folder_name"}]
+    assert written(household, lines[household]) == written(maria, lines[maria]) == []
+
+    # The household's accept: its own name, and the one return whose claim
+    # still disagrees - John's agrees since his own accept.
+    lines = {one: len(ledger.read_events(one)) for one in (household, john, maria)}
+    code, payload = run(capsys, "accept-folder-name", api.ENGAGEMENT_FLAG, str(maria),
+                        stdin={"seq": lines[household], "scope": "household"})
+    assert code == 0, payload
+    assert written(household, lines[household]) == [{
+        "event": "household_changed",
+        "household": {"name": "Park Household"},
+        "accepted": "folder_name"}]
+    assert written(maria, lines[maria]) == [{
+        "event": "rules_changed",
+        "info": {"household": "Park Household"},
+        "accepted": "folder_name"}]
+    assert written(john, lines[john]) == []
+    assert household_pause(household) == ""
+
+    # The share: the day and nothing else.
+    assert run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(john),
+               stdin={"link": "https://drive.example/park"})[0] == 0
+    since = len(ledger.read_events(household))
+    code, payload = run(capsys, "mark-shared", api.ENGAGEMENT_FLAG, str(john))
+    assert code == 0, payload
+    assert written(household, since) == [{"event": "sharing_confirmed"}]
 # ------------------------------------------ decision 159: the record's checkpoint ----
 
 

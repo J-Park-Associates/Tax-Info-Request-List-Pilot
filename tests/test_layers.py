@@ -473,6 +473,52 @@ def test_verify_reads_the_walk_and_the_proof_at_call_time():
     assert call["verify"] == {"index", "layout", "registry", "validators"}, call["verify"]
 
 
+#: The modules that compose a record event - a call of ``ledger.new`` - by
+#: name: the modules whose decisions the record holds, each writing its own
+#: family. The door asks them and never composes an event itself (B-4,
+#: P327); a new composer is a decision.
+COMPOSERS: frozenset[str] = frozenset({"filer", "households", "manifest", "reminder", "scanner"})
+
+
+def _composers() -> set[str]:
+    """Every module under tracker/ that calls ``ledger.new`` - the attribute
+    ``new`` on the name the journal module is bound to - or a bare ``new``
+    from-imported from ``tracker.ledger``, anywhere in it: at load time, in
+    a function or in its ``__main__`` block."""
+    found: set[str] = set()
+    for path in sorted(PACKAGE.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        module, bare = {"ledger"}, set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "tracker":
+                module |= {alias.asname for alias in node.names if alias.name == "ledger" and alias.asname}
+            elif isinstance(node, ast.ImportFrom) and node.module == "tracker.ledger":
+                bare |= {alias.asname or alias.name for alias in node.names if alias.name == "new"}
+            elif isinstance(node, ast.Import):
+                module |= {alias.asname for alias in node.names if alias.name == "tracker.ledger" and alias.asname}
+        for node in ast.walk(tree):
+            func = node.func if isinstance(node, ast.Call) else None
+            if (isinstance(func, ast.Attribute) and func.attr == "new"
+                    and isinstance(func.value, ast.Name) and func.value.id in module) or (
+                    isinstance(func, ast.Name) and func.id in bare):
+                found.add(path.stem)
+    return found
+
+
+def test_only_the_domain_writers_compose_a_record_event():
+    """B-4, one door into the record (P327, SPEC-architecture-p3 R3.7.5): a
+    line of the record is composed by the module whose decision it records -
+    the filer's filings, the scanner's statuses, the manifest's list, the
+    household's own record, the reminder's approved draft - and the door
+    (the API, the engine, the error words, the replies) asks one of them
+    and never composes an event itself, so what a line carries is decided
+    in one place. The walk must find the filer, or it found nothing."""
+    found = _composers()
+    assert "filer" in found, "the walk must find the filer's events"
+    assert found == COMPOSERS, sorted(found ^ COMPOSERS)
+    assert not COMPOSERS & DOMAINS["door"], sorted(COMPOSERS & DOMAINS["door"])
+
+
 def test_the_manifest_imports_the_bounds_and_the_record_and_nothing_else():
     """Narrower since decision 103, and kept so by 104.
 
