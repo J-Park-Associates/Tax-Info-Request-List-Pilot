@@ -36,6 +36,17 @@ and the folder of originals the household's returns share - left for
 the open year, which the shared folder's test there and the household's
 tests in the filer's file both take.
 
+With P334 (SPEC-architecture-p4 P4.8) the tests that drive only the code
+that moved to ``tracker/readme_ack.py`` - the client README's received list
+and its refresh - left for ``tests/test_readme_ack.py``, and seven helpers
+came here from ``tests/test_filer.py`` with their words, because tests in
+both files read them: :data:`DAY3` (the day a pass recovers what a run left
+half done, decision 119), :func:`events_named` (every journal line of one
+event name), :func:`open_intents` (the moves begun and not finished),
+:func:`_status` (one request's row in the list), :data:`MORTGAGE` (the
+1098's text), :func:`_filed_1098` (C01's one document, sorted and scanned
+the ordinary way) and :func:`_a_pass` (the pass as the runner makes it).
+
 **The one fixture here is named, not imported.** ``two_returns`` is a
 fixture, and a test file that wants it names it once by assignment
 (``two_returns = filer_helpers.two_returns``), as ``tests/store_helpers.py``'s
@@ -45,14 +56,16 @@ ruff's F811 at every such test. The other fixture both files take,
 once in each file.
 """
 
+import datetime as dt
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from tests.builders import BUSINESS, ITEMS, make_engagement
-from tracker import ledger
+from tests.builders import BUSINESS, DAY1, ITEMS, drop, make_engagement, sort
+from tracker import ledger, store
 from tracker.layout import originals_of
+from tracker.manifest import load_manifest
 from tracker.scaffold import (
     PREPARED_DIR_NAME,
     REVIEW_DIR_NAME,
@@ -152,3 +165,46 @@ def two_returns(tmp_path):
     business = make_engagement(tmp_path, BUSINESS, household="Park Family",
                                return_name="1120S - Park Landscaping")
     return personal, business
+
+
+#: The day a pass recovers what a run left half done (decision 119): the
+#: row it records is still dated the day the decision was made.
+DAY3 = dt.date(2026, 7, 15)
+
+
+def events_named(engagement, name):
+    """Every journal line of one event name."""
+    return [e for e in ledger.read_events(engagement) if e[ledger.EVENT_KEY] == name]
+
+
+def open_intents(engagement):
+    """The moves this engagement has begun and not finished."""
+    return store.open_intents(store.connect(), engagement)
+
+
+def _status(engagement, identifier):
+    return next(i for i in load_manifest(engagement) if i.identifier == identifier)
+
+
+MORTGAGE = "Form 1098 Mortgage Interest Statement 2025"
+
+
+def _filed_1098(engagement, name="1098.pdf"):
+    """C01's one document, sorted and scanned the ordinary way: Received."""
+    from tracker.manifest import Status
+    from tracker.scanner import scan_engagement
+
+    drop(engagement, name, MORTGAGE)
+    [filed] = sort(engagement, today=DAY1).filed
+    scan_engagement(engagement, today=DAY1)
+    assert filed.identifier == "C01" and _status(engagement, "C01").status == Status.RECEIVED
+    return filed
+
+
+def _a_pass(engagement, today):
+    """The pass as the runner makes it: the sort, whose sweep proves every
+    copy first, and then the scan."""
+    from tracker.scanner import scan_engagement
+
+    report = sort(engagement, today=today)
+    return report, scan_engagement(engagement, today=today)
