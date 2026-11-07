@@ -180,6 +180,7 @@ import json
 import logging
 import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, NotRequired, TypedDict
@@ -1251,17 +1252,19 @@ class Folded:
     intents: dict[str, dict] = field(default_factory=dict)
     #: identifier -> the keywords filings taught that request and nobody
     #: has taken back, in the order they were taught (decision 113).
-    #: Keyed by the identifier exactly as the event spells it: this module
-    #: sits below :mod:`tracker.records` and may not borrow its
-    #: case-folding. This is the journal's own fold, what
-    #: ``python -m tracker.ledger`` prints; the store's check does not
-    #: compare against it but folds the same lines again by
-    #: ``records.identifier_key``, as the store keys them
-    #: (``tracker.store_check._recorded_learned``, decision 136).
+    #: Keyed by the identifier exactly as the event spells it, unless the
+    #: caller hands :func:`replay` a ``key`` - this module sits below
+    #: :mod:`tracker.records` and may not borrow its case-folding, so the
+    #: store passes ``records.identifier_key`` and gets the same fold keyed
+    #: as it keys its tables (decision 136, P326). Unkeyed, it is what
+    #: ``python -m tracker.ledger`` prints.
     learned: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    #: key -> the spelling the last scan of that key carried; filled only by
+    #: a keyed fold (P326).
+    spellings: dict[str, str] = field(default_factory=dict)
 
 
-def apply(state: Folded, event: dict) -> Folded:
+def apply(state: Folded, event: dict, *, key: Callable[[str], str] | None = None) -> Folded:
     """One event folded into what the record said before it. Returns ``state``.
 
     **The whole of both fold rules, in one place.** :func:`replay` is this
@@ -1270,6 +1273,14 @@ def apply(state: Folded, event: dict) -> Folded:
     so an index that is replayed a line at a time and one that is folded
     from the start cannot come out different. Anything that has to change
     about what an event means changes here.
+
+    **A status and a taught word are keyed by ``key``, when one is handed
+    in** (P326). Unkeyed, each is keyed by the identifier exactly as the
+    line spells it, because this module may not import the case rule that
+    sits above it; keyed, by ``key(identifier)``, and ``state.spellings``
+    remembers the spelling each key's last scan carried. The store hands
+    in ``records.identifier_key``, so its writer and its check read this
+    one fold rather than folding the same lines again by a copy of it.
 
     ``state.rows`` is mutated where it can be; a row that arrived from
     another identity is the one case that cannot be, because a dict cannot
@@ -1284,7 +1295,13 @@ def apply(state: Folded, event: dict) -> Folded:
     """
     name = event.get(EVENT_KEY)
     if name == SCANNED:
-        state.statuses.update(event.get(STATUSES_KEY) or {})
+        if key is None:
+            state.statuses.update(event.get(STATUSES_KEY) or {})
+        else:
+            for identifier, status in (event.get(STATUSES_KEY) or {}).items():
+                k = key(identifier)
+                state.statuses[k] = status
+                state.spellings[k] = identifier
         return state
     if name in (RULES_CHANGED, RULES_IMPORTED):
         return _apply_rules_event(state, event)
@@ -1296,11 +1313,13 @@ def apply(state: Folded, event: dict) -> Folded:
     if name in (MOVING, MOVE_ABANDONED):
         return _apply_intent_event(state, event)
     if name in (KEYWORD_LEARNED, KEYWORD_UNLEARNED):
-        return _apply_keyword_event(state, event)
+        return _apply_keyword_event(state, event, key)
     if name in RELEASE_EVENTS:
         return _apply_release(state, event)
     if name not in ROW_EVENTS:
         return state
+    # From here ``key`` is the row's identity: the fold's key rule is read
+    # only by the scan and keyword branches above, which have returned.
     key = event.get(KEY_KEY)
     if key is None:
         raise LedgerError(f"an index-shaped {name!r} event carries no {KEY_KEY!r}")
@@ -1394,7 +1413,7 @@ def _apply_rules_event(state: Folded, event: dict) -> Folded:
     return state
 
 
-def _apply_keyword_event(state: Folded, event: dict) -> Folded:
+def _apply_keyword_event(state: Folded, event: dict, key: Callable[[str], str] | None) -> Folded:
     """One keyword taught or taken back, folded into ``state.learned``.
 
     **In the order they were taught.** A word is appended, or moved last
@@ -1405,20 +1424,22 @@ def _apply_keyword_event(state: Folded, event: dict) -> Folded:
     carries the new sequence number (``ORDER BY seq``). For lines that
     spell the request alike the two folds agree by construction rather
     than because no writer here teaches a word twice; across spellings
-    the store's check folds by ``records.identifier_key`` (decision 136).
+    a keyed fold folds by the key it is handed (decision 136).
 
     The keyword is matched exactly, as the store keys it; the identifier is
     the event's own spelling, for the reason :class:`Folded` gives - so
     this fold keys a request by the exact spelling each line carries, and
-    ``tracker.store_check.check()`` applies this same rule per
-    ``records.identifier_key`` instead (``_recorded_learned``, decision
-    136), which is how the store keys it. An
+    ``tracker.store_check.check()`` runs this same function with
+    ``key=records.identifier_key`` (decision 136, P326), which is how the
+    store keys it. An
     unlearn of a word nothing taught folds to nothing: the writer
     (``tracker.manifest.unlearn_keyword``) refuses the pair by name before
     a line is written, and a reader that met one anyway is reading a
     record, not deciding anything.
     """
     identifier = str(event.get(IDENTIFIER_KEY, ""))
+    if key is not None:
+        identifier = key(identifier)
     keyword = str(event.get(KEYWORD_KEY, ""))
     taught = state.learned.get(identifier, ())
     left = tuple(word for word in taught if word != keyword)
@@ -1432,16 +1453,18 @@ def _apply_keyword_event(state: Folded, event: dict) -> Folded:
     return state
 
 
-def replay(events: list[dict]) -> Folded:
+def replay(events: list[dict], *, key: Callable[[str], str] | None = None) -> Folded:
     """Every event folded, oldest first: the index, the statuses, the rules
     and the keywords filings taught.
 
     One walk for a caller that wants all of them, and the definition
-    of what the rows, the statuses and the rules each are.
+    of what the rows, the statuses and the rules each are. ``key`` is
+    handed to every :func:`apply`, so a keyed replay is the same fold keyed
+    by it (P326).
     """
     state = Folded()
     for event in events:
-        apply(state, event)
+        apply(state, event, key=key)
     return state
 
 

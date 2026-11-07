@@ -531,13 +531,15 @@ request whose words differ, in the order each side holds them.
 A request is one request whatever its case (decision 136). The store keys a
 status and a taught word by `records.identifier_key`; `ledger.replay()` keys
 them by the spelling each line carried, because the journal's module sits
-below `records` and has no case rule. So for those two the check does not
-use the journal's fold: it folds the same lines again, keyed without case
-and in journal order (`_recorded_statuses`, `_recorded_learned`) — the last
-scan of a request wins, a word taught again moves last, a word taken back
-under either spelling is gone. A request the person retyped by case is one
-request to the gate, as it is to the store; the index rows, the rules, the
-intents and the household are compared exactly as before.
+below `records` and has no case rule. So for those two the check hands the
+journal's own fold the store's key: `ledger.replay(events, key=identifier_key)`
+folds the same lines keyed without case and in journal order (P326) — the
+last scan of a request wins, a word taught again moves last, a word taken
+back under either spelling is gone — and `_recorded_statuses` reads the
+statuses out of it with the spelling each last scan carried. A request the
+person retyped by case is one request to the gate, as it is to the store;
+the index rows, the rules, the intents and the household are compared
+exactly as before.
 
 The autouse fixture in `tests/conftest.py` does exactly this after **every
 test in the suite**: for every engagement folder the test left behind, build

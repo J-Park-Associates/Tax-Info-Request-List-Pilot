@@ -3,11 +3,12 @@
 **What it holds.** :func:`check`, the gate (decision 101: "the check is the
 gate", ``docs/storage.md``), which compares the store's tables with
 :func:`tracker.ledger.replay` over an engagement's own journal and names
-every place they disagree, in sentences; the folds it reads the record's
-side through by the store's case rule (:func:`_recorded_learned`,
-decision 136); and :func:`export`, the three spreadsheets a person asks for
-on demand, with the spreadsheet-cell rule (:data:`FORMULA_LEADS`,
-:func:`_as_text`) that only the export's writer reads.
+every place they disagree, in sentences - the record's statuses and
+taught words read off that replay handed the store's case rule
+(``ledger.replay(events, key=identifier_key)``, decision 136, P326); and
+:func:`export`, the three spreadsheets a person asks for on demand, with
+the spreadsheet-cell rule (:data:`FORMULA_LEADS`, :func:`_as_text`) that
+only the export's writer reads.
 
 **Why it is apart from the store** (SPEC-architecture-p3 P3.4, P324). The
 store answers questions and applies lines; the check asks what else holds
@@ -31,15 +32,19 @@ block, and that is the one cycle this module closes
 **What it reads of the store, and why by name.** The column lists, the key
 rule (``key_root``, ``engagement_path``), the row reader, the cell forms
 both sides are compared in (``_to_sql``, ``_agree``, ``_household_cell``),
-the stored taught words and the statuses' fold (:func:`_recorded_statuses`,
-which ``_apply`` writes through, decision 138) stay the store's, because the
-store writes with them. This module imports each by name, so the code below
+the stored taught words and the statuses' view of the keyed fold
+(:func:`_recorded_statuses`, which ``_apply`` writes through, decision 138)
+stay the store's, because the store writes with them. This module imports
+each by name, so the code below
 reads them bare exactly as it did in the store, and nothing is re-exported
 for a reader: every caller names ``tracker.store_check``.
 
 The code below came from the store byte for byte, with its comments and
 docstrings, but for :func:`_write_csv`'s sentence on what this module
 imports: where they name :func:`_recorded_statuses`, they mean the store's.
+P326 then had :func:`check` hand the journal's own fold the store's key
+rather than fold the same lines again itself, and the taught words' copy
+of that fold went.
 """
 
 from __future__ import annotations
@@ -98,14 +103,16 @@ def check(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str
     journal's own fold keys a status and a taught word by the spelling
     each line carries, because :mod:`tracker.ledger` sits below
     :mod:`tracker.records` and has no case rule; the store keys both by
-    ``records.identifier_key``. So those two are folded again here, from
-    the same lines, by the store's rule (:func:`_recorded_statuses`,
-    :func:`_recorded_learned`) - otherwise a request the person retyped by
-    case is two requests to the check and one to the store, and the gate
-    names a disagreement no rebuild can clear. The lines are read once
+    ``records.identifier_key``. So for those two the journal's own fold is
+    run again over the same lines, handed the store's rule
+    (``ledger.replay(events, key=identifier_key)``, P326), and
+    :func:`tracker.store._recorded_statuses` reads the statuses out of it -
+    otherwise a request the person retyped by case is two requests to the
+    check and one to the store, and the gate names a disagreement no
+    rebuild can clear. The lines are read once
     (:func:`tracker.ledger.read_with_head`, decision 135) and the same list
-    is handed to the replay and to both folds, so no two of them can be
-    looking at two different moments of the journal.
+    is handed to both replays, so neither can be looking at a different
+    moment of the journal from the other.
     """
     name = Path(engagement_dir).name
     rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
@@ -127,10 +134,11 @@ def check(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str
         problems.append(REWRITTEN.format(
             rel=rel, line=_rewritten_from(conn, engagement["id"], events, applied)))
     problems += _check_documents(conn, engagement["id"], name, folded.rows)
-    problems += _check_statuses(conn, engagement["id"], name, _recorded_statuses(events))
+    keyed = ledger.replay(events, key=identifier_key)
+    problems += _check_statuses(conn, engagement["id"], name, _recorded_statuses(keyed))
     problems += _check_rules(conn, engagement["id"], name, folded)
     problems += _check_intents(conn, engagement["id"], name, folded.intents)
-    problems += _check_learned(conn, engagement["id"], name, _recorded_learned(events))
+    problems += _check_learned(conn, engagement["id"], name, keyed.learned)
     problems += _check_household(conn, engagement["id"], name, folded.household)
     # Every line judged again by today's admission (decision 187), so a line
     # an earlier version applied that the rule now refuses is named on the
@@ -231,32 +239,6 @@ def _check_intents(
     return problems
 
 
-def _recorded_learned(events: list[dict]) -> dict[str, tuple[str, ...]]:
-    """The words filings taught each request, keyed as the store keys it
-    (decision 136), in the order they were taught.
-
-    ``ledger._apply_keyword_event``'s rule applied per ``identifier_key``:
-    a word taught is moved last, a word taken back is removed and a
-    request left with none is dropped - which is the store's
-    ``INSERT OR REPLACE ... seq`` read back ``ORDER BY seq``.
-    """
-    learned: dict[str, tuple[str, ...]] = {}
-    for event in events:
-        name = event.get(ledger.EVENT_KEY)
-        if name not in (ledger.KEYWORD_LEARNED, ledger.KEYWORD_UNLEARNED):
-            continue
-        key = identifier_key(str(event.get(ledger.IDENTIFIER_KEY, "")))
-        keyword = str(event.get(ledger.KEYWORD_KEY, ""))
-        left = tuple(word for word in learned.get(key, ()) if word != keyword)
-        if name == ledger.KEYWORD_LEARNED:
-            learned[key] = left + (keyword,)
-        elif left:
-            learned[key] = left
-        else:
-            learned.pop(key, None)
-    return learned
-
-
 def _check_statuses(
     conn: sqlite3.Connection, engagement_id: int, name: str,
     recorded: dict[str, tuple[str, dict]],
@@ -331,10 +313,10 @@ def _check_learned(
 
     The table keys a request without case and the journal's fold keys it
     exactly as each line spells it (:class:`tracker.ledger.Folded`), so the
-    record's side is folded from the lines by the table's own rule
-    (:func:`_recorded_learned`, decision 136): two spellings of one request
-    are one list, in the order the words were taught, and a word taken
-    back under either spelling is gone from it.
+    record's side is the journal's fold handed the table's own rule
+    (``ledger.replay(events, key=identifier_key)``, decision 136, P326):
+    two spellings of one request are one list, in the order the words were
+    taught, and a word taken back under either spelling is gone from it.
     """
     stored = _stored_learned(conn, engagement_id)
     return [

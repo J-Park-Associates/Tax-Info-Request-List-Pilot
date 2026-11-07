@@ -18,6 +18,7 @@ import subprocess
 import sys
 from dataclasses import asdict
 from pathlib import Path
+from typing import NotRequired, get_origin, get_type_hints, is_typeddict
 
 import pytest
 
@@ -419,6 +420,185 @@ def test_a_word_taught_twice_folds_last_on_both_sides(tmp_path, engagement):
     assert store.learned_keywords(conn, engagement) == {"a01": ("escrow", "lender")}
     assert ledger.replay(ledger.read_events(engagement)).learned == {"A01": ("escrow", "lender")}
     assert store_check.check(conn, tmp_path, engagement) == []
+
+
+def scanned(statuses: dict | None) -> dict:
+    return ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: statuses})
+
+
+def test_a_keyed_fold_is_the_two_store_folds_it_replaced():
+    """P326: handed ``records.identifier_key``, the journal's own fold says
+    exactly what the store's two folds of the same lines said, so the
+    writer and the check moved onto it without any answer changing.
+
+    The two functions it replaced are pasted below from the base the job
+    started on (``tracker/store.py`` and ``tracker/store_check.py`` at
+    ``69cc9a2``), byte for byte but for their names and indentation, so
+    neither is a name of this module. The journals are made up: one request
+    scanned under three spellings, a word taught, taken back and taught
+    again, a word taken back under the other spelling, a word taken back
+    that nothing taught, and scans whose statuses are empty, null or not
+    there at all. The order is compared as well as the content, because the
+    learned words' order is the answer and the statuses' is the order the
+    writer upserts them in.
+    """
+    from tracker.records import identifier_key
+
+    def _old_recorded_statuses(events: list[dict]) -> dict[str, tuple[str, dict]]:
+        """The record's status for each request, keyed as the store keys it
+        (decision 136): ``identifier_key`` -> (the spelling the last scan used,
+        what it recorded).
+
+        Every ``scanned`` line in order, each identifier's status replacing
+        whatever its key held, so the last write per request wins whichever
+        case it was spelt in - the store's ``INSERT OR REPLACE`` by the folded
+        key. It is also what :func:`_apply` writes for a batch of lines
+        (decision 138), so the writer and the check read the one rule.
+        """
+        statuses: dict[str, tuple[str, dict]] = {}
+        for event in events:
+            if event.get(ledger.EVENT_KEY) == ledger.SCANNED:
+                for identifier, status in (event.get(ledger.STATUSES_KEY) or {}).items():
+                    statuses[identifier_key(identifier)] = (identifier, status)
+        return statuses
+
+    def _old_recorded_learned(events: list[dict]) -> dict[str, tuple[str, ...]]:
+        """The words filings taught each request, keyed as the store keys it
+        (decision 136), in the order they were taught.
+
+        ``ledger._apply_keyword_event``'s rule applied per ``identifier_key``:
+        a word taught is moved last, a word taken back is removed and a
+        request left with none is dropped - which is the store's
+        ``INSERT OR REPLACE ... seq`` read back ``ORDER BY seq``.
+        """
+        learned: dict[str, tuple[str, ...]] = {}
+        for event in events:
+            name = event.get(ledger.EVENT_KEY)
+            if name not in (ledger.KEYWORD_LEARNED, ledger.KEYWORD_UNLEARNED):
+                continue
+            key = identifier_key(str(event.get(ledger.IDENTIFIER_KEY, "")))
+            keyword = str(event.get(ledger.KEYWORD_KEY, ""))
+            left = tuple(word for word in learned.get(key, ()) if word != keyword)
+            if name == ledger.KEYWORD_LEARNED:
+                learned[key] = left + (keyword,)
+            elif left:
+                learned[key] = left
+            else:
+                learned.pop(key, None)
+        return learned
+
+    missing, received, reviewed = ({"status": s} for s in ("Missing", "Received", "Reviewed"))
+    journals = {
+        "one request scanned under three spellings": [
+            scanned({"A01": missing, "C01": missing}), scanned({"a01": received}),
+            ledger.new(ledger.PARKED, key="p/one", row=row()),
+            scanned({"A01 ": reviewed, "c01 ": received}), scanned({"a01": received})],
+        "taught, taken back and taught again": [
+            taught("A01", "lender"), taught("A01", "escrow"), taught("C01", "tuition"),
+            taken_back("A01", "lender"), taught("A01", "lender")],
+        "taken back under the other spelling": [
+            taught("A01", "lender"), taught("a01", "escrow"), taken_back("a01 ", "lender"),
+            taught("C01", "tuition"), taken_back("c01", "tuition")],
+        "taken back that nothing taught": [
+            taken_back("A01", "lender"), taught("a01", "escrow"), taken_back("A01", "lender")],
+        "scans that change nothing": [
+            scanned({}), scanned(None), ledger.new(ledger.SCANNED), scanned({"A01": missing}),
+            scanned({}), scanned(None), ledger.new(ledger.SCANNED)],
+        "nothing at all": [],
+    }
+    for case, events in journals.items():
+        keyed = ledger.replay(events, key=identifier_key)
+        old_statuses, old_learned = _old_recorded_statuses(events), _old_recorded_learned(events)
+        assert list(store._recorded_statuses(keyed).items()) == list(old_statuses.items()), case
+        assert list(keyed.learned.items()) == list(old_learned.items()), case
+
+    # And the answers are the ones the rules say, not merely the same ones.
+    three = ledger.replay(journals["one request scanned under three spellings"], key=identifier_key)
+    assert store._recorded_statuses(three) == {"a01": ("a01", received), "c01": ("c01 ", received)}
+    other = ledger.replay(journals["taken back under the other spelling"], key=identifier_key)
+    assert other.learned == {"a01": ("escrow",)}
+
+
+def test_an_unkeyed_fold_is_the_journals_own():
+    """With no ``key`` the fold is what it was before P326 - what
+    ``python -m tracker.ledger`` prints - and a key changes nothing but the
+    statuses and the taught words: two spellings of one request are two
+    entries unkeyed and one keyed."""
+    from tracker.records import identifier_key
+
+    missing, received = {"status": "Missing"}, {"status": "Received"}
+    events = [scanned({"A01": missing}), ledger.new(ledger.PARKED, key="p/one", row=row()),
+              scanned({"a01": received}), taught("A01", "lender"), taught("a01", "escrow")]
+
+    unkeyed = ledger.replay(events)
+    assert unkeyed.statuses == {"A01": missing, "a01": received}
+    assert unkeyed.learned == {"A01": ("lender",), "a01": ("escrow",)}
+    assert unkeyed.spellings == {}
+
+    keyed = ledger.replay(events, key=identifier_key)
+    assert keyed.statuses == {"a01": received}
+    assert keyed.spellings == {"a01": "a01"}
+    assert keyed.learned == {"a01": ("lender", "escrow")}
+    assert (keyed.rows, keyed.rules, keyed.info, keyed.household, keyed.intents) == (
+        unkeyed.rows, unkeyed.rules, unkeyed.info, unkeyed.household, unkeyed.intents)
+
+
+# ------------------------------------------------------------ the event types ----
+
+
+#: What a line of each event type may go without, as the types say today.
+#: Every line may go without its stamp and the three keys the record itself
+#: writes (decision 159).
+_ANY_LINE = frozenset({"at", "prev", "host", "fmt"})
+MAY_BE_ABSENT = {
+    "Event": _ANY_LINE,
+    "RowEvent": _ANY_LINE | {"was", "attachments", "skipped"},
+    "ScannedEvent": _ANY_LINE | {"statuses"},
+    "RulesChangedEvent": _ANY_LINE | {"rules", "removed", "info", "accepted", "digest"},
+    "IntentOp": frozenset({"to", "digest"}),
+    "IntentEvent": _ANY_LINE | {"key", "ops", "row", "was", "also", "reason", "then", "by"},
+    "ReleaseEvent": _ANY_LINE | {"reason", "was"},
+    "KeywordEvent": _ANY_LINE,
+    "HouseholdEvent": _ANY_LINE | {"household", "accepted"},
+    "DraftEvent": _ANY_LINE | {"asked", "held", "file", "fingerprint", "text_fingerprint", "stage"},
+}
+
+#: The one key constant not named ``*_KEY``. ``EVENT_KEY_AFTER`` (``"then"``)
+#: is named for what the key holds - the event after the move - not for
+#: being a key, and renaming it would be an unnamed change to the ledger's
+#: exports, moving the filer's five reads of it, the ledger's own words and
+#: the curated ledger node's mention with it, for no gain.
+NAMED_FOR_WHAT_IT_HOLDS = ("EVENT_KEY_AFTER",)
+
+
+def test_every_event_type_names_its_keys_by_the_key_constants():
+    """Each key of each event type - the nine of them (:class:`Event` and
+    one per family) and a moving line's steps (``IntentOp``) - is the value
+    of one of the ledger's key constants, so the types and the code that
+    writes and reads a line spell a key once (P2.11's carry-forward, P326).
+
+    The types are read with ``get_type_hints(..., include_extras=True)``:
+    under the ledger's ``from __future__ import annotations`` a class-form
+    ``TypedDict``'s ``__required_keys__`` names every key, so it is never
+    read. Which keys may be absent is held as written today, and a type
+    added to the ledger must be added here.
+    """
+    constants = {value for name, value in vars(ledger).items()
+                 if name.endswith("_KEY") and isinstance(value, str)}
+    held = {getattr(ledger, name): name for name in NAMED_FOR_WHAT_IT_HOLDS}
+    types = {name: value for name, value in vars(ledger).items() if is_typeddict(value)}
+    assert set(types) == set(MAY_BE_ABSENT)
+
+    through_the_exception = set()
+    for name, typed in types.items():
+        hints = get_type_hints(typed, include_extras=True)
+        for key in hints:
+            assert key in constants or key in held, f"{name}.{key} is no ledger key constant's value"
+            if key not in constants:
+                through_the_exception.add((name, key))
+        absent = {key for key, hint in hints.items() if get_origin(hint) is NotRequired}
+        assert absent == MAY_BE_ABSENT[name], name
+    assert through_the_exception == {("IntentEvent", "then")}
 
 
 # ------------------------------------------------------------------- head ----

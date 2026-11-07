@@ -1668,24 +1668,24 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
     shape that function folds, hands it one event at a time, and writes the
     result back - so an index replayed a line at a time here and one folded
     from the first line by a reader cannot come out different. The statuses
-    are the exception (decision 138): ``ledger.Folded.statuses`` is keyed by
-    the exact spelling, because the ledger imports nothing that could fold
-    case, so a batch scanning ``A01``, ``a01`` and ``A01`` again would hold
-    two entries and write the second scan's status last. What these events
-    changed is taken instead from :func:`_recorded_statuses` - the rule
-    :func:`tracker.store_check.check` holds the table to, one entry per
-    ``identifier_key`` with the last scan's spelling and status - and
-    upserted onto what the table already said, so the writer and the check
-    cannot disagree.
+    are folded by ``identifier_key`` (decision 138): the ledger imports
+    nothing that could fold case, so the store hands it the key
+    (``ledger.apply(..., key=identifier_key)``, P326), and a batch scanning
+    ``A01``, ``a01`` and ``A01`` again is one entry, with the last scan's
+    spelling and status. What these events changed is read out of that fold
+    through :func:`_recorded_statuses` - the rule
+    :func:`tracker.store_check.check` holds the table to - and upserted onto
+    what the table already said, so the writer and the check cannot
+    disagree.
 
     A keyword a person's filing taught is inserted as it is met and deleted
     again when a person takes it back (decision 113): the insert carries the
     line's own sequence number, so a word taught again comes back last -
     whether or not it was taken back first - which is the order
     ``tracker.ledger.apply`` folds it in for one spelling.
-    :func:`tracker.store_check.check` holds the two to its own fold of the
-    same lines, keyed by ``records.identifier_key`` as this table is
-    (decision 136).
+    :func:`tracker.store_check.check` holds the two to the journal's own
+    fold of the same lines, handed ``records.identifier_key`` so that it is
+    keyed as this table is (decision 136, P326).
 
     An edit of the person's rules is written as it is met too: the rows it
     carries replace those identifiers, the ones it names as removed go,
@@ -1751,12 +1751,12 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
             _apply_rules_event(conn, engagement_id, cast(ledger.RulesChangedEvent, event))
         elif name == ledger.HOUSEHOLD_CHANGED:
             _write_household_info(conn, engagement_id, dict(event.get(ledger.HOUSEHOLD_KEY) or {}))
-        ledger.apply(state, event)
+        ledger.apply(state, event, key=identifier_key)
     if any(event.get(ledger.EVENT_KEY) in ledger.ROW_EVENTS | ledger.RELEASE_EVENTS
            for event in events):
         _write_documents(conn, engagement_id, state.rows, seqs)
-    for key, (identifier, stored) in _recorded_statuses(events).items():
-        _write_status(conn, engagement_id, identifier, stored, status_seqs[key])
+    for k, (identifier, stored) in _recorded_statuses(state).items():
+        _write_status(conn, engagement_id, identifier, stored, status_seqs[k])
     return seq
 
 
@@ -2815,23 +2815,21 @@ def holds(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str
     return _engagement_row(conn, engagement_dir, root) is not None
 
 
-def _recorded_statuses(events: list[dict]) -> dict[str, tuple[str, dict]]:
+def _recorded_statuses(folded: ledger.Folded) -> dict[str, tuple[str, dict]]:
     """The record's status for each request, keyed as the store keys it
     (decision 136): ``identifier_key`` -> (the spelling the last scan used,
     what it recorded).
 
-    Every ``scanned`` line in order, each identifier's status replacing
-    whatever its key held, so the last write per request wins whichever
-    case it was spelt in - the store's ``INSERT OR REPLACE`` by the folded
-    key. It is also what :func:`_apply` writes for a batch of lines
-    (decision 138), so the writer and the check read the one rule.
+    A view, not a fold (P326): ``folded`` is :func:`tracker.ledger.apply`'s
+    fold handed ``key=identifier_key``, which has already taken every
+    ``scanned`` line in order, each identifier's status replacing whatever
+    its key held - so the last write per request wins whichever case it was
+    spelt in, the store's ``INSERT OR REPLACE`` by the folded key - and kept
+    the spelling each key's last scan carried (``Folded.spellings``). This
+    pairs the two. It is also what :func:`_apply` writes for a batch of
+    lines (decision 138), so the writer and the check read the one rule.
     """
-    statuses: dict[str, tuple[str, dict]] = {}
-    for event in events:
-        if event.get(ledger.EVENT_KEY) == ledger.SCANNED:
-            for identifier, status in (event.get(ledger.STATUSES_KEY) or {}).items():
-                statuses[identifier_key(identifier)] = (identifier, status)
-    return statuses
+    return {k: (folded.spellings[k], status) for k, status in folded.statuses.items()}
 
 
 def state(
