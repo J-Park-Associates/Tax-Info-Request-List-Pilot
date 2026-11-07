@@ -108,7 +108,7 @@ this version writes, a writer that is a machine's name
 (``bounds.host_problem``), a time as :func:`stamp` writes it
 (``bounds.stamp_problem``) - is a value like every other value a line
 carries, and is held to its rule in one place: the store's admission
-(``store._refuse_a_malformed_line``), which :func:`tracker.store.record`
+(``admission._refuse_a_malformed_line``), which :func:`tracker.store.record`
 runs on each line exactly as :func:`line_of` will write it, and every
 catch-up, check and verify runs on every line read in. A reader that
 shows a writer or a time without the store (the view's Summary) asks the
@@ -150,7 +150,7 @@ read - ``store_check.check`` folds the journal before it judges a line, and
 there would claim a shape nothing had checked. The ``TypedDict`` types
 below, :class:`Event` and one per family, describe a line *after* the
 store's gate. ``store._apply`` casts to one only once
-``_refuse_a_malformed_line`` has returned, and only where it hands the line
+``admission._refuse_a_malformed_line`` has returned, and only where it hands the line
 to the writer of that family, which takes the type: :class:`IntentEvent`
 and :class:`RulesChangedEvent` today. The others describe their families'
 shapes and stay descriptions: the admission reads a line before anything

@@ -77,13 +77,13 @@ refused.
 **Every applied line stands under today's admission** (decision 209,
 R3b). The store applies only lines past ``applied_seq``, so a line an
 earlier version applied was never judged again when decision 187's
-admission (:func:`_refuse_a_malformed_line`) began refusing its kind: the
+admission (:func:`tracker.admission._refuse_a_malformed_line`) began refusing its kind: the
 record check named it, and its household went on as normal. So each row
 remembers which admission judged it (``admitted_by``), and the sync that
 brings a record into the store judges every line it already applied again
-when that is older than :data:`ADMISSION_VERSION` - from the record's own
+when that is older than :data:`tracker.admission.ADMISSION_VERSION` - from the record's own
 lines, the authority, not the stored payloads. A refusal is the same
-:data:`MALFORMED_LINE` any new malformed line raises, so the household
+:data:`tracker.admission.MALFORMED_LINE` any new malformed line raises, so the household
 waits exactly as 187 makes it wait, pass after pass, until a person
 repairs the line; a pass records the version in the same transaction. It
 costs once per engagement per version, not every pass. A hold list beside
@@ -91,7 +91,7 @@ the store was the rejected alternative: a second place that says a
 household waits is a second place to disagree with the first. **The rule
 for the future:** a change that makes the admission refuse something it
 used to admit - or anything it calls: a ``records`` rule, a bound, a
-``layout`` place rule - raises :data:`ADMISSION_VERSION` by one in the same
+``layout`` place rule - raises :data:`tracker.admission.ADMISSION_VERSION` by one in the same
 commit; ``tests/test_admission.py`` pins the source of every function the
 admission reaches, and every constant they read, to the version and
 fails, naming what moved and saying which to do, when one moves without

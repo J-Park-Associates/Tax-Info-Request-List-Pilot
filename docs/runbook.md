@@ -2760,7 +2760,7 @@ the same way.
   household is sorted again.
 
 - **A household the pass stopped with "line N of the record is malformed
-  (…)"** (`tracker.store.MALFORMED_LINE`, shown as "the record could not be
+  (…)"** (`tracker.admission.MALFORMED_LINE`, shown as "the record could not be
   read"; decision 187): the record holds a line the app will not obey.
   The words in brackets say which field and which kind of problem, never
   the value: a value outside the editor's bounds ("must be a whole number

@@ -7,7 +7,7 @@ stored in a column SQLite bounds, a date is parsed by the readers, a Date
 Pattern is run over a client's pages. So each value is held to the bounds
 the editor holds a person to, worded here once: the editor
 (``tracker.manifest``) refuses a value it would never write with these, and
-the store's gate (``tracker.store._refuse_a_malformed_line``) refuses a
+the store's gate (``tracker.admission._refuse_a_malformed_line``) refuses a
 line carrying one before a table is touched. Each check returns a fixed
 phrase naming the class of problem and never the value, because the value
 is whatever the line said, and ``""`` for a value that is fine.
@@ -59,7 +59,7 @@ from tracker.layout import (
 # Pattern is run over a client's pages. So each value is held here to the
 # bounds the editor holds a person to, worded once: the editor
 # (``tracker.manifest``) refuses a value it would never write with these, and
-# the store's gate (``tracker.store._refuse_a_malformed_line``) refuses a line
+# the store's gate (``tracker.admission._refuse_a_malformed_line``) refuses a line
 # carrying one before a table is touched. Each check returns a fixed phrase
 # naming the class of problem and never the value, because the value is
 # whatever the line said, and ``""`` for a value that is fine.

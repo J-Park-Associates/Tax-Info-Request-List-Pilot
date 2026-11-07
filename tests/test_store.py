@@ -986,7 +986,7 @@ def test_a_malformed_unlearn_line_is_refused_by_name(conn, root, by_hand):
     # And the same shape for the event it takes back, which nothing checked
     # before: a request nobody named is refused rather than stored blank.
     with pytest.raises(store.StoreError, match="blank"):
-        store._refuse_a_malformed_line(
+        admission._refuse_a_malformed_line(
             {ledger.EVENT_KEY: ledger.KEYWORD_LEARNED, ledger.IDENTIFIER_KEY: "",
              ledger.KEYWORD_KEY: "lender"}, 3, by_hand.name)
 
@@ -2233,7 +2233,7 @@ def test_a_label_that_is_not_one_segment_is_refused_at_admission(conn, root, by_
          NAME_SCRIPTS.format(first="Latin", second="Cyrillic")),
     ]:
         with pytest.raises(store.StoreError) as refused:
-            store._refuse_a_malformed_line(event, 2, household, kind=store.KIND_HOUSEHOLD)
+            admission._refuse_a_malformed_line(event, 2, household, kind=store.KIND_HOUSEHOLD)
         assert f"'{field}' that is not one folder name ({code})" in str(refused.value)
     build(conn, root, by_hand)
     with engagement_lock(by_hand), pytest.raises(store.StoreError, match="not one folder name"):
@@ -2267,7 +2267,7 @@ def test_a_refusal_never_quotes_the_value_it_refused(by_hand):
         {ledger.EVENT_KEY: ledger.SHARING_CONFIRMED, ledger.AT_KEY: ledger.stamp(), marker: 1},
     ]:
         with pytest.raises(store.StoreError) as refused:
-            store._refuse_a_malformed_line(event, 2, where)
+            admission._refuse_a_malformed_line(event, 2, where)
         assert marker not in str(refused.value), str(refused.value)
 
 
@@ -2323,7 +2323,7 @@ def test_a_repaired_line_lets_the_household_go_on_and_is_not_judged_again(conn, 
     conn.execute("UPDATE engagements SET admitted_by = 0")
 
     assert store.catch_up(conn, root, by_hand) == 2
-    assert admitted_by(conn, by_hand) == store.ADMISSION_VERSION
+    assert admitted_by(conn, by_hand) == admission.ADMISSION_VERSION
 
     def judged(*args, **kwargs):
         raise AssertionError("an applied line was judged again")
@@ -2358,7 +2358,7 @@ def test_a_store_at_version_18_gains_admitted_by_in_place(conn, root, by_hand, t
         assert not list(path.parent.glob(f"{store.STORE_FILENAME}.v*.old*"))
         assert admitted_by(upgraded, by_hand) == 0
         store.catch_up(upgraded, root, by_hand)
-        assert admitted_by(upgraded, by_hand) == store.ADMISSION_VERSION
+        assert admitted_by(upgraded, by_hand) == admission.ADMISSION_VERSION
     finally:
         upgraded.close()
 
@@ -2368,10 +2368,10 @@ def test_a_new_engagement_is_admitted_by_construction(conn, root, by_hand):
     the door as they apply it, so the row is inserted as judged by today's
     admission."""
     store.catch_up(conn, root, by_hand)
-    assert admitted_by(conn, by_hand) == store.ADMISSION_VERSION
+    assert admitted_by(conn, by_hand) == admission.ADMISSION_VERSION
     conn.execute("UPDATE engagements SET admitted_by = 0")
     build(conn, root, by_hand)
-    assert admitted_by(conn, by_hand) == store.ADMISSION_VERSION
+    assert admitted_by(conn, by_hand) == admission.ADMISSION_VERSION
 
 
 def test_holds_says_whether_the_store_has_met_a_folder(conn, root, by_hand):
@@ -3848,7 +3848,7 @@ def test_a_malformed_line_read_from_disk_keeps_its_line_number_sentence(conn, ro
     assert "line 2 of the record is malformed" in said and "the journal is not applied past it" in said
     assert not said.startswith("This change")
     with pytest.raises(store.StoreError) as unwritten:
-        store._refuse_a_malformed_line(ledger.new(ledger.RULES_CHANGED, rules=["x"]), 2, "where")
+        admission._refuse_a_malformed_line(ledger.new(ledger.RULES_CHANGED, rules=["x"]), 2, "where")
     assert "line 2 of the record is malformed" in str(unwritten.value)
 
 
@@ -3866,7 +3866,7 @@ def test_a_person_with_an_overlong_name_is_a_line_the_store_refuses(conn, root, 
         with engagement_lock(by_hand):
             with pytest.raises(store.StoreError, match="carries people this version cannot read"):
                 store.record(conn, by_hand, people(name))
-    store._refuse_a_malformed_line(people("J" * 1000), 2, "where")
+    admission._refuse_a_malformed_line(people("J" * 1000), 2, "where")
 
 
 def test_an_identifier_hiding_a_spoofing_character_is_a_line_the_store_refuses(conn, root, by_hand):
@@ -3913,7 +3913,7 @@ def test_a_record_admitted_under_version_four_is_judged_again_for_its_document(
     monkeypatch.undo()
     conn.execute("UPDATE engagements SET admitted_by = 4")
 
-    assert store.ADMISSION_VERSION >= 5
+    assert admission.ADMISSION_VERSION >= 5
     for reading in (store.catch_up, store.follow_the_journal):
         with pytest.raises(store.StoreError,
                            match="line 2 of the record is malformed.*'document' may not contain"):
@@ -3940,7 +3940,7 @@ def test_a_record_admitted_under_version_five_is_judged_again_for_its_release(
     lines = len(ledger.read_events(by_hand))
     sentence = f"line {lines} of the record is malformed.*'was' that is not a location"
 
-    assert store.ADMISSION_VERSION >= 6
+    assert admission.ADMISSION_VERSION >= 6
     for reading in (store.catch_up, store.follow_the_journal):
         with pytest.raises(store.StoreError, match=sentence):
             reading(conn, root, by_hand)

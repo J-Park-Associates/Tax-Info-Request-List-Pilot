@@ -83,7 +83,7 @@ household - at the pass, in the app's walk of the clients folder and on
 the return's page, which refuses it with 187's sentence, while the notice
 at the top of the first screen names it - because the store
 judges every applied line again when its admission changes (decision 209,
-R3b, ``store.ADMISSION_VERSION``); a record changed behind the tracker's
+R3b, ``admission.ADMISSION_VERSION``); a record changed behind the tracker's
 back is refused by the same sync. :data:`FINDINGS_WAIT` claims that for
 those two kinds and no more: a gone record or another disagreement is
 named for a person and is not said to wait.

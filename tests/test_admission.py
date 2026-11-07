@@ -25,8 +25,11 @@ fixtures from ``tests/store_helpers.py``.
 All of it came from ``tests/test_store.py`` with P323 (SPEC-architecture-p3
 P3.2), cut and pasted, but for the carried event's test, which came with
 P324 (P3.4) once its one helper, ``_a_rule``, was ``tests/store_helpers.py``'s.
-The bodies still read the admission's names through the store, which holds
-them by import, until P3.9 reads them here.
+The bodies read the admission's names from ``tracker.admission`` itself
+(P3.9); the store holds them only by import, and the stand-ins that replace
+``store._refuse_a_malformed_line`` (in test_store, test_store_check,
+test_after_install and test_api) stay on the store, because they must
+replace what ``store.record`` calls.
 """
 
 from __future__ import annotations
@@ -38,7 +41,7 @@ import pytest
 from tests import store_helpers
 from tests.conftest import written_elsewhere
 from tests.store_helpers import A_ROW_ORIGINAL, _a_rule, a_row, build
-from tracker import ledger, store
+from tracker import admission, ledger, store
 from tracker.locking import engagement_lock
 
 #: The store's fixtures, from ``tests/store_helpers.py``, for the one test
@@ -56,9 +59,9 @@ def test_a_moving_line_in_a_households_record_is_refused():
 
     moving = ledger.new(ledger.MOVING, key="k", ops=[], by=ledger.BY_PASS)
     with pytest.raises(store.StoreError, match="in a household's record, which has no steps"):
-        store._refuse_a_malformed_line(moving, 2, f"{PRIVATE_TREE}/Smith Family",
+        admission._refuse_a_malformed_line(moving, 2, f"{PRIVATE_TREE}/Smith Family",
                                        kind=store.KIND_HOUSEHOLD)
-    store._refuse_a_malformed_line(moving, 2, f"{PRIVATE_TREE}/Smith Family/2025/1040 - Smith",
+    admission._refuse_a_malformed_line(moving, 2, f"{PRIVATE_TREE}/Smith Family/2025/1040 - Smith",
                                    kind=store.KIND_RETURN)
 
 
@@ -1449,9 +1452,9 @@ def names_bound_in(tree: ast.Module) -> set[str]:
 
 
 def admission_closure(roots=None) -> dict[str, str]:
-    """Every part of the store's admission, by its qualified name: the
+    """Every part of the admission, by its qualified name: the
     source of every package function reachable from
-    ``store._refuse_a_malformed_line`` - through the store, ``records``,
+    ``admission._refuse_a_malformed_line`` - through the store, ``records``,
     ``ledger``, ``layout`` or anything else under ``tracker/``, including
     modules it imports at call time - and the ``repr`` of every package
     constant those functions read (a bound, a limit, a pattern). Found by
@@ -1460,8 +1463,8 @@ def admission_closure(roots=None) -> dict[str, str]:
     not in the two functions a narrower pin hashed). A name the function
     binds itself (:func:`names_bound_in`) is not looked up among the module's
     names. A member read off a class (decision 187's ``Override.ALL``) is
-    part of the rule as a module's constant is. ``roots`` are the functions to start from, the store's two
-    admission functions when none are given; a test names a made-up one."""
+    part of the rule as a module's constant is. ``roots`` are the functions to start from, the admission's two
+    functions when none are given; a test names a made-up one."""
     import importlib
     import inspect
     import re as _re
@@ -1469,7 +1472,7 @@ def admission_closure(roots=None) -> dict[str, str]:
     import types
 
     parts: dict[str, str] = {}
-    todo = list(roots) if roots is not None else [store._refuse_a_malformed_line, store._line_keys_problem]
+    todo = list(roots) if roots is not None else [admission._refuse_a_malformed_line, admission._line_keys_problem]
     seen: set[str] = set()
     while todo:
         function = todo.pop()
@@ -1538,14 +1541,14 @@ def test_admission_version_changes_with_the_admission():
     anything it calls - refuse something it used to admit must raise it in
     the same commit, or a line applied before the change stands for good."""
     now = admission_digests()
-    pinned = ADMISSION_PIN.get(store.ADMISSION_VERSION, {})
+    pinned = ADMISSION_PIN.get(admission.ADMISSION_VERSION, {})
     moved = sorted(name for name in now.keys() | pinned.keys() if now.get(name) != pinned.get(name))
     assert not moved, (
         f"The store's admission changed in: {', '.join(moved)}. If it now refuses anything it used "
-        f"to admit, raise store.ADMISSION_VERSION by one and pin admission_digests() under the new "
+        f"to admit, raise admission.ADMISSION_VERSION by one and pin admission_digests() under the new "
         f"version, so every line an earlier version applied is judged again. If it refuses nothing "
         f"new (a comment, a rewording, a wider admission, a part that is not a rule), pin "
-        f"admission_digests() under version {store.ADMISSION_VERSION} instead.")
+        f"admission_digests() under version {admission.ADMISSION_VERSION} instead.")
 
 
 def test_the_admission_pin_reaches_the_rules_it_calls():
@@ -1735,10 +1738,10 @@ def test_the_store_admits_the_accepted_key_with_one_value():
 
     household = f"{PRIVATE_TREE}/Park Household"
     word = {ledger.ACCEPTED_KEY: ledger.FOLDER_NAME_ACCEPTED}
-    store._refuse_a_malformed_line(ledger.new(
+    admission._refuse_a_malformed_line(ledger.new(
         ledger.HOUSEHOLD_CHANGED, household={"name": "Park Household"}, **word), 2, household,
         kind=store.KIND_HOUSEHOLD)
-    store._refuse_a_malformed_line(ledger.new(
+    admission._refuse_a_malformed_line(ledger.new(
         ledger.RULES_CHANGED, info={"household": "Park Household"}, **word), 2,
         f"{household}/2025/1040 - Park", kind=store.KIND_RETURN)
     for event in (
@@ -1748,7 +1751,7 @@ def test_the_store_admits_the_accepted_key_with_one_value():
         ledger.new(ledger.SHARING_CONFIRMED, **word),
     ):
         with pytest.raises(store.StoreError) as refused:
-            store._refuse_a_malformed_line(event, 2, household, kind=store.KIND_HOUSEHOLD)
+            admission._refuse_a_malformed_line(event, 2, household, kind=store.KIND_HOUSEHOLD)
         assert "'accepted' that is not a folder's name accepted" in str(refused.value)
         assert "everything" not in str(refused.value)
 
@@ -1762,13 +1765,13 @@ def test_a_related_list_that_is_not_folder_names_is_refused_at_admission():
     household = f"{PRIVATE_TREE}/Smith Family"
     for related in ("Lee Family", [1], [{"name": "Lee"}]):
         with pytest.raises(store.StoreError, match="'related' that is not a list of household names"):
-            store._refuse_a_malformed_line(ledger.new(ledger.HOUSEHOLD_CHANGED, household={"related": related}),
+            admission._refuse_a_malformed_line(ledger.new(ledger.HOUSEHOLD_CHANGED, household={"related": related}),
                                            2, household, kind=store.KIND_HOUSEHOLD)
     with pytest.raises(store.StoreError) as refused:
-        store._refuse_a_malformed_line(ledger.new(ledger.HOUSEHOLD_CHANGED, household={"related": ["Lee/.."]}),
+        admission._refuse_a_malformed_line(ledger.new(ledger.HOUSEHOLD_CHANGED, household={"related": ["Lee/.."]}),
                                        2, household, kind=store.KIND_HOUSEHOLD)
     assert f"'related' that is not one folder name ({NAME_ILLEGAL})" in str(refused.value)
-    store._refuse_a_malformed_line(ledger.new(ledger.HOUSEHOLD_CHANGED, household={"related": ["Lee Family"]}),
+    admission._refuse_a_malformed_line(ledger.new(ledger.HOUSEHOLD_CHANGED, household={"related": ["Lee Family"]}),
                                    2, household, kind=store.KIND_HOUSEHOLD)
 
 
@@ -1781,12 +1784,12 @@ def test_an_event_carried_in_also_is_refused_in_the_wording_of_the_line_that_car
     intent = ledger.new(ledger.MOVING, **{ledger.KEY_KEY: "k", ledger.OPS_KEY: [],
                                          ledger.ALSO_KEY: [carried]})
     with pytest.raises(store.StoreError) as unwritten:
-        store._refuse_a_malformed_line(intent, 2, "where", written=False)
+        admission._refuse_a_malformed_line(intent, 2, "where", written=False)
     said = str(unwritten.value)
     assert said.startswith("This change carries") and said.endswith("; nothing was written")
     assert "line " not in said and "malformed" not in said
     with pytest.raises(store.StoreError, match="line 2 of the record is malformed"):
-        store._refuse_a_malformed_line(intent, 2, "where")
+        admission._refuse_a_malformed_line(intent, 2, "where")
 
 
 
@@ -1855,7 +1858,7 @@ def test_a_release_or_hand_over_whose_was_is_not_a_name_is_refused(line, was):
     event = line(**{ledger.WAS_KEY: was})
     with pytest.raises(store.StoreError, match=rf"line 2 of the record is malformed \({event[ledger.EVENT_KEY]} "
                                                rf"carries 'was' that is not a location\)"):
-        store._refuse_a_malformed_line(event, 2, "where")
+        admission._refuse_a_malformed_line(event, 2, "where")
 
 
 @pytest.mark.parametrize("line", RELEASES)
@@ -1869,7 +1872,7 @@ def test_a_release_or_hand_over_whose_was_is_a_name_none_or_absent_is_admitted(l
     """P328's rule is the name rule, not a place rule: a ``was`` that is text
     of a name's bounds is admitted wherever it says - ``../x`` too - and so
     is one that is ``None`` or not there."""
-    store._refuse_a_malformed_line(line(**was), 2, "where")
+    admission._refuse_a_malformed_line(line(**was), 2, "where")
 
 
 def test_a_hand_over_with_no_key_is_malformed():
@@ -1882,14 +1885,14 @@ def test_a_hand_over_with_no_key_is_malformed():
     for event in (keyless, a_hand_over(**{ledger.KEY_KEY: None})):
         with pytest.raises(store.StoreError,
                            match=r"line 2 of the record is malformed \(handed_over_by_person carries no 'key'\)"):
-            store._refuse_a_malformed_line(event, 2, "where")
+            admission._refuse_a_malformed_line(event, 2, "where")
 
 
 def test_a_hand_over_whose_key_is_blank_is_still_admitted():
     """P328 holds a hand-over's key to what the fold refuses and no more
     (R3.8.2): the fold reads a blank key safely, removing nothing, so the
     line is admitted as version 5 admitted it."""
-    store._refuse_a_malformed_line(a_hand_over(**{ledger.KEY_KEY: "", ledger.WAS_KEY: "Prepared/x.pdf"}),
+    admission._refuse_a_malformed_line(a_hand_over(**{ledger.KEY_KEY: "", ledger.WAS_KEY: "Prepared/x.pdf"}),
                                    2, "where")
 
 
@@ -1900,7 +1903,7 @@ def test_a_decision_129_hand_over_is_still_read():
     elsewhere = "../../../../Clients/Park & Lee LLC/2025/w2.pdf"
     handed = a_hand_over(**{ledger.KEY_KEY: elsewhere, ledger.WAS_KEY: A_ROW_ORIGINAL,
                             ledger.ROW_KEY: a_row(decision="Handed Over", pbc_location=elsewhere)})
-    store._refuse_a_malformed_line(handed, 3, "where")
+    admission._refuse_a_malformed_line(handed, 3, "where")
     parked = ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row())
     assert set(ledger.replay([parked]).rows) == {A_ROW_ORIGINAL}
     assert ledger.replay([parked, handed]).rows == {}
