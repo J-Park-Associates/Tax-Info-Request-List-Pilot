@@ -8860,8 +8860,8 @@
       "id": "tests/test_locking.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "30116fdedce4db80",
-      "lines": 1431,
+      "sha256": "9e1f03bd1966f9d5",
+      "lines": 1432,
       "exports": [
         "test_a_breaker_another_racer_is_reading_is_still_removed_on_release",
         "test_a_breaker_from_before_the_boot_is_abandoned_whatever_its_pid_says_now",

@@ -1259,6 +1259,7 @@ def test_two_takes_in_one_clock_tick_write_two_tokens(tmp_path, monkeypatch, cap
     import pathlib
 
     import tracker.locking as locking_module
+    monkeypatch.setattr(locking_module, "_unreleased", [])
     from tracker.locking import holds, lock_status
 
     fixed = dt.datetime(2026, 9, 26, 9, 0)
