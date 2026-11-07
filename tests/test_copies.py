@@ -451,6 +451,7 @@ def test_a_move_whose_source_is_now_behind_a_link_moves_nothing(engagement, tmp_
     the rename. The walk refuses what lies behind a junction, but the move
     comes later; a drop's folder swapped for a junction in between must not
     have the rename fetch a file from wherever the junction points."""
+    import tracker.copies as copies
     import tracker.filer as filer
 
     outside = tmp_path / "outside"
@@ -461,7 +462,7 @@ def test_a_move_whose_source_is_now_behind_a_link_moves_nothing(engagement, tmp_
     behind = inbox / "swapped" / "theirs.pdf"
 
     # Directly: the move itself refuses, and says why.
-    with pytest.raises(filer.MovedThroughALinkError, match="reached through a link"):
+    with pytest.raises(copies.MovedThroughALinkError, match="reached through a link"):
         filer._move_whole(behind, originals(engagement) / "theirs.pdf", within=inbox)
     assert (outside / "theirs.pdf").exists()
 
@@ -568,7 +569,7 @@ def test_an_unproved_copy_says_its_names_as_the_record_keeps_them(engagement):
     190, the review's N2). Fabricated name. Windows refuses a control
     character in a file name, so there the name carries only the bidi
     override (which Windows accepts); elsewhere it carries both."""
-    from tracker.filer import COPY_UNPROVED, _copy_whole
+    from tracker.copies import COPY_UNPROVED, _copy_whole
 
     control = "" if sys.platform == "win32" else "\x07"
     original = originals(engagement) / f"w2\u202efdp{control}.pdf"
@@ -592,8 +593,9 @@ def test_a_sweep_that_cannot_read_a_returns_rows_logs_the_class_never_the_path(e
 
     import tracker.copies as copies
     import tracker.filer as filer
+    import tracker.intents as intents
 
-    for module in (filer, copies):
+    for module in (filer, copies, intents):
         monkeypatch.setattr(module, "read_index", _refused_with_a_client_path)
     with caplog.at_level(logging.DEBUG):
         assert copies.sweep_stranded_temps(household_of(engagement), [engagement],

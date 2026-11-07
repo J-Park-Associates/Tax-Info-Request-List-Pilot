@@ -9,8 +9,9 @@ held these words until P2.9, offered every public name as the very object
 defined here, and P2.14 pointed every reader here (P322): the filer imports
 what it reads and offers nothing on, so a stand-in on ``filer.read_index``
 reaches the filer's own callers and nobody else's. Three private names
-cross from here to the filer, the readers of the moved tail the filer's
-writer asks, and no other private name does.
+cross from here to the filer's family, the readers of the moved tail the
+filer's writer asks (one of them asked by :mod:`tracker.intents` too since
+P332), and no other private name does.
 
 The index's own tests came with it from ``tests/test_filer.py``: those
 whose bodies drive only the moved readers - a new engagement's index, the
@@ -29,7 +30,7 @@ from pathlib import Path
 
 from tests.builders import DAY1, DAY2, ITEMS, engagement_fixture, make_engagement
 from tests.import_graph import import_edges
-from tracker import filer, index, ledger, store
+from tracker import copies, filer, index, intents, ledger, store
 from tracker.index import FILED, NEEDS_REVIEW, ensure, read_index
 from tracker.layout import PREPARED_DIR_NAME, REVIEW_DIR_NAME
 
@@ -76,12 +77,24 @@ def test_exactly_the_three_tail_readers_cross_into_the_filer():
     whether a row already says its bytes are nowhere, it asks these. The
     tail's grammar itself stays here, and no other private name crosses.
     The public names' facade went in P2.14 (P322); this half of its test
-    stays, because nothing else pins the crossing."""
+    stays, because nothing else pins the crossing.
+
+    Since P332 the crossing is into the filer's family, the filer and the
+    modules carved out of it (SPEC-architecture-p4 section 4.1): finishing
+    an interrupted move took its read of ``_without_moved_sentence`` to
+    :mod:`tracker.intents`, and a fourth private name crossing into a
+    module carved out of the filer would go unseen if only the filer were
+    asked. So the union over the family is compared, and each module that
+    binds one of the three binds the very object defined here."""
     own = _own_names()
-    crossing = {name for name in own if name.startswith("_") and hasattr(filer, name)}
+    family = (filer, copies, intents)
+    crossing = {name for name in own if name.startswith("_")
+                and any(hasattr(module, name) for module in family)}
     assert crossing == PRIVATE_CROSSING, sorted(crossing ^ PRIVATE_CROSSING)
-    for name in PRIVATE_CROSSING:
-        assert getattr(filer, name) is getattr(index, name), name
+    for module in family:
+        for name in PRIVATE_CROSSING:
+            if hasattr(module, name):
+                assert getattr(module, name) is getattr(index, name), (module.__name__, name)
 
 
 # ------------------------------- the index moves into the record (d102) ----

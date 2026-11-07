@@ -2,9 +2,9 @@
 
 Every row of an engagement's index says what became of one original: its
 decision (:data:`FILED`, :data:`NEEDS_REVIEW`, :data:`DUPLICATE`,
-:data:`NOT_REQUESTED`, :data:`FILE_MOVED`) and, in its Reason, the firm's
-own sentences about where its working copy is. This module holds those
-words and everything that reads a row back by them:
+:data:`NOT_REQUESTED`, :data:`FILE_MOVED`, :data:`OPENED`) and, in its
+Reason, the firm's own sentences about where its working copy is. This
+module holds those words and everything that reads a row back by them:
 
 - :func:`read_index`, which answers from the store (decision 102), and
   :func:`ensure`, which brings the store up to the journal and says whether
@@ -42,19 +42,23 @@ it reads itself and offers none of it on, and the API, the runner, the
 scanner and every other reader import each name from here, so a stand-in
 on ``filer.read_index`` reaches the filer's own callers and nobody else's.
 
-**Three private names cross the boundary,** and nowhere else does one.
-The filer writes the moved sentences, and when it takes one off a Reason,
-adds a sentence before one or asks whether a row already says its bytes are
-nowhere, it asks :func:`_without_moved_sentence`,
-:func:`_before_the_moved_sentence` and :func:`_says_it_is_nowhere`. Each
-reads only the moved tail's grammar (:func:`_moved_part`), so each lives
-beside it, and the filer imports them by those names. They stay private:
-they are for the writer of a Reason, not for its readers.
+**Three private names cross the boundary,** into the filer's family
+(P332), and nowhere else does one. The filer writes the moved sentences,
+and when it takes one off a Reason, adds a sentence before one or asks
+whether a row already says its bytes are nowhere, it asks
+:func:`_without_moved_sentence`, :func:`_before_the_moved_sentence` and
+:func:`_says_it_is_nowhere`. Each reads only the moved tail's grammar
+(:func:`_moved_part`), so each lives beside it, and the filer imports them
+by those names; finishing an interrupted move, in :mod:`tracker.intents`,
+asks :func:`_without_moved_sentence` too. They stay private: they are for
+the writer of a Reason, not for its readers.
 
 The comments and docstrings below came with the code, word for word.
 Where :data:`INTERRUPTED_MOVE_DETAIL`'s says it is "composed here because
 the filer is what knows the paths", the filer still composes it: this
-module holds the sentence's words and reads them back.
+module holds the sentence's words and reads them back. :data:`OPENED` came
+from the filer with P332, its comment with it, and the
+:data:`OPENED_SENTENCE` that comment names is still the filer's.
 """
 
 from __future__ import annotations
@@ -96,6 +100,16 @@ NOT_REQUESTED = "Not Requested"
 #: nothing is moved, and a person decides. A copy dragged back is filed
 #: again on the next pass.
 FILE_MOVED = "File Moved"
+#: An email or a zip the pass opened (decision 143): each attachment was
+#: taken out into the household-year's hidden folder in the private tree
+#: (``layout.OPENED_DIR_NAME``) and sorted as a document of its own, with a
+#: row that names this one as its ``container``. The container's row
+#: belongs to no request and counts in no request's figures; its Reason
+#: says how many documents came out (:data:`OPENED_SENTENCE`), and the
+#: journal line (``ledger.OPENED``) names each of them and each part left.
+#: The container itself rests in the client's folder for the year like any
+#: original, untouched.
+OPENED = "Opened"
 #: What a consolidated statement's row says when a person marks one of the
 #: requests it answered missing again (decision 146): appended to the
 #: Reason, so the row keeps why it was filed and says what the person took

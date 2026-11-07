@@ -207,8 +207,13 @@ LAYERS: dict[int, frozenset[str]] = {
     # ``registry`` (L3), ``index`` and ``validators`` (L1) and ``layout`` (L0)
     # at call time. Its place is set by the registry it asks, not by what it
     # loads; the store's command line asks it at call time.
+    # ``intents`` joins L3 with P332 (SPEC-architecture-p4 P4.6): decision
+    # 119's write-ahead intents and finishing an interrupted move, out of
+    # ``filer`` - ``copies`` and ``content_check``'s ``ContentCache`` (L2), and
+    # L1 and L0; the filer and a person's actions import it. It imports
+    # nothing above L2, and sits at L3 beside the two it serves.
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review",
-                  "verify"}),
+                  "verify", "intents"}),
     # ``after_install`` joins L4 with decision 209, beside the scheduler it
     # drives: it imports ``scheduling`` (L4), ``store`` (L1), ``registry``
     # (L3) and L0; the API imports it, and nothing lower may.
@@ -240,7 +245,8 @@ DOMAINS: dict[str, frozenset[str]] = {
     "reading": frozenset({"validators", "containers", "content_check", "ocr"}),
     # Deciding where a document belongs, or that it belongs nowhere yet, and
     # the shortlist a person gets for the ones that do not.
-    "sorting": frozenset({"reasons", "router", "names", "filer", "copies", "scanner", "review"}),
+    "sorting": frozenset({"reasons", "router", "names", "filer", "copies", "intents", "scanner",
+                          "review"}),
     # The scheduled run and what it drives: the engagements it finds, the
     # year it rolls over, the reminder it drafts and how it is watched.
     "pass": frozenset({"progress", "registry", "rollover", "reminder", "runner", "scheduling",
@@ -481,8 +487,12 @@ def test_verify_reads_the_walk_and_the_proof_at_call_time():
 #: The modules that compose a record event - a call of ``ledger.new`` - by
 #: name: the modules whose decisions the record holds, each writing its own
 #: family. The door asks them and never composes an event itself (B-4,
-#: P327); a new composer is a decision.
-COMPOSERS: frozenset[str] = frozenset({"filer", "households", "manifest", "reminder", "scanner"})
+#: P327); a new composer is a decision. ``intents`` joined with P332: the
+#: intent (``ledger.MOVING``), the abandon (``ledger.MOVE_ABANDONED``) and the
+#: finish of an interrupted move compose the record's events, and moved out
+#: of the filer with the code that writes them.
+COMPOSERS: frozenset[str] = frozenset({"filer", "households", "intents", "manifest", "reminder",
+                                       "scanner"})
 
 
 def _composers() -> set[str]:

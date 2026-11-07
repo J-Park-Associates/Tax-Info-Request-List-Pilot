@@ -59,12 +59,11 @@ from tracker.containers import (
 )
 from tracker.filer import (
     DUPLICATE_OF_OPENED,
-    OPENED,
     FilingError,
     received_for,
     refresh_household_readme,
 )
-from tracker.index import DUPLICATE, FILED, NEEDS_REVIEW, read_index
+from tracker.index import DUPLICATE, FILED, NEEDS_REVIEW, OPENED, read_index
 from tracker.layout import (
     INBOX_DIR_NAME,
     MAX_PATH_LENGTH,

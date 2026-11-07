@@ -1538,6 +1538,7 @@ def test_a_household_with_two_open_years_and_a_waiting_file_drafts_no_reminder_a
 def test_the_pass_that_sorts_the_inbox_drafts_the_held_reminder_the_same_day(
         tmp_path, samples, stamped_on, monkeypatch):
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
     from tracker.layout import README_NAME
     from tracker.reminder import INBOX_HOLD
 
@@ -1552,7 +1553,8 @@ def test_the_pass_that_sorts_the_inbox_drafts_the_held_reminder_the_same_day(
 
     # The draft day's first pass: the drop cannot be moved, so it fails to
     # sort and stays in the inbox - and the reminder waits for it.
-    monkeypatch.setattr(filer_module, "_move_whole", refused_once)
+    for module in (filer_module, intents_module):
+        monkeypatch.setattr(module, "_move_whole", refused_once)
     held = pass_on(stamped_on, engagement, SATURDAY)
     monkeypatch.undo()
     assert held.file_errors and held.drafted is None

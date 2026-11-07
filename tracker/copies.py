@@ -702,9 +702,10 @@ def _mark_for_review(path: Path, *, name: str) -> None:
     naming the review copy (``name``) that was therefore not put there -
     **the one marking path** (decision 190): a copy made into the review
     folder is marked on its temp (:func:`_copy_whole`), and a working copy
-    moved into it is marked before the rename (:func:`_do_op`), so no copy
-    lands in review unmarked, made or moved, and a mark refused is a copy
-    that never got there (fail closed)."""
+    moved into it is marked before the rename
+    (:func:`tracker.intents._do_op`), so no copy lands in review unmarked,
+    made or moved, and a mark refused is a copy that never got there (fail
+    closed)."""
     try:
         mark_from_internet(path)
     except OSError as exc:

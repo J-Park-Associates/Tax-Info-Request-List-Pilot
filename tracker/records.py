@@ -42,7 +42,8 @@ out of plain values with the manifest's own defaults, validation and
 column names, and it means nothing away from that list. The
 same goes for ``FileError``, ``FileReport`` and ``ContentResult``: they are
 one run's report of what it did, produced and consumed inside the module
-that did it, and never stored.
+that did it, and never stored (``FileError`` is :mod:`tracker.intents`'
+since P332, and the filer's report carries it).
 
 Its **rows** travel all the same since decision 103: the person's half of
 a request row is what a ``rules_changed`` event carries - and the

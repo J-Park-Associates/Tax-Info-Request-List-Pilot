@@ -483,9 +483,10 @@ def test_name_collision_in_pbc_never_overwrites(engagement):
 def test_placeholders_are_left_where_they_are(engagement, monkeypatch):
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
 
     waiting = drop(engagement, "big.pdf", "Form W-2 Wage and Tax Statement 2025")
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: True)
 
     report = sort(engagement, today=DAY1)
@@ -999,12 +1000,14 @@ def test_the_filer_reads_nothing_before_it_holds_the_lock(engagement, monkeypatc
     # invisible and its rows get rewritten from a stale picture.
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
     from tracker.locking import LOCK_FILENAME
 
     lock = engagement / LOCK_FILENAME
     seen = []
     for module, name in ((filer_module, "load_manifest"), (filer_module, "read_index"),
-                         (copies_module, "read_index"), (filer_module, "iter_drops")):
+                         (copies_module, "read_index"), (intents_module, "read_index"),
+                         (filer_module, "iter_drops")):
         real = getattr(module, name)
 
         def under_the_lock(*args, _real=real, _name=name, **kwargs):
@@ -1128,11 +1131,12 @@ def test_a_resend_is_refiled_when_the_working_copy_was_deleted(engagement, monke
     client still holding the year's folder as placeholders."""
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     first = sort(engagement, today=DAY1).filed[0]
     real = filer_module.is_cloud_placeholder
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "is_cloud_placeholder",
                             lambda p: p.parent == originals(engagement) or real(p))
     working = engagement / first.prepared_location
@@ -1371,15 +1375,16 @@ def test_a_same_size_replacement_with_an_old_date_is_still_noticed(engagement):
 def test_an_original_the_sync_client_dehydrated_is_not_downloaded_to_be_checked(engagement, monkeypatch):
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     sort(engagement, today=DAY1)
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p.name == "w2.pdf")
 
     def never(path):
         raise AssertionError(f"hashed {path.name}")
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "sha256_of", never)
     assert sort(engagement, today=DAY2).errors == []
 
@@ -1474,6 +1479,7 @@ def test_a_persons_filing_of_an_original_recorded_without_its_bytes_records_them
     # pass that can read the original records them too.
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
     from tracker.filer import assign_review_file
     from tracker.validators import sha256_of
 
@@ -1490,7 +1496,7 @@ def test_a_persons_filing_of_an_original_recorded_without_its_bytes_records_them
             held.add(path)
             raise PermissionError("held by the sync client")
         return real(path)
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "sha256_of", unreadable_once)
     parked = sort(engagement, today=DAY1).review[0]
     monkeypatch.undo()
@@ -1504,7 +1510,7 @@ def test_a_persons_filing_of_an_original_recorded_without_its_bytes_records_them
 
     # And a pass, with nothing to sort, fills in the row the earlier pass could not.
     drop(engagement, "scan0013.pdf", "nothing the rules recognise either")
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "sha256_of", unreadable_once)
     sort(engagement, today=DAY2)
     monkeypatch.undo()
@@ -1524,6 +1530,7 @@ def test_bytes_recorded_after_the_fact_are_tied_to_the_row_or_not_recorded(engag
     # the row is said out loud, every pass.
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
     from tracker.filer import UNTIED_IN_PBC, assign_review_file
     from tracker.validators import sha256_of
 
@@ -1542,7 +1549,7 @@ def test_bytes_recorded_after_the_fact_are_tied_to_the_row_or_not_recorded(engag
             held.add(path)
             raise PermissionError("held by the sync client")
         return real(path)
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "sha256_of", unreadable)
     report = sort(engagement, today=DAY1)
     monkeypatch.undo()
@@ -1581,6 +1588,7 @@ def test_a_persons_filing_moves_the_parked_copy_only_while_it_holds_the_rows_byt
     # only while A's original cannot be read - still syncing, here.
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
     from tracker.filer import assign_review_file
     from tracker.validators import sha256_of
 
@@ -1591,7 +1599,7 @@ def test_a_persons_filing_moves_the_parked_copy_only_while_it_holds_the_rows_byt
     syncing = locate(engagement, row_a.pbc_location)
     real = filer_module.is_cloud_placeholder
     with pytest.MonkeyPatch.context() as sync:
-        for module in (filer_module, copies_module):
+        for module in (filer_module, copies_module, intents_module):
             sync.setattr(module, "is_cloud_placeholder", lambda p: p == syncing or real(p))
         row_b = sort(engagement, today=DAY2).review[0]
     assert row_b.prepared_location == row_a.prepared_location         # the freed name, taken
@@ -1611,6 +1619,7 @@ def test_a_parked_path_a_later_row_claims_means_the_earlier_copy_is_gone(engagem
     # says whose the file at that path is.
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
     from tracker.filer import assign_review_file
     from tracker.validators import sha256_of
 
@@ -1627,7 +1636,7 @@ def test_a_parked_path_a_later_row_claims_means_the_earlier_copy_is_gone(engagem
             held.add(path)
             raise PermissionError("held by the sync client")
         return real(path)
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "sha256_of", unreadable)
     row_a = sort(engagement, today=DAY1).review[0]
     monkeypatch.undo()
@@ -1867,6 +1876,7 @@ def test_a_row_recorded_without_its_bytes_is_never_moved_onto_another_file(engag
     # this row's original, so the row is said and left where it is.
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
     from tracker.filer import MISSING_IN_PBC
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
@@ -1882,7 +1892,7 @@ def test_a_row_recorded_without_its_bytes_is_never_moved_onto_another_file(engag
             held.add(path)
             raise PermissionError("held by the sync client")
         return real(path)
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "sha256_of", unreadable)
     row = sort(engagement, today=DAY1).filed[0]
     monkeypatch.undo()
@@ -1903,10 +1913,11 @@ def test_an_original_the_sync_client_dehydrated_is_not_called_gone(engagement, m
     # is not the same as the client having deleted it.
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     sort(engagement, today=DAY1)
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p.parent == originals(engagement))
     report = sort(engagement, today=DAY2)
     assert report.attention == [] and report.errors == []
@@ -2971,21 +2982,24 @@ def drag(path, folder):
 def counting_hashes(monkeypatch) -> list[str]:
     """Every path anything in the package hashes, as it is hashed.
 
-    Five modules hold the name now, and each holds its own: the memo's is
+    Six modules hold the name now, and each holds its own: the memo's is
     the content check's, and a pass that reached around it would show up
     here and nowhere else. The scanner held one until decision 109 and
     holds none; the index's is the one ``holds_the_row`` reads, since that
-    proof moved out of the filer (P319), and copies' is the one a working
-    copy is found and proved with, since that code did (P331).
+    proof moved out of the filer (P319), copies' is the one a working
+    copy is found and proved with, since that code did (P331), and
+    intents' is the one an intent and its recovery prove a step with,
+    since that code did (P332).
     """
     import tracker.content_check as content_check_module
     import tracker.copies as copies_module
     import tracker.filer as filer_module
     import tracker.index as index_module
+    import tracker.intents as intents_module
     import tracker.validators as validators_module
 
     read: list[str] = []
-    for module in (filer_module, copies_module, content_check_module, index_module,
+    for module in (filer_module, copies_module, intents_module, content_check_module, index_module,
                    validators_module):
         real = module.sha256_of
 
@@ -3320,13 +3334,14 @@ def test_a_dehydrated_home_is_not_read_and_not_called_absent(engagement, monkeyp
     of is not looked at this pass, which is not the same as being gone."""
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     filed = sort(engagement, today=DAY1).filed[0]
     home = engagement / filed.prepared_location
     lines = len(ledger.read_events(engagement))
 
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p == home)
     read = counting_hashes(monkeypatch)
     report = sort(engagement, today=DAY2)
@@ -3369,6 +3384,7 @@ def test_a_row_without_a_digest_is_never_swept(engagement, monkeypatch):
     and the file nothing accounts for is said as what it is."""
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
     from tracker.filer import UNRECORDED_COPY
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
@@ -3385,7 +3401,7 @@ def test_a_row_without_a_digest_is_never_swept(engagement, monkeypatch):
             raise PermissionError("held by the sync client")
         return real(path)
 
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "sha256_of", unreadable)
     filed = sort(engagement, today=DAY1).filed[0]
     monkeypatch.undo()
@@ -3659,13 +3675,14 @@ def test_put_it_back_refuses_a_row_without_a_digest(engagement, monkeypatch):
     nothing can be proved to be its working copy and nothing here may move."""
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
     from tracker.filer import FilingError, restore_working_copy
     from tracker.index import FILE_MOVED
 
     filed, wanderer = a_moved_filed_row(engagement)
     [row] = read_index(engagement)
     assert row.decision == FILE_MOVED
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "read_index",
                             lambda *a, **k: [replace(row, digest="")])
     files = every_byte(engagement)
@@ -3941,6 +3958,7 @@ def moves_made(monkeypatch) -> list[tuple[str, str]]:
     """Every rename the filer makes, as it makes it: the check that a move
     the crash made is not made again by the recovery."""
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
 
     real = filer_module._move_whole
     made: list[tuple[str, str]] = []
@@ -3949,7 +3967,8 @@ def moves_made(monkeypatch) -> list[tuple[str, str]]:
         made.append((str(source), str(target)))
         return real(source, target, within=within)
 
-    monkeypatch.setattr(filer_module, "_move_whole", counted)
+    for module in (filer_module, intents_module):
+        monkeypatch.setattr(module, "_move_whole", counted)
     return made
 
 
@@ -3963,6 +3982,7 @@ def killed_after_ops(monkeypatch, after=1):
     runs for real.
     """
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
 
     real = filer_module._do_op
     state = {"made": 0, "died": False}
@@ -3974,7 +3994,8 @@ def killed_after_ops(monkeypatch, after=1):
             state["died"] = True
             raise KeyboardInterrupt
 
-    monkeypatch.setattr(filer_module, "_do_op", dying)
+    for module in (filer_module, intents_module):
+        monkeypatch.setattr(module, "_do_op", dying)
     return state
 
 
@@ -3982,6 +4003,7 @@ def killed_after_the_move(monkeypatch):
     """The machine dies once the drop has been moved out of the inbox and
     before anything else: the one move no intent covers since decision 125."""
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
 
     real = filer_module._move_whole
     state = {"died": False}
@@ -3992,7 +4014,8 @@ def killed_after_the_move(monkeypatch):
             state["died"] = True
             raise KeyboardInterrupt
 
-    monkeypatch.setattr(filer_module, "_move_whole", dying)
+    for module in (filer_module, intents_module):
+        monkeypatch.setattr(module, "_move_whole", dying)
     return state
 
 
@@ -4293,6 +4316,7 @@ def test_a_power_loss_mid_copy_leaves_a_truncated_file_that_is_named_and_the_row
     request reads Missing with the firm's own note instead of Failed
     Validation for a document the client sent correctly."""
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
     from tracker import reasons
     from tracker.manifest import Status
     from tracker.scanner import scan_engagement
@@ -4303,7 +4327,8 @@ def test_a_power_loss_mid_copy_leaves_a_truncated_file_that_is_named_and_the_row
         Path(target).write_bytes(b"%PDF-1.4 half")   # nothing tidies up after a power cut
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(filer_module, "_copy_whole", power_loss)
+    for module in (filer_module, intents_module):
+        monkeypatch.setattr(module, "_copy_whole", power_loss)
     with pytest.raises(KeyboardInterrupt):
         sort(engagement, today=DAY1)
     monkeypatch.undo()
@@ -4517,7 +4542,8 @@ def test_bytes_gone_from_both_places_park_the_row_and_say_so(engagement, monkeyp
     the row parks, the sentence says whether the client's own original is
     still there, and the copy a person acts on is made from it."""
     from tracker import reasons
-    from tracker.filer import INTERRUPTED_ORIGINAL_HELD, unfile_document
+    from tracker.filer import unfile_document
+    from tracker.intents import INTERRUPTED_ORIGINAL_HELD
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     filed = sort(engagement, today=DAY1).filed[0]
@@ -4549,14 +4575,14 @@ def test_a_person_action_refuses_while_an_intent_is_open_and_the_next_pass_clear
     """One answer for all four actions instead of five recovery paths: the
     record is in the middle of a decision here, and a pass - which the app's
     Run now is - finishes it first."""
+    from tracker.copies import FilingError
     from tracker.filer import (
-        OPEN_INTENT_REFUSAL,
-        FilingError,
         assign_review_file,
         dismiss_review_file,
         restore_working_copy,
         unfile_document,
     )
+    from tracker.intents import OPEN_INTENT_REFUSAL
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
     parked = sort(engagement, today=DAY1).review[0]
@@ -5243,6 +5269,7 @@ def test_a_re_send_after_a_set_aside_is_name_checked_before_it_files(
     one a copy takes while its original cannot be read, as here.)"""
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
     from tracker.filer import dismiss_review_file
 
     page = "Form W-2 Wage and Tax Statement 2025"
@@ -5267,7 +5294,7 @@ def test_a_re_send_after_a_set_aside_is_name_checked_before_it_files(
         (engagement / filed.prepared_location).unlink()
         syncing = locate(engagement, filed.pbc_location)
         real = filer_module.is_cloud_placeholder
-        for module in (filer_module, copies_module):
+        for module in (filer_module, copies_module, intents_module):
             monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p == syncing or real(p))
         rows = [w2]
     save_rules(engagement, rows, load_engagement_info(engagement))
@@ -5553,6 +5580,7 @@ def test_a_re_send_through_a_feed_of_a_document_the_other_household_lost_parks_a
     there, and after the click the LLC's request counts the document once."""
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
     from tracker.scanner import scan_engagement
 
     father, llc = fed
@@ -5560,7 +5588,7 @@ def test_a_re_send_through_a_feed_of_a_document_the_other_household_lost_parks_a
     (llc / first.prepared_location).unlink()
     syncing = locate(llc, first.pbc_location)
     real = filer_module.is_cloud_placeholder
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p == syncing or real(p))
 
     drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
@@ -6570,6 +6598,7 @@ def test_received_for_reads_each_index_once(tmp_path, monkeypatch):
     no second copy anywhere."""
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
     from tests.builders import seed_index
     from tracker.filer import received_for
     from tracker.records import IndexEntry
@@ -6587,7 +6616,7 @@ def test_received_for_reads_each_index_once(tmp_path, monkeypatch):
     read = []
     lists = []
     real_read, real_list = filer_module.read_index, filer_module.load_manifest
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "read_index",
                             lambda folder: read.append(Path(folder)) or real_read(folder))
     monkeypatch.setattr(filer_module, "load_manifest",
@@ -6859,7 +6888,7 @@ def test_a_recovery_copy_is_cut_to_fit_and_one_that_cannot_be_made_names_no_copy
     the interrupted step was making, which is not there - and says why in
     a fixed sentence."""
     from tests.builders import root_for_a_return_of
-    from tracker import filer
+    from tracker import filer, intents
     from tracker.copies import REVIEW_NO_ROOM, NoRoom
     from tracker.layout import path_limit
 
@@ -6869,7 +6898,7 @@ def test_a_recovery_copy_is_cut_to_fit_and_one_that_cannot_be_made_names_no_copy
     locate(engagement, filed.prepared_location).unlink()       # the copy the step was making: gone
     long_named = replace(filed, original_name="letter " + "n" * 150 + ".pdf")
 
-    location, said = filer._a_copy_to_act_on(engagement, long_named, None)
+    location, said = intents._a_copy_to_act_on(engagement, long_named, None)
 
     copy = locate(engagement, location)
     assert said == "" and copy.is_file() and copy.parent == review_dir(engagement)
@@ -6881,8 +6910,9 @@ def test_a_recovery_copy_is_cut_to_fit_and_one_that_cannot_be_made_names_no_copy
     def no_room(_folder, _name, _root):
         raise NoRoom(270, 260, "pdf", sentence=sentence)
 
-    monkeypatch.setattr(filer, "_review_copy_path", no_room)
-    assert filer._a_copy_to_act_on(engagement, filed, None) == ("", sentence)
+    for module in (filer, intents):
+        monkeypatch.setattr(module, "_review_copy_path", no_room)
+    assert intents._a_copy_to_act_on(engagement, filed, None) == ("", sentence)
 
 
 def test_an_existing_copy_is_found_before_a_name_is_measured(tmp_path, path_setting):
@@ -7150,6 +7180,7 @@ def test_an_unnamed_re_send_already_held_in_another_household_parks_too(tmp_path
 
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
     from tracker.filer import hand_over
     from tracker.records import Feed
 
@@ -7168,7 +7199,7 @@ def test_an_unnamed_re_send_already_held_in_another_household_parks_too(tmp_path
     (llc / taken.prepared_location).unlink()                             # the copy went
     shutil.copyfile(held, inbox_of(father) / "tb again.pdf")              # the same bytes again
     real = filer_module.is_cloud_placeholder
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p == held or real(p))
 
     sort_all([father, llc], home=[father], today=DAY3)
@@ -7577,6 +7608,7 @@ def test_a_name_an_open_intent_will_write_to_is_not_given_to_a_new_drop(fed, mon
     it, and the waiting filing stays open for the next pass."""
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
 
     father, llc = fed
     drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
@@ -7590,7 +7622,7 @@ def test_a_name_an_open_intent_will_write_to_is_not_given_to_a_new_drop(fed, mon
     assert locate(llc, move[ledger.TO_KEY]) == originals(llc) / "tb.pdf"
     waiting = originals(father) / "tb.pdf"
     real = filer_module.is_cloud_placeholder
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p == waiting or real(p))
     drop(llc, "tb.pdf", "Trial balance as of December 31 2025 restated", who="Park & Lee LLC")
 
@@ -8359,6 +8391,7 @@ def test_an_original_that_cannot_be_read_holds_the_request_and_is_never_read(
     to the client - and the pass after the original is back makes the copy."""
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
     from tracker.manifest import Status
 
     filed = _filed_1098(engagement)
@@ -8366,7 +8399,7 @@ def test_an_original_that_cannot_be_read_holds_the_request_and_is_never_read(
     copy.unlink()
     original = originals(engagement) / "1098.pdf"
     real = filer_module.is_cloud_placeholder
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p == original or real(p))
     read = counting_hashes(monkeypatch)
     lines = len(ledger.read_events(engagement))
@@ -8398,6 +8431,7 @@ def test_a_statement_whose_copy_is_not_counted_answers_nothing_until_it_is_made_
     heals with it."""
     import tracker.copies as copies_module
     import tracker.filer as filer_module
+    import tracker.intents as intents_module
     from tracker.manifest import Status
     from tracker.reasons import IN_CONSOLIDATED
     from tracker.scanner import ANSWER_WHY_MISSING, ANSWERED_BY, scan_engagement
@@ -8407,7 +8441,7 @@ def test_a_statement_whose_copy_is_not_counted_answers_nothing_until_it_is_made_
     (engagement / row.prepared_location).unlink()
     original = locate(engagement, row.pbc_location)
     real = filer_module.is_cloud_placeholder
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "is_cloud_placeholder", lambda p: p == original or real(p))
 
     sort(engagement, today=DAY2)
@@ -8514,7 +8548,7 @@ def test_a_remake_killed_after_the_copy_is_finished_from_the_record(engagement, 
     ("", False, False),
 ])
 def test_a_step_may_touch_only_its_returns_places(engagement, location, writes, allowed):
-    from tracker.filer import _may_touch
+    from tracker.intents import _may_touch
 
     assert _may_touch(engagement, location, writes=writes) is allowed
 
@@ -8523,7 +8557,7 @@ def test_the_filer_asks_the_layout_where_a_step_may_act(engagement, monkeypatch)
     """Decision 187: the place rule has one wording, the layout's. The
     filer holds none of its own - change the layout's answer and the
     filer's changes with it."""
-    import tracker.filer as filer
+    import tracker.intents as intents
 
     asked = []
 
@@ -8531,8 +8565,8 @@ def test_the_filer_asks_the_layout_where_a_step_may_act(engagement, monkeypatch)
         asked.append((return_dir, location, writes))
         return "not-a-place"
 
-    monkeypatch.setattr(filer, "place_problem", answer)
-    assert filer._may_touch(engagement, "Prepared/x.pdf", writes=True) is False
+    monkeypatch.setattr(intents, "place_problem", answer)
+    assert intents._may_touch(engagement, "Prepared/x.pdf", writes=True) is False
     assert asked == [(engagement, "Prepared/x.pdf", True)]
 
 
@@ -8543,7 +8577,7 @@ def test_a_step_outside_its_places_moves_copies_and_removes_nothing(engagement, 
     year folder, and move another household's original away. Every step is
     now held to its return's places before anything is looked at, in the
     recovery and in the one function every step goes through."""
-    from tracker.filer import OP_OUTSIDE, _do_op, _finish_the_ops
+    from tracker.intents import OP_OUTSIDE, _do_op, _finish_the_ops
     from tracker.validators import sha256_of
 
     outside = tmp_path / "outside"
@@ -8648,7 +8682,7 @@ def test_a_recovery_never_copies_an_original_the_row_names_outside_its_places(en
     assert not any(path.read_bytes() == secret.read_bytes() for path in copies)
     # The recovery's own check stands behind the gate: handed the row
     # directly, it still copies nothing from outside the return's places.
-    from tracker.filer import _a_copy_to_act_on
+    from tracker.intents import _a_copy_to_act_on
     assert _a_copy_to_act_on(engagement, row, None)[0] == ""
     journal.write_bytes(honest)
 
@@ -8690,7 +8724,8 @@ def test_a_forged_step_is_carried_out_nowhere(engagement, tmp_path, which):
     pass refuses each - at the gate, or where the recovery would carry it
     out - and nothing on disk changes; handed straight to the one function
     every step goes through, each is refused too."""
-    from tracker.filer import OP_OUTSIDE, MovedThroughALinkError, _do_op
+    from tracker.copies import MovedThroughALinkError
+    from tracker.intents import OP_OUTSIDE, _do_op
     from tracker.layout import CLIENTS_TREE, INBOX_DIR_NAME
     from tracker.registry import discover_engagements
     from tracker.runner import RECORD_UNREADABLE, run_registry
@@ -8781,7 +8816,8 @@ def test_a_legitimate_filing_into_a_fed_return_still_completes(fed):
 def test_a_copy_through_a_link_copies_nothing(engagement, tmp_path):
     """B-11: a copy followed a junction at either end. Its source behind a
     link, or its target folder behind one, and nothing is read or written."""
-    from tracker.filer import MovedThroughALinkError, _do_op
+    from tracker.copies import MovedThroughALinkError
+    from tracker.intents import _do_op
     from tracker.validators import sha256_of
 
     behind = _elsewhere(tmp_path)
@@ -8803,7 +8839,8 @@ def test_a_copy_through_a_link_copies_nothing(engagement, tmp_path):
 
 
 def test_a_removal_through_a_link_removes_nothing(engagement, tmp_path):
-    from tracker.filer import MovedThroughALinkError, _do_op
+    from tracker.copies import MovedThroughALinkError
+    from tracker.intents import _do_op
     from tracker.validators import sha256_of
 
     behind = _elsewhere(tmp_path)
@@ -8821,7 +8858,8 @@ def test_a_move_into_a_linked_folder_moves_nothing(engagement, tmp_path):
     """B-11: a lexical rule cannot see a junction, so a year folder swapped
     for one would have the rename land wherever it points. The target's
     folders are asked before any is made."""
-    from tracker.filer import MovedThroughALinkError, _do_op
+    from tracker.copies import MovedThroughALinkError
+    from tracker.intents import _do_op
     from tracker.validators import sha256_of
 
     original = drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
@@ -8845,7 +8883,8 @@ def test_a_recovery_copies_no_original_behind_a_link(engagement, tmp_path):
     link check, so a year folder swapped for a junction had whatever it
     pointed at copied into Needs Review. The row's original is held to the
     link check as a step's source is."""
-    from tracker.filer import MOVE_THROUGH_A_LINK, _a_copy_to_act_on
+    from tracker.copies import MOVE_THROUGH_A_LINK
+    from tracker.intents import _a_copy_to_act_on
     from tracker.records import IndexEntry
     from tracker.validators import sha256_of
 
@@ -8872,7 +8911,8 @@ def test_an_open_copy_with_no_digest_is_refused_where_it_is_carried_out(engageme
     """A copy with nothing to prove it against could be anything the line
     pointed at, so it is refused before a folder is made - by the one
     function every step goes through, and by the copy itself."""
-    from tracker.filer import COPY_UNPROVED, _copy_whole, _do_op
+    from tracker.copies import COPY_UNPROVED, _copy_whole
+    from tracker.intents import _do_op
 
     original = originals(engagement) / "w2.pdf"
     original.parent.mkdir(parents=True, exist_ok=True)
@@ -8930,7 +8970,8 @@ def test_a_row_recorded_without_its_bytes_still_gets_a_proved_working_copy(engag
     intent takes the fingerprint from the step that brings the original in,
     or from the original itself - and an intent with neither is never
     written."""
-    from tracker.filer import COPY_UNPROVED, _do_op, _intend
+    from tracker.copies import COPY_UNPROVED
+    from tracker.intents import _do_op, _intend
     from tracker.locking import engagement_lock
     from tracker.validators import sha256_of
 
@@ -8968,7 +9009,8 @@ def test_a_recovery_removes_nothing_behind_a_link(engagement, tmp_path):
     """The review's M3: the recovery carries a removal out itself, not
     through _do_op, so it asks the link check of every step before it reads
     or removes a byte."""
-    from tracker.filer import MovedThroughALinkError, _finish_the_ops
+    from tracker.copies import MovedThroughALinkError
+    from tracker.intents import _finish_the_ops
     from tracker.validators import sha256_of
 
     behind = _elsewhere(tmp_path)
@@ -8986,7 +9028,7 @@ def test_a_removal_never_acts_in_the_client_tree(engagement):
     """The review's M4: every removal the tracker writes takes away one of
     the firm's own copies, so one naming a client's original - even in this
     return's own household and year - is refused before it is recorded."""
-    from tracker.filer import OP_OUTSIDE, _intend
+    from tracker.intents import OP_OUTSIDE, _intend
     from tracker.locking import engagement_lock
     from tracker.validators import sha256_of
 
@@ -9063,7 +9105,8 @@ def test_an_original_held_for_the_whole_pass_is_parked_and_said_so(engagement, m
     sentence says it could not be read - not that the record needs checking."""
     import tracker.copies as copies_module
     import tracker.filer as filer_module
-    from tracker.filer import COPY_UNREAD
+    import tracker.intents as intents_module
+    from tracker.copies import COPY_UNREAD
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     real = filer_module.sha256_of
@@ -9073,7 +9116,7 @@ def test_an_original_held_for_the_whole_pass_is_parked_and_said_so(engagement, m
             raise PermissionError("held by the sync client")
         return real(path)
 
-    for module in (filer_module, copies_module):
+    for module in (filer_module, copies_module, intents_module):
         monkeypatch.setattr(module, "sha256_of", unreadable)
     report = sort(engagement, today=DAY1)
     monkeypatch.undo()
@@ -9419,7 +9462,8 @@ def test_a_refused_mark_on_an_interrupted_step_is_said_once_and_the_pass_goes_on
     mark's own sentence - and the pass goes on; the row stays Filed at its
     copy, and the next pass has nothing to say."""
     import tracker.filer as filer_module
-    from tracker.filer import INTERRUPTED_MARK_REFUSED, unfile_document
+    from tracker.filer import unfile_document
+    from tracker.intents import INTERRUPTED_MARK_REFUSED
 
     row = _a_filed_macro_workbook(engagement, monkeypatch)
 

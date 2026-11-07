@@ -6302,6 +6302,7 @@ def test_a_rename_carries_duplicates_and_parked_candidates_that_name_it(
     was killed in is finished for them by the next pass as well; and a
     rename that runs through carries them the same way."""
     import tracker.filer as filer
+    import tracker.intents as intents
     from tests.samples import PRIOR_YEAR, YEAR
     from tracker.index import DUPLICATE
 
@@ -6334,13 +6335,15 @@ def test_a_rename_carries_duplicates_and_parked_candidates_that_name_it(
     def killed(engagement_dir, op, **kwargs):
         raise PermissionError("held open by another program")
 
-    monkeypatch.setattr(filer, "_do_op", killed)
+    for module in (filer, intents):
+        monkeypatch.setattr(module, "_do_op", killed)
     code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"from": "A01", "to": "A1"})
     assert code == 1, payload
     open_keys = {intent[ledger.KEY_KEY] for intent in store.open_intents(store.connect(), engagement)}
     assert {duplicate["pbc_location"], parked["pbc_location"]} <= open_keys
-    monkeypatch.setattr(filer, "_do_op", real)
+    for module in (filer, intents):
+        monkeypatch.setattr(module, "_do_op", real)
     code, payload = scan(capsys, engagement)
     assert code == 0, payload
     assert not store.open_intents(store.connect(), engagement)
@@ -6362,6 +6365,7 @@ def test_an_interrupted_rename_is_finished_by_the_next_pass(capsys, demo_root, t
     nothing doubled. Since decision 168 it renames the copies only, in
     Prepared itself: no folder is made and none is left to tidy."""
     import tracker.filer as filer
+    import tracker.intents as intents
     from tracker.filer import RENAME_UNFINISHED
 
     engagement, _ = _filed_documents(capsys, demo_root, tmp_path)
@@ -6375,7 +6379,8 @@ def test_an_interrupted_rename_is_finished_by_the_next_pass(capsys, demo_root, t
             raise PermissionError("held open by another program")
         return real(engagement_dir, op, **kwargs)
 
-    monkeypatch.setattr(filer, "_do_op", the_second_move_fails)
+    for module in (filer, intents):
+        monkeypatch.setattr(module, "_do_op", the_second_move_fails)
     code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"from": "A01", "to": "A1"})
     assert code == 1 and payload["error"].startswith(RENAME_UNFINISHED.split("{name}")[0].format(
@@ -6385,7 +6390,8 @@ def test_an_interrupted_rename_is_finished_by_the_next_pass(capsys, demo_root, t
     assert len([child for child in prepared.iterdir() if child.name.startswith("A01 - ")]) == 1
     assert len([child for child in prepared.iterdir() if child.name.startswith("A1 - ")]) == 1
 
-    monkeypatch.setattr(filer, "_do_op", real)
+    for module in (filer, intents):
+        monkeypatch.setattr(module, "_do_op", real)
     code, payload = scan(capsys, engagement)
     assert code == 0, payload
     assert not store.open_intents(store.connect(), engagement)
@@ -10795,7 +10801,7 @@ def test_a_mac_says_protected_view_does_not_exist_each_time_a_macro_copy_opens(
     """SPEC-mac R8 (P240): a Mac cannot mark a review copy for Protected View,
     so the copy is made unmarked as before, and the API names - for the shell -
     each openable path whose copy Windows would have marked
-    (``filer._may_carry_code``), with the one sentence the shell then says each
+    (``copies._may_carry_code``), with the one sentence the shell then says each
     time it opens one. Windows and Linux name none: there the mark itself is
     the answer."""
     from tracker import fsio, settings

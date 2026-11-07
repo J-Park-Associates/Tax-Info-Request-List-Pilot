@@ -973,23 +973,25 @@ def _a_row(**fields):
 
 
 def test_a_review_copy_that_cannot_be_made_names_the_os_error_not_its_path(tmp_path, monkeypatch, kept):
-    from tracker import copies, filer
+    from tracker import copies, filer, intents
 
     where = f"/Clients/{NAME} SSN {NUMBER}/2025/W2.pdf"
 
     def refused(*_args, **_kwargs):
         raise PermissionError(errno.EACCES, "Permission denied", where)
 
-    monkeypatch.setattr(filer, "_may_touch", lambda *a, **k: True)
-    monkeypatch.setattr(filer, "place_problem", lambda *a, **k: None)     # decision 187's place rule
-    for module in (filer, copies):
+    monkeypatch.setattr(intents, "_may_touch", lambda *a, **k: True)
+    monkeypatch.setattr(intents, "place_problem", lambda *a, **k: None)     # decision 187's place rule
+    for module in (filer, copies, intents):
         monkeypatch.setattr(module, "locate", lambda folder, _location: folder / "W2.pdf")
-    monkeypatch.setattr(filer, "_existing_copy", lambda *a, **k: None)
-    monkeypatch.setattr(filer, "_copy_whole", refused)
+    for module in (filer, intents):
+        monkeypatch.setattr(module, "_existing_copy", lambda *a, **k: None)
+    for module in (filer, intents):
+        monkeypatch.setattr(module, "_copy_whole", refused)
     row = _a_row(original_name="W2.pdf", pbc_location="x/W2.pdf", digest="ab")
-    location, reason = filer._a_copy_to_act_on(tmp_path, row, None)
+    location, reason = intents._a_copy_to_act_on(tmp_path, row, None)
     assert location == ""
-    assert reason == filer.REVIEW_COPY_FAILED.format(name="W2.pdf", problem="PermissionError (EACCES)")
+    assert reason == copies.REVIEW_COPY_FAILED.format(name="W2.pdf", problem="PermissionError (EACCES)")
     assert not carries_client_words(reason)
     assert any(carries_client_words(said) for said in kept)
 

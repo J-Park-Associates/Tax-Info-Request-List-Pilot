@@ -26,7 +26,7 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of forty-seven modules in six layers.
+`tracker/` is one Python package of forty-eight modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The scanner never imports the filer; the filer reaches
@@ -134,6 +134,11 @@ the package but each other.
 - `filer.py`: moves each original out of the household's one inbox into the
   client's folder for the year, untouched, and files a renamed working copy
   on the firm's side or parks it in `00 - Needs Review`.
+- `intents.py`: what a decision is about to do, written down before the first
+  file moves, carried out by one function and recorded in one write, and an
+  interrupted move finished from the record by bytes at the start of the next
+  pass, never guessed (decision 119, P332); the filer imports what it reads,
+  and a person's actions will too.
 - `scanner.py`: walks the working copies, runs the three tiers, resolves each
   request's status (override- and revert-aware) and records the result.
 - `reminder.py`: drafts the client's chase email in four stages measured
