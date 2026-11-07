@@ -3,7 +3,7 @@
   "generated": "2026-11-07",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
-  "module_table_sha256": "72ed5e64051546f6",
+  "module_table_sha256": "dcc7bb153292390d",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,8 +15,8 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 379,
-    "edges": 1932,
+    "nodes": 380,
+    "edges": 1942,
     "reused": 0
   },
   "node_types": [
@@ -4858,8 +4858,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "0ff5c48a0801db73",
-      "lines": 1907,
+      "sha256": "74b504615a868360",
+      "lines": 1911,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -6287,13 +6287,14 @@
       "id": "tests/content_check_helpers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "bcb13bb67c23850f",
-      "lines": 18,
+      "sha256": "479d12cbc2a0d76e",
+      "lines": 29,
       "exports": [
+        "an_engagement",
         "item"
       ],
-      "role": "What content_check's test files share: item(), the one-row request (identifier A01, document Doc) a test gives the rule fields it is trying.",
-      "notes": "SPEC-architecture-p4 R4.10.7 (P336), in tests/store_helpers.py's form. tests/test_content_check.py wrote item() for itself; with P336 the matcher's and the rules' tests left it for tests/test_keywords.py, each still building its rows with it, and a test file may not import another (tests/test_suite_shape.py), so it sits in a module that is not a test file and both import it - the map draws 'exercised by'. It came with its words. It is not a fixture, so its users import it by name rather than naming it by assignment."
+      "role": "What content_check's test files share: item(), the one-row request (identifier A01, document Doc) a test gives the rule fields it is trying, and an_engagement(), an engagement the store holds whose request list is the rows given.",
+      "notes": "SPEC-architecture-p4 R4.10.7 (P336), in tests/store_helpers.py's form. tests/test_content_check.py wrote item() for itself; with P336 the matcher's and the rules' tests left it for tests/test_keywords.py, each still building its rows with it, and a test file may not import another (tests/test_suite_shape.py), so it sits in a module that is not a test file and both import it - the map draws 'exercised by'. With P337 (R4.11.7) the verdict cache's own tests left for tests/test_verdicts.py, and an_engagement(), which they and the cache tests that stay both read, joined item() here. Each came with its words. Neither is a fixture, so their users import them by name rather than naming them by assignment."
     },
     {
       "id": "tests/css_rules.py",
@@ -7964,21 +7965,19 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "cc883b46c6d94939",
-      "lines": 2283,
+      "sha256": "46fcc2740adc885f",
+      "lines": 2250,
       "exports": [
         "A_PASS_READING",
         "BOMB_REFUSED",
         "MARKER",
         "a_short_stop",
-        "an_engagement",
         "an_engagement_run",
         "catching_the_reading",
         "in_a_child",
         "page_tree_bomb",
         "replace_seconds",
         "saved",
-        "test_a_cache_for_an_engagement_the_store_does_not_hold_is_refused_by_name",
         "test_a_cache_with_no_engagement_never_touches_the_store",
         "test_a_cached_verdict_starts_no_child",
         "test_a_catastrophic_date_pattern_costs_one_stop_and_the_next_pass_takes_the_kept_verdict",
@@ -8041,7 +8040,6 @@
         "test_the_alternatives_of_a_keyword_are_read_where_a_keyword_cell_is_read",
         "test_the_cache_is_keyed_on_content_not_path",
         "test_the_cache_save_refuses_outside_the_engagement_lock",
-        "test_the_cache_version_moved_so_a_verdict_read_sideways_is_read_again",
         "test_the_cut_mark_is_exact_at_the_budget",
         "test_the_form_scan_runs_once_per_judgment",
         "test_the_key_is_the_one_a_whole_resolve_gives",
@@ -8053,8 +8051,8 @@
         "A_PASS_READING": "'\\nimport sys\\nfrom pathlib import Path\\nsys.path[:0] = [sys.argv[3]]\\nfrom tests import child_readers\\nfrom tracker import content_check, ocr\\ncontent_check._CHILD_READER = child_readers.a_reader_that_starts_a_reader_of_its_own\\nif sys.argv[2] == \"lifeline\":\\n    ocr._kill_on_close_job = lambda pid, **_limits: None\\ncontent_check.judge_bounded(Path(sys.argv[1]), content_check.Questions())\\n'",
         "MARKER": "'Quendrilvax'"
       },
-      "role": "Tests for the content check: the rules, the verdict cache, the reading child's stops and what it leaves behind.",
-      "notes": "The process helper `running(pid)` (now in tests/children.py) asks whether a process has ended without reading anything Linux-only (SPEC-mac R36): a zombie has ended, and where there is no /proc - a Mac - the state comes from `ps -o stat=` through the seam `PROC`, which a test points at a place that is not there to stand in for a Mac. Before this a Mac took every zombie for a live process and each wait-for-the-child test waited out its fifteen seconds. Since P336 (SPEC-architecture-p4 P4.10) the matcher's and the rules' own tests are tests/test_keywords.py's - the tests whose highest home is tracker/keywords.py, cut and pasted with their names - and item(), the one-row request both files build, is tests/content_check_helpers.py's; what stays reads, judges or caches a document. Its reads of names content_check imports back from tracker.keywords (evaluate_rules, has_content_rules, rules_fingerprint, ContentResult and the judgment's questions) are P4.13's to point at their home."
+      "role": "Tests for the content check: reading a document, judging it and checking a row against it - the cache tests that also check or read a document, the reading child's stops and what it leaves behind.",
+      "notes": "The process helper `running(pid)` (now in tests/children.py) asks whether a process has ended without reading anything Linux-only (SPEC-mac R36): a zombie has ended, and where there is no /proc - a Mac - the state comes from `ps -o stat=` through the seam `PROC`, which a test points at a place that is not there to stand in for a Mac. Before this a Mac took every zombie for a live process and each wait-for-the-child test waited out its fifteen seconds. Since P336 (SPEC-architecture-p4 P4.10) the matcher's and the rules' own tests are tests/test_keywords.py's - the tests whose highest home is tracker/keywords.py, cut and pasted with their names - and item(), the one-row request both files build, is tests/content_check_helpers.py's; what stays reads, judges or caches a document. Since P337 (SPEC-architecture-p4 P4.11) the verdict cache's own tests - those whose highest home is tracker/verdicts.py - are tests/test_verdicts.py's, and an_engagement() is tests/content_check_helpers.py's. Its reads of names content_check imports back from tracker.keywords (evaluate_rules, has_content_rules, rules_fingerprint, ContentResult and the judgment's questions) and from tracker.verdicts (Extraction, Questions, NameQuestion, row_question, Judgment, unjudged) are P4.13's to point at their home."
     },
     {
       "id": "tests/test_copies.py",
@@ -12221,6 +12219,20 @@
       ]
     },
     {
+      "id": "tests/test_verdicts.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "50955158939e9fd9",
+      "lines": 76,
+      "exports": [
+        "test_a_cache_for_an_engagement_the_store_does_not_hold_is_refused_by_name",
+        "test_a_verdict_row_written_before_verdicts_moved_reads_after_it",
+        "test_the_cache_version_moved_so_a_verdict_read_sideways_is_read_again"
+      ],
+      "role": "The verdict cache's own tests: a row at a version before the last bump is not a verdict (get_by_digest() gives None for it), a cache built for an engagement the store does not hold is refused by name, and a verdict row written while the cache lived in tracker/content_check.py reads back through the moved ContentCache as the ContentResult it was made from, evidence and all.",
+      "notes": "SPEC-architecture-p4 R4.11.7 (P337). Cut and pasted from tests/test_content_check.py with the code, names and comments kept, in the order they stood: the 2 tests whose highest home, by the SPEC's section 4.1 rule, is tracker/verdicts.py - a test's homes being the modules that define the old module's functions and classes it calls or constructs, in its body or through a fixture of its own file, with exception classes, sentences and stand-in targets not counted. Every other cache test also calls check_content, open_verdict or another content_check function, so it stays there. The third test, test_a_verdict_row_written_before_verdicts_moved_reads_after_it, is the one the move added (R4.11.6): the row is asdict() of a ContentResult as the code before the move wrote it, pasted as a literal, kept through store.remember_verdicts() and read back with get_by_digest(), so no class name is in a stored row and CACHE_VERSION did not have to move. item() and an_engagement() are tests/content_check_helpers.py's. No section header moved: each section the tests came from keeps a test that stays (P4.8's precedent)."
+    },
+    {
       "id": "tests/test_verify.py",
       "type": "test",
       "layer": "tests",
@@ -13620,6 +13632,12 @@
       "from": "tests/content_check_helpers.py",
       "to": "tracker/manifest.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/content_check_helpers.py",
+      "to": "tests/builders.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -20525,6 +20543,60 @@
     {
       "from": "tests/test_validators.py",
       "to": "tracker/validators.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_verdicts.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_verdicts.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_verdicts.py",
+      "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_verdicts.py",
+      "to": "tracker/keywords.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_verdicts.py",
+      "to": "tracker/locking.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_verdicts.py",
+      "to": "tracker/records.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_verdicts.py",
+      "to": "tracker/store.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_verdicts.py",
+      "to": "tests/content_check_helpers.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_verdicts.py",
+      "to": "tracker/verdicts.py",
       "type": "tests",
       "source": "derived"
     },

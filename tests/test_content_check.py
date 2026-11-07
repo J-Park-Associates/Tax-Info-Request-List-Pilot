@@ -1,4 +1,10 @@
-"""Tests for tracker/content_check.py — tier-3 rules, all local files."""
+"""Tests for tracker/content_check.py — reading a document, judging it and checking a row
+against it, all local files.
+
+The matcher's and the rules' own tests are tests/test_keywords.py's (P336), and the verdict
+cache's own are tests/test_verdicts.py's (P337): each test went to its highest home's file.
+A cache test that also asks this module to check or read a document stays here.
+"""
 
 import datetime as dt
 from pathlib import Path
@@ -19,7 +25,7 @@ from tests.children import (
     process_state,
     running,
 )
-from tests.content_check_helpers import item
+from tests.content_check_helpers import an_engagement, item
 from tests.samples import photo, text_pdf
 from tracker import reasons, store
 from tracker.content_check import (
@@ -236,31 +242,6 @@ def test_a_page_is_handed_to_the_reader_as_it_comes_and_never_turned(tmp_path, m
     assert seen["image"].size == (400, 200)                    # as it stands
 
 
-def test_the_cache_version_moved_so_a_verdict_read_sideways_is_read_again(tmp_path):
-    """A verdict reached at version 9 may have been reached on nonsense: the
-    page it was read from was never turned upright. The cache is
-    disposable, so the version moves and the first pass after this
-    decision re-reads those scans once. (Decision 141 moved it again, for
-    the notice's first-page phrases, decision 169 once more: a new reader
-    means new verdicts on every scan and photo, and decision 190 again: a
-    verdict carries its cause's code, and P285 again: version 13 was read
-    before the page was prepared and drawn at 300 dpi.)"""
-    assert CACHE_VERSION == 14
-
-    rule = item(required_keywords=("Chase",))
-    engagement = an_engagement(tmp_path, rule)
-    fingerprint = rules_fingerprint(rule)
-    conn = store.connect()
-    engagement_id = store._engagement_row(conn, engagement)["id"]
-    for version, digest in ((9, "sideways"), (11, "read by tesseract")):
-        conn.execute(
-            f"INSERT INTO {store.VERDICTS_TABLE} (engagement_id, digest, fingerprint, version, verdict) "
-            "VALUES (?, ?, ?, ?, ?)", (engagement_id, digest, fingerprint, version, '{"ok": true}'))
-
-    assert ContentCache(engagement).get_by_digest("sideways", fingerprint) is None
-    assert ContentCache(engagement).get_by_digest("read by tesseract", fingerprint) is None
-
-
 def test_a_slow_reading_is_said_and_never_cut_short(tmp_path, monkeypatch):
     """The number the reader benchmark and the owner's speed ceiling are
     measured in. Nothing acts on it: a reading that takes its time is
@@ -301,12 +282,6 @@ def an_engagement_run(**kwargs):
 
 
 # ------------------------------------------------------------------- cache ----
-
-
-def an_engagement(tmp_path, *rules):
-    """An engagement the store holds, whose request list is ``rules``."""
-    return make_engagement(tmp_path / "Clients", list(rules), household="Smith Family",
-                           scaffold=False)
 
 
 def saved(cache, engagement):
@@ -441,14 +416,6 @@ def test_a_cache_with_no_engagement_never_touches_the_store(tmp_path, monkeypatc
     assert check_content(pdf, rule, cache).ok
     assert cache.get(pdf, rules_fingerprint(rule)) is not None
     cache.save()                                                     # nothing to touch, no lock needed
-
-
-def test_a_cache_for_an_engagement_the_store_does_not_hold_is_refused_by_name(tmp_path):
-    folder = tmp_path / "Clients" / "Nobody 2025"
-    folder.mkdir(parents=True)
-    with pytest.raises(store.StoreError, match="does not hold this engagement") as raised:
-        ContentCache(folder)
-    assert folder.name in str(raised.value)
 
 
 def test_a_transient_verdict_is_still_never_cached(tmp_path, monkeypatch):
