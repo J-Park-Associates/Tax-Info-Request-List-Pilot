@@ -4697,6 +4697,179 @@ def _park_a_program(
                           candidates=(), evidence="", copy=False, kept_at=kept_at, resent=resent)
 
 
+def _settle(
+    drop: Path, original: Path, digest: str, size_kb: float, stamp: str, runs: list[_ReturnRun],
+    judgment: Judgment, routed: list[tuple[_ReturnRun, Routing]], *,
+    shortlist_across: bool, refiled: str = "", resent: str = "",
+) -> tuple[_ReturnRun, IndexEntry]:
+    """Settle one preserved original once the router has answered for it:
+    the return it belongs to, and the row that says so. The one place the
+    sequence after routing is written, and both roads reach it with what
+    they routed from one reading: the household pass
+    (:func:`_decide_across`) with every return in ``runs``, and a re-send
+    routed afresh (:func:`_sort_one`, decision 111) with the one return
+    whose record holds the bytes.
+
+    In order (decisions 128, 129, 131, 137, 143 and 204): the name tier over
+    the returns that accepted it (:func:`_by_the_name`); exactly one left
+    files it where it is one of the household's own, and where that one
+    lives in another household it parks at home instead - out of an email
+    or a zip, naming nobody, or naming that return's person; no room even
+    for the request's shortest name parks it; several left park it
+    contested; none parks it, in the name's words where the name is what
+    emptied the list. Every park but the one across households lands in
+    :func:`_the_home` over ``routed``, which on the re-send road is always
+    the return that holds the bytes.
+
+    ``shortlist_across`` is Q-B, Jason's and open (P313): what the park
+    across households carries and where it lands - the shortlist, the
+    home's evidence, the return, and the name's evidence on the wanting
+    return - chosen together. ``True`` is the household road's: the home
+    :func:`_the_home` chose, its list's shortlist and evidence, then the
+    wanting return's evidence as the name tier left it, ``RULE_NAME`` entry
+    and all. ``False`` is the re-send road's, as it has always parked: the
+    household's first own return, no shortlist and none of the home's
+    evidence - the re-send road routes only the return decision 132's rule
+    found holding the bytes, never the home's own - and the wanting
+    return's evidence as the router gave it, before the name tier. It is
+    keyword-only with no default, so each caller says which answer it
+    builds; Jason's answer, when he gives it, changes the re-send road's
+    call - what it routes, and this argument - and nothing in this sequence.
+
+    ``refiled`` and ``resent`` are the re-send road's sentences (decision
+    111): ``refiled`` on its filing, ``resent`` on its filing and on every
+    park. The household road gives neither.
+    """
+    accepting = [(run, routing) for run, routing in routed if routing.routed]
+
+    # The name check was asked of the same reading, in the same judgment.
+    # With no words at all the router has already parked the document
+    # (UNREADABLE) and nothing accepted it, so the stage has nothing to judge.
+    stage = _by_the_name(judgment, accepting, runs)
+    kept = stage.kept
+
+    no_room: NoRoom | None = None
+    unnamed_across = opened_across = named_across = False
+    if len(kept) == 1:
+        run, routing = kept[0]
+        item = run.context.by_id.get(routing.identifier or "")
+        # Out of an email or a zip (decision 143): the attachment's original
+        # is the firm's copy of a part of the client's file, and it never
+        # moves into another household's folder. It waits at home, named
+        # or not, for a person to file it by hand.
+        if item is not None and not run.home and run.context.container:
+            opened_across, item = True, None
+        # Across households, filing needs a confirmed name (decision 137,
+        # B2; the owner's Q-2). A document the name tier kept only because
+        # its request is unnamed would otherwise move into another
+        # household's folder, which that household's people can open, on
+        # the strength of its keywords alone. It waits at home for a person.
+        if item is not None and not run.home and id(run) not in stage.confirmed:
+            unnamed_across, item = True, None
+        # And with the name confirmed, it still waits (decision 204, the
+        # owner's lane-B ruling, revising 132): a printed name is the
+        # client's word, and a client's word alone never places a document
+        # in a folder another household's people can open. The confirmed
+        # name was the pass's last road across, so the pass now never files
+        # there at all; the row keeps what that return's list accepted, and
+        # a person's one click hands it over.
+        if item is not None and not run.home:
+            named_across, item = True, None
+        if item is not None:
+            try:
+                return run, _file_it(drop, original, digest, size_kb, stamp, run, routing, item,
+                                     refiled=refiled, resent=resent,
+                                     confirmed=stage.confirmed.get(id(run), ""))
+            except NoRoom as exc:
+                # Every rule accepted it and Prepared has no room for even
+                # the request's shortest name (decision 131): the last
+                # reason the filing branch can give. It parks, and the
+                # request that accepted it is its candidate.
+                no_room = exc
+
+    # Nothing may be filed, so the document waits where it was dropped
+    # (decision 129): the original rests under the household the return
+    # that takes it lives in, and until a person says which return that
+    # is, the household that was dropped in is the one that has it. (On
+    # the re-send road ``routed`` is the one return whose record holds the
+    # bytes, and that return is the home here: decision 111's row decides
+    # in its own record.)
+    home, home_routing = _the_home(accepting, routed)
+    home_routing = stage.graded.get(id(home), home_routing)
+
+    if no_room is not None:
+        said = routing if home is run else home_routing
+        # A request in another of this household's returns is named by that
+        # return's label (decision 131's review, deviation 5): a page naming
+        # that return's person, whose room ran out, parks in the home
+        # return the name vetoed it from, where "this request" would be a
+        # list the person reading it is not looking at. (Since decision 204
+        # a return in another household never files on the pass, so the
+        # one no room reaches here for is always this household's.)
+        reason = str(no_room) if home is run else PATH_NO_ROOM_IN.format(
+            label=run.label, length=no_room.length, limit=no_room.limit,
+            ext=_kind_of(no_room.extension))
+        return home, _park_it(
+            drop, original, digest, size_kb, stamp, home,
+            reason=reason, code=reasons.NO_ROOM_CODE, candidates=said.candidates,
+            evidence=format_evidence(said.evidence_record), resent=resent,
+        )
+
+    if opened_across or unnamed_across or named_across:
+        # The park across households (decisions 137, 143 and 204), in the
+        # words of whichever of the three it is - and carrying what Q-B's
+        # answer says (P313; ``shortlist_across`` above).
+        across: _ReturnRun
+        shortlist: Routing | _NoRouting
+        candidates: tuple[str, ...]
+        if shortlist_across:
+            across, shortlist, candidates, wanting = home, home_routing, home_routing.candidates, routing
+        else:
+            across = next((one for one in runs if one.home), run)
+            shortlist, candidates, wanting = _NO_ROUTING, (), routed[0][1]
+        if opened_across:
+            reason, code = reasons.OPENED_NOT_ACROSS.format(), reasons.OPENED_NOT_ACROSS.code
+        elif unnamed_across:
+            reason, code = reasons.UNNAMED_ACROSS_HOUSEHOLDS.format(), reasons.UNNAMED_ACROSS_HOUSEHOLDS.code
+        else:
+            reason, code = _named_across(stage, run), reasons.NAMED_ACROSS_HOUSEHOLDS.code
+        return across, _park_it(
+            drop, original, digest, size_kb, stamp, across,
+            reason=reason, code=code, candidates=candidates,
+            evidence=_with_the_wanting_return(shortlist, run, wanting), resent=resent,
+            waits_for=_waits_for(run, wanting) if named_across else "",
+        )
+
+    if len(kept) > 1:
+        # Two returns ask for the same row - two 1040s share every row of
+        # their lists - and the name did not tell them apart either, which
+        # since decision 128 means a page naming both spouses. The sentence
+        # names every return that accepted it, by its label, and the
+        # requests each accepted it under, so the person choosing is
+        # choosing from what the tracker saw; since decision 129 one of
+        # them may live in another household, and its label is how the row
+        # names it - never who is shared on it.
+        listed = "; ".join(f"{run.label}: {', '.join(one.filed_to)}" for run, one in kept)
+        return home, _park_it(
+            drop, original, digest, size_kb, stamp, home,
+            reason=CONTESTED_BETWEEN_RETURNS.format(listed=listed),
+            code=reasons.CONTESTED_BETWEEN_RETURNS_CODE,
+            candidates=home_routing.candidates,
+            evidence=format_evidence(home_routing.evidence_record), resent=resent,
+        )
+
+    # Nothing left at all. Where the name is what emptied the list, the row
+    # says so in the name's own words rather than the router's "matched no
+    # request", which would be a lie about a W-2 the list plainly wanted.
+    return home, _park_it(
+        drop, original, digest, size_kb, stamp, home,
+        reason=stage.reason or home_routing.reason,
+        code=reasons.code_of(stage.reason) or home_routing.code,
+        candidates=home_routing.candidates,
+        evidence=format_evidence(home_routing.evidence_record), resent=resent,
+    )
+
+
 def _decide_across(
     drop: Path, original: Path, digest: str, size_kb: float, stamp: str, runs: list[_ReturnRun],
     first: _ReturnRun,
@@ -4791,133 +4964,9 @@ def _decide_across(
     routed = [(run, route_file(judged, run.items, judgment=judgment,
                                digest=digest, cache=run.cache, pdf_cache=run.context.pdf_cache))
               for run in runs]
-    accepting = [(run, routing) for run, routing in routed if routing.routed]
-
-    # The name check was asked of the same reading, in the same judgment.
-    # With no words at all the router has already parked the document
-    # (UNREADABLE) and nothing accepted it, so the stage has nothing to judge.
-    stage = _by_the_name(judgment, accepting, runs)
-    kept = stage.kept
-
-    no_room: NoRoom | None = None
-    unnamed_across = opened_across = named_across = False
-    if len(kept) == 1:
-        run, routing = kept[0]
-        item = run.context.by_id.get(routing.identifier or "")
-        # Out of an email or a zip (decision 143): the attachment's original
-        # is the firm's copy of a part of the client's file, and it never
-        # moves into another household's folder. It waits at home, named
-        # or not, for a person to file it by hand.
-        if item is not None and not run.home and run.context.container:
-            opened_across, item = True, None
-        # Across households, filing needs a confirmed name (decision 137,
-        # B2; the owner's Q-2). A document the name tier kept only because
-        # its request is unnamed would otherwise move into another
-        # household's folder, which that household's people can open, on
-        # the strength of its keywords alone. It waits at home for a person.
-        if item is not None and not run.home and id(run) not in stage.confirmed:
-            unnamed_across, item = True, None
-        # And with the name confirmed, it still waits (decision 204, the
-        # owner's lane-B ruling, revising 132): a printed name is the
-        # client's word, and a client's word alone never places a document
-        # in a folder another household's people can open. The confirmed
-        # name was the pass's last road across, so the pass now never files
-        # there at all; the row keeps what that return's list accepted, and
-        # a person's one click hands it over.
-        if item is not None and not run.home:
-            named_across, item = True, None
-        if item is not None:
-            try:
-                return run, _file_it(drop, original, digest, size_kb, stamp, run, routing, item,
-                                     confirmed=stage.confirmed.get(id(run), ""))
-            except NoRoom as exc:
-                # Every rule accepted it and Prepared has no room for even
-                # the request's shortest name (decision 131): the last
-                # reason the filing branch can give. It parks, and the
-                # request that accepted it is its candidate.
-                no_room = exc
-
-    # Nothing may be filed, so the document waits where it was dropped
-    # (decision 129): the original rests under the household the return
-    # that takes it lives in, and until a person says which return that
-    # is, the household that was dropped in is the one that has it.
-    home, home_routing = _the_home(accepting, routed)
-    home_routing = stage.graded.get(id(home), home_routing)
-
-    if no_room is not None:
-        said = routing if home is run else home_routing
-        # A request in another of this household's returns is named by that
-        # return's label (decision 131's review, deviation 5): a page naming
-        # that return's person, whose room ran out, parks in the home
-        # return the name vetoed it from, where "this request" would be a
-        # list the person reading it is not looking at. (Since decision 204
-        # a return in another household never files on the pass, so the
-        # one no room reaches here for is always this household's.)
-        reason = str(no_room) if home is run else PATH_NO_ROOM_IN.format(
-            label=run.label, length=no_room.length, limit=no_room.limit,
-            ext=_kind_of(no_room.extension))
-        return home, _park_it(
-            drop, original, digest, size_kb, stamp, home,
-            reason=reason, code=reasons.NO_ROOM_CODE, candidates=said.candidates,
-            evidence=format_evidence(said.evidence_record),
-        )
-
-    if opened_across:
-        return home, _park_it(
-            drop, original, digest, size_kb, stamp, home,
-            reason=reasons.OPENED_NOT_ACROSS.format(),
-            code=reasons.OPENED_NOT_ACROSS.code,
-            candidates=home_routing.candidates,
-            evidence=_with_the_wanting_return(home_routing, run, routing),
-        )
-
-    if unnamed_across:
-        return home, _park_it(
-            drop, original, digest, size_kb, stamp, home,
-            reason=reasons.UNNAMED_ACROSS_HOUSEHOLDS.format(),
-            code=reasons.UNNAMED_ACROSS_HOUSEHOLDS.code,
-            candidates=home_routing.candidates,
-            evidence=_with_the_wanting_return(home_routing, run, routing),
-        )
-
-    if named_across:
-        return home, _park_it(
-            drop, original, digest, size_kb, stamp, home,
-            reason=_named_across(stage, run),
-            code=reasons.NAMED_ACROSS_HOUSEHOLDS.code,
-            candidates=home_routing.candidates,
-            evidence=_with_the_wanting_return(home_routing, run, routing),
-            waits_for=_waits_for(run, routing),
-        )
-
-    if len(kept) > 1:
-        # Two returns ask for the same row - two 1040s share every row of
-        # their lists - and the name did not tell them apart either, which
-        # since decision 128 means a page naming both spouses. The sentence
-        # names every return that accepted it, by its label, and the
-        # requests each accepted it under, so the person choosing is
-        # choosing from what the tracker saw; since decision 129 one of
-        # them may live in another household, and its label is how the row
-        # names it - never who is shared on it.
-        listed = "; ".join(f"{run.label}: {', '.join(one.filed_to)}" for run, one in kept)
-        return home, _park_it(
-            drop, original, digest, size_kb, stamp, home,
-            reason=CONTESTED_BETWEEN_RETURNS.format(listed=listed),
-            code=reasons.CONTESTED_BETWEEN_RETURNS_CODE,
-            candidates=home_routing.candidates,
-            evidence=format_evidence(home_routing.evidence_record),
-        )
-
-    # Nothing left at all. Where the name is what emptied the list, the row
-    # says so in the name's own words rather than the router's "matched no
-    # request", which would be a lie about a W-2 the list plainly wanted.
-    return home, _park_it(
-        drop, original, digest, size_kb, stamp, home,
-        reason=stage.reason or home_routing.reason,
-        code=reasons.code_of(stage.reason) or home_routing.code,
-        candidates=home_routing.candidates,
-        evidence=format_evidence(home_routing.evidence_record),
-    )
+    # What happens to it now is the one sequence the re-send road settles
+    # by too, with this road's answer to Q-B (P313).
+    return _settle(drop, original, digest, size_kb, stamp, runs, judgment, routed, shortlist_across=True)
 
 
 def _not_read(reading) -> bool:
@@ -5476,51 +5525,17 @@ def _sort_one(
         judged, context.items, judgment=judgment,
         digest=digest, cache=context.cache, pdf_cache=context.pdf_cache,
     )
-    item = context.by_id.get(routing.identifier or "")
-    if routing.routed and item is not None:
-        # The same name tier the household pass runs, over the one return
-        # this arrival belongs to: the page confirms it, another return's
-        # person vetoes it, and on a named request a page naming nobody
-        # parks it.
-        stage = _by_the_name(judgment, [(run, routing)], runs)
-        if stage.kept and not run.home:
-            # A re-send whose bytes a return in another household already
-            # holds is held to the same rule as a first arrival (decision
-            # 137's review, B #5, the owner's "never"; decision 204): it is
-            # not filed there, named or not, and parks in the drop's own
-            # household - naming nobody, for the picker; naming that
-            # return's person, for one click.
-            home = next((one for one in runs if one.home), run)
-            named = id(run) in stage.confirmed
-            return home, _park_it(drop, original, digest, size_kb, stamp, home,
-                                  reason=(_named_across(stage, run) if named
-                                          else reasons.UNNAMED_ACROSS_HOUSEHOLDS.format()),
-                                  code=(reasons.NAMED_ACROSS_HOUSEHOLDS.code if named
-                                        else reasons.UNNAMED_ACROSS_HOUSEHOLDS.code),
-                                  candidates=(),
-                                  evidence=_with_the_wanting_return(_NO_ROUTING, run, routing),
-                                  resent=resent,
-                                  waits_for=_waits_for(run, routing) if named else "")
-        if stage.kept:
-            _kept, routing = stage.kept[0]
-            try:
-                return run, _file_it(drop, original, digest, size_kb, stamp, run, routing, item,
-                                     refiled=refiled, resent=resent,
-                                     confirmed=stage.confirmed.get(id(run), ""))
-            except NoRoom as exc:        # decision 131: no room even for the shortest name
-                return run, _park_it(drop, original, digest, size_kb, stamp, run,
-                                     reason=str(exc), code=reasons.NO_ROOM_CODE,
-                                     candidates=routing.candidates,
-                                     evidence=format_evidence(routing.evidence_record), resent=resent)
-        routing = stage.graded.get(id(run), routing)
-        return run, _park_it(drop, original, digest, size_kb, stamp, run,
-                             reason=stage.reason or routing.reason,
-                             code=reasons.code_of(stage.reason) or routing.code,
-                             candidates=routing.candidates,
-                             evidence=format_evidence(routing.evidence_record), resent=resent)
-    return run, _park_it(drop, original, digest, size_kb, stamp, run,
-                         reason=routing.reason, code=routing.code, candidates=routing.candidates,
-                         evidence=format_evidence(routing.evidence_record), resent=resent)
+    # The same sequence the household pass settles a drop by, over the one
+    # return this arrival belongs to: the name tier confirms it, another
+    # return's person vetoes it, and on a named request a page naming nobody
+    # parks it. A re-send whose bytes a return in another household already
+    # holds is held to the same rule as a first arrival (decision 137's
+    # review, B #5, the owner's "never"; decision 204): it is not filed
+    # there, named or not, and parks in the drop's own household - naming
+    # nobody, for the picker; naming that return's person, for one click -
+    # carrying what this road's answer to Q-B says (P313).
+    return _settle(drop, original, digest, size_kb, stamp, runs, judgment, [(run, routing)],
+                   shortlist_across=False, refiled=refiled, resent=resent)
 
 
 # ------------------------------------------------------------- freshness ----
