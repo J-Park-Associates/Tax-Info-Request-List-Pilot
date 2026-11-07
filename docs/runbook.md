@@ -748,6 +748,16 @@ changes nothing:
   seconds to list the clients, once. A return whose old line the rule
   refuses stops, as above, and is judged again at every pass until it is
   repaired.
+- **P328** (admission version 6) needs nothing either: the first time each
+  return's record is read after it - by the scheduled pass, or by the app
+  when it first lists the clients folder - every line the record already
+  holds is judged again by today's rule, once per return, as for decision
+  209 above, and with the same cost: the first screen after this upgrade
+  can take a few seconds to list the clients (about 22 seconds across 750
+  returns when one line in ten is a request-list edit, up to about 90 if
+  every line were one), once. A return whose record holds a release, or an
+  old hand-over, whose 'was' is not a location, or a hand-over with no
+  key, stops with the malformed-line sentence below until it is repaired.
 - **Once, when decision 169 lands** (the new reader). The database's
   version does not change, so there is nothing to delete for it (set
   `tracker.db` aside only if another decision in the same install asks).
@@ -2758,8 +2768,9 @@ the same way.
   false", a Date Pattern that "repeats something that itself repeats",
   "could try too many ways to match one line", "could do too much matching
   on one line" or "has more than 8 variable repetitions"); a line naming "an event this version does not know"; a
-  step "outside this return's places"; a household or return label that
-  "is not one folder name"; a line stamped in a form the app never
+  step "outside this return's places"; a release or an old hand-over
+  whose 'was' is not a location, or a hand-over with no 'key'; a
+  household or return label that "is not one folder name"; a line stamped in a form the app never
   writes; or one of the three things every line since decision 159
   carries about itself, in a shape the app never writes - a writer
   ('host') that "must be a machine's name" (blank, spaced, too long, or

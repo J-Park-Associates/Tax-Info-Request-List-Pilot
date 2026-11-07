@@ -113,7 +113,13 @@ from tracker.records import RULE_LIST_FIELDS
 #: 5 adds P301's: a request's Document title that hides a spoofing character
 #: (the same narrow set), since the Document names a working copy whenever
 #: the row has no short name of its own.
-ADMISSION_VERSION = 5
+#: 6 adds P328's: a release's (and the retired hand-over's) ``was`` held to
+#: the name rule (``bounds.name_problem``: text, at most 1,000 characters, no
+#: NUL), which reached the store's SQL and its fold as whatever it was, and a
+#: hand-over with no key, which the fold refused in its own words. Checked
+#: against the office's real records by the read-only ``verify`` before
+#: landing.
+ADMISSION_VERSION = 6
 
 #: What a row of ``engagements`` holds the record of: one return, or one
 #: household (decision 125). Both are folders with a journal, keyed by
@@ -203,9 +209,10 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
     joined onto a path; and a household's record, which has no steps,
     carries no ``moving`` line. This is the one admission, run by
     :func:`record` before anything is appended, by :func:`_apply` on every
-    line read in and by :func:`check` over every journal. Each refusal names
-    the field and the class of problem and never quotes the value, which is
-    whatever the line said (security principle 7).
+    line read in and by :func:`tracker.store_check.check` over every
+    journal. Each refusal names the field and the class of problem and
+    never quotes the value, which is whatever the line said (security
+    principle 7).
 
     A keyword taught or taken back is checked here for the first time with
     decision 113: until then the two tables this file writes from a line
@@ -213,9 +220,9 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
     at all was written with ``str()`` around whatever it carried - a number
     for a keyword became the text of that number in the table while the
     journal's own fold kept the number, which is a disagreement
-    :func:`check` would now report and nobody could act on. Both keyword
-    events name a request and a word, both as text and neither blank, or
-    the line is refused like any other.
+    :func:`tracker.store_check.check` would now report and nobody could act
+    on. Both keyword events name a request and a word, both as text and
+    neither blank, or the line is refused like any other.
 
     ``written`` says whether the line is one on disk. A line read back is
     refused as :data:`MALFORMED_LINE`, naming its place in the record; the
@@ -248,6 +255,8 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
         _admit_abandoned(event, refuse)
     elif name == ledger.RELEASED:
         _admit_release(event, refuse)
+    elif name == ledger.HANDED_OVER_BY_PERSON_EVENT:
+        _admit_hand_over(event, refuse)
     elif name in (ledger.KEYWORD_LEARNED, ledger.KEYWORD_UNLEARNED):
         _admit_keyword(event, refuse)
     elif name in (ledger.DRAFTED, ledger.DRAFT_APPROVED):
@@ -433,6 +442,25 @@ def _admit_release(event: dict, refuse: Refuse) -> None:
         refuse(f"carries {ledger.ROW_KEY!r}; a release carries no row")
     if bounds.text_problem(event.get(ledger.REASON_KEY, ""), long=True):
         refuse(f"carries {ledger.REASON_KEY!r} that is not text")
+    leaving = event.get(ledger.WAS_KEY)
+    if leaving is not None and bounds.name_problem(leaving):
+        refuse(f"carries {ledger.WAS_KEY!r} that is not a location")
+
+
+def _admit_hand_over(event: dict, refuse: Refuse) -> None:
+    """A retired ``handed_over_by_person`` line."""
+    # Decision 129 wrote it and decision 132 retired it: it is read once,
+    # folded as a release of its key. So it is held to what that fold
+    # reads and no more - a key, which the fold refuses only when it is
+    # absent or None, and a ``was`` that is a location, as a release's is
+    # (P328). No row and no reason are checked: decision 129's line
+    # carried its own shape, and holding it to more than the fold reads
+    # would refuse lines the fold reads safely.
+    if event.get(ledger.KEY_KEY) is None:
+        refuse(f"carries no {ledger.KEY_KEY!r}")
+    leaving = event.get(ledger.WAS_KEY)
+    if leaving is not None and bounds.name_problem(leaving):
+        refuse(f"carries {ledger.WAS_KEY!r} that is not a location")
 
 
 def _admit_keyword(event: dict, refuse: Refuse) -> None:

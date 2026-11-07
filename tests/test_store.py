@@ -3921,6 +3921,60 @@ def test_a_record_admitted_under_version_four_is_judged_again_for_its_document(
     assert admitted_by(conn, by_hand) == 4
 
 
+def test_a_record_admitted_under_version_five_is_judged_again_for_its_release(
+        conn, root, by_hand, monkeypatch):
+    """P328: a line the store applied while its admission was 5 - a release
+    whose ``was`` is a number, which version 5 admitted and applied without
+    complaint - is judged again at the row's next sync, by both readings
+    and by the door a change comes in at, and stops its household by the
+    malformed-line sentence until a person repairs it. Nothing is recorded:
+    not the version, and no line."""
+    build(conn, root, by_hand)
+    release = ledger.new(ledger.RELEASED, **{ledger.KEY_KEY: A_ROW_ORIGINAL, ledger.WAS_KEY: 5,
+                                             ledger.REASON_KEY: "released to X (B01) by a person"})
+    monkeypatch.setattr(store, "_refuse_a_malformed_line", lambda *args, **kwargs: None)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, release)
+    monkeypatch.undo()
+    conn.execute("UPDATE engagements SET admitted_by = 5")
+    lines = len(ledger.read_events(by_hand))
+    sentence = f"line {lines} of the record is malformed.*'was' that is not a location"
+
+    assert store.ADMISSION_VERSION >= 6
+    for reading in (store.catch_up, store.follow_the_journal):
+        with pytest.raises(store.StoreError, match=sentence):
+            reading(conn, root, by_hand)
+    assert admitted_by(conn, by_hand) == 5
+
+    with engagement_lock(by_hand):
+        with pytest.raises(store.StoreError, match=f"{sentence}.*; nothing was written$"):
+            store.record(conn, by_hand)
+    assert admitted_by(conn, by_hand) == 5
+    assert len(ledger.read_events(by_hand)) == lines
+
+
+def test_a_released_line_whose_was_is_not_a_location_is_malformed_on_a_return_that_holds_a_row(
+        conn, root, by_hand):
+    """P328 (admission 6): the release tests/test_admission.py refuses on a
+    return that holds no row is refused by the same sentence on one that
+    holds a row - where version 5 let it through and the store's fold
+    failed on it with a bare TypeError before its SQL, an unexpected error
+    the pass could say nothing of."""
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row()))
+    assert store.documents(conn, by_hand)
+    line = {ledger.EVENT_KEY: ledger.RELEASED, ledger.KEY_KEY: "x.pdf",
+            ledger.WAS_KEY: ["not", "a", "place"]}
+    written_elsewhere(by_hand, line)
+    lines = len(ledger.read_events(by_hand))
+    with pytest.raises(store.StoreError) as refused:
+        store.catch_up(conn, root, by_hand)
+    said = str(refused.value)
+    assert f"line {lines} of the record is malformed" in said
+    assert "'was' that is not a location" in said
+
+
 def test_the_store_admits_the_no_break_space_and_soft_hyphen_an_ordinary_paste_leaves(
         conn, root, by_hand):
     """P290: the store's gate is the narrow spoofing rule, so a record written

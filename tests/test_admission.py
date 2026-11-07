@@ -16,7 +16,11 @@ is not folder names, and an event an intent carries (P292). The tests that
 drive the admission through the store's door - ``record``, ``catch_up`` -
 or take the store's fixtures stay in ``tests/test_store.py``, and the one
 through ``check`` is ``tests/test_store_check.py``'s: they test the door's
-wiring as much as the rule.
+wiring as much as the rule. The exception is P328's (admission 6): the
+release whose ``was`` is not a location is the rule's own defect, so the
+test that it is now refused at both doors, on a return that holds no row,
+is here with the rule's other tests of that line, and takes the store's
+fixtures from ``tests/store_helpers.py``.
 
 All of it came from ``tests/test_store.py`` with P323 (SPEC-architecture-p3
 P3.2), cut and pasted, but for the carried event's test, which came with
@@ -31,8 +35,19 @@ import ast
 
 import pytest
 
-from tests.store_helpers import _a_rule
+from tests import store_helpers
+from tests.conftest import written_elsewhere
+from tests.store_helpers import A_ROW_ORIGINAL, _a_rule, a_row, build
 from tracker import ledger, store
+from tracker.locking import engagement_lock
+
+#: The store's fixtures, from ``tests/store_helpers.py``, for the one test
+#: here that drives the admission through the store's doors (P328): each
+#: named once so that it can ask for it.
+root = store_helpers.root
+engagement = store_helpers.engagement
+by_hand = store_helpers.by_hand
+conn = store_helpers.conn
 
 
 def test_a_moving_line_in_a_households_record_is_refused():
@@ -73,6 +88,11 @@ def test_a_moving_line_in_a_households_record_is_refused():
 #: Pinned again under 5 when P3.3 split the admission into one function per family (B-7): the
 #: entry function, fifteen new parts and two docstrings moved, and the equivalence run found no
 #: line judged differently. No rule changed.
+#: Version 6 (P328) moved two parts from version 5's - ``_admit_release``, which now holds a
+#: release's ``was`` to the name rule, and ``_refuse_a_malformed_line``, whose chain gained the
+#: retired hand-over's branch and whose docstring names ``tracker.store_check.check`` - and added
+#: two: the new ``_admit_hand_over``, and ``ledger.HANDED_OVER_BY_PERSON_EVENT``, which that
+#: branch reads.
 ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.layout.CLIENTS": "3b8264d65abeec66",
     "tracker.layout.CLIENTS_TREE": "488530d6164e0dd6",
@@ -1125,6 +1145,267 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.records.status_problem": "0a4507873e497b78",
     "tracker.records.waits_for_problem": "463d041ef7fa9219",
     "tracker.records.word_list_problem": "64d72805fbba0527",
+}, 6: {
+    "tracker.admission.ALSO_IN": "f91e15416cd81c44",
+    "tracker.admission.KIND_HOUSEHOLD": "8de5259835758e72",
+    "tracker.admission.KIND_RETURN": "08633b69eed18c1b",
+    "tracker.admission.MALFORMED_LINE": "7af462b999c9799b",
+    "tracker.admission.REFUSED_CHANGE": "ab4d86d9b8b2fffa",
+    "tracker.admission.RULE_LIST_FIELDS": "8b3d25ca8662bd02",
+    "tracker.admission.UNKNOWN_EVENT": "099e89ceccd1e5e9",
+    "tracker.admission._a_code": "ba12728f1db79b61",
+    "tracker.admission._a_place": "f596cc3ac5877557",
+    "tracker.admission._a_row": "a7b72319b9e47615",
+    "tracker.admission._a_segment": "aaa3449d00fb6f4e",
+    "tracker.admission._admit_abandoned": "723712654f5f9a98",
+    "tracker.admission._admit_draft": "d93be95fa6627832",
+    "tracker.admission._admit_hand_over": "404055f73cd17e2f",
+    "tracker.admission._admit_household": "94c02c4d7296aae4",
+    "tracker.admission._admit_intent": "483f08dee6be2a7b",
+    "tracker.admission._admit_keyword": "c0f5129dbe994bbb",
+    "tracker.admission._admit_line": "b3f96c2a32b44bfd",
+    "tracker.admission._admit_release": "aa98b4ae2dffcb76",
+    "tracker.admission._admit_row": "ee01f8f2b00b7984",
+    "tracker.admission._admit_rules": "0998f9a359f7877d",
+    "tracker.admission._admit_scan": "405d1aa39d24dcd7",
+    "tracker.admission._admit_sharing": "db6f5038adaed277",
+    "tracker.admission._line_keys_problem": "5f41ce8742ce125e",
+    "tracker.admission._refuse_a_malformed_line": "1bca8daae9ff0dd0",
+    "tracker.bounds.COUNT_BOUNDS": "66fbd6100ed5379b",
+    "tracker.bounds.DATE_BOUNDS": "14ca9c3c8c63da08",
+    "tracker.bounds.DATE_PATTERN_ALTERNATES": "6d1924b141e16df5",
+    "tracker.bounds.DATE_PATTERN_BOUND_MAX": "f5ca38f748a1d6ea",
+    "tracker.bounds.DATE_PATTERN_COST_MAX": "b552e632666bbf61",
+    "tracker.bounds.DATE_PATTERN_MAX": "27badc983df1780b",
+    "tracker.bounds.DATE_PATTERN_NESTED": "7b1330f7983d042e",
+    "tracker.bounds.DATE_PATTERN_NOT_A_REGEX": "a158e00f56bf6ba7",
+    "tracker.bounds.DATE_PATTERN_OPEN_MAX": "6b86b273ff34fce1",
+    "tracker.bounds.DATE_PATTERN_OPEN_WIDTH": "0604cd3138feed20",
+    "tracker.bounds.DATE_PATTERN_REFERS_BACK": "25a2057a272ff94c",
+    "tracker.bounds.DATE_PATTERN_REPEATS_MAX": "4e07408562bedb8b",
+    "tracker.bounds.DATE_PATTERN_TOO_COSTLY": "3e2d8a14b8d6a5a6",
+    "tracker.bounds.DATE_PATTERN_TOO_LONG": "02239fb8cdceefd8",
+    "tracker.bounds.DATE_PATTERN_TOO_MANY": "ba11446dcfecda24",
+    "tracker.bounds.DATE_PATTERN_TOO_MANY_OPTIONAL": "eb3c2f5771c5d09f",
+    "tracker.bounds.DATE_PATTERN_TOO_MANY_WAYS": "a322d9761b272d91",
+    "tracker.bounds.DATE_PATTERN_TOO_OPEN": "fcaa25330d84e4d0",
+    "tracker.bounds.DATE_PATTERN_TOO_WIDE": "f7af15030b186a35",
+    "tracker.bounds.DATE_PATTERN_VARIABLE_MAX": "2c624232cdd22177",
+    "tracker.bounds.DATE_PATTERN_WAYS_MAX": "ca902d4a8acbdea1",
+    "tracker.bounds.DATE_YEAR_MAX": "4f5131ea0c5a3e7f",
+    "tracker.bounds.DATE_YEAR_MIN": "e41d64db5703c644",
+    "tracker.bounds.DIGEST_BOUNDS": "677bb2233d3c0d23",
+    "tracker.bounds.FLAG_BOUNDS": "2bfdeea59997694f",
+    "tracker.bounds.HOST_BOUNDS": "72219f0e2bcda110",
+    "tracker.bounds.HOST_MAX": "a68b412c4282555f",
+    "tracker.bounds.LONG_TEXT_BOUNDS": "3de4da1af0b30ef2",
+    "tracker.bounds.LONG_TEXT_MAX": "876c9b16254e157d",
+    "tracker.bounds.MAX_STAGE": "19581e27de7ced00",
+    "tracker.bounds.NAME_BOUNDS": "fab0c3e598d1038c",
+    "tracker.bounds.NUMBER_BOUNDS": "d7d2f825d092e462",
+    "tracker.bounds.Override.ALL": "86ee29488dc3da24",
+    "tracker.bounds.Override.RETIRED": "9436819b49e5741d",
+    "tracker.bounds.SHORT_TITLE_MAX": "f5ca38f748a1d6ea",
+    "tracker.bounds.STAMP_BOUNDS": "7c7cf7f161dd3671",
+    "tracker.bounds.STAMP_YEAR_MIN": "ad1f3889d0032e7c",
+    "tracker.bounds.TEXT_BOUNDS": "ce369c3539b412af",
+    "tracker.bounds.TEXT_LIST_BOUNDS": "196f901bd54f0f8c",
+    "tracker.bounds.TEXT_MAX": "40510175845988f1",
+    "tracker.bounds._HEX_DIGEST": "286fa658d6b7911b",
+    "tracker.bounds._ISO_DATE": "3ca3c91bdac79395",
+    "tracker.bounds._ONE_LINE_REFUSED": "f912910f93b16ff7",
+    "tracker.bounds._REFERS_BACK": "6a5a714c08b4ca99",
+    "tracker.bounds._REPEATS": "0429e0cc33348e07",
+    "tracker.bounds._STAMP": "36e48aca67f1ef08",
+    "tracker.bounds._field": "190cfe96c598c222",
+    "tracker.bounds._first": "afafd6bbd03b4d5a",
+    "tracker.bounds._is_number": "dfcf5d69037f4389",
+    "tracker.bounds._walk": "58be230437faa42c",
+    "tracker.bounds._ways": "73d93a78035726fd",
+    "tracker.bounds._width": "971b31440953101e",
+    "tracker.bounds.count_problem": "89257d6ec9bdd711",
+    "tracker.bounds.date_pattern_problem": "fa02803a1a99c545",
+    "tracker.bounds.date_problem": "0bf005c4a966d7f8",
+    "tracker.bounds.digest_problem": "217cc9c49f9a6e20",
+    "tracker.bounds.document_problem": "7a92f22b5f2cdadc",
+    "tracker.bounds.flag_problem": "1082a26284942f5c",
+    "tracker.bounds.host_problem": "7d98945bc57bd382",
+    "tracker.bounds.identifier_problem": "0e9214164ffa7491",
+    "tracker.bounds.name_problem": "435e57a752b587c2",
+    "tracker.bounds.number_problem": "b8e64da5f5e20b1a",
+    "tracker.bounds.received_problem": "2fe803ce248363ca",
+    "tracker.bounds.short_title_problem": "c8c782a76487906f",
+    "tracker.bounds.stamp_problem": "2d66f0bfa7df3a4f",
+    "tracker.bounds.text_list_problem": "5c6a2aa819ebb0cf",
+    "tracker.bounds.text_problem": "3af72e89b781e54e",
+    "tracker.layout.CLIENTS": "3b8264d65abeec66",
+    "tracker.layout.CLIENTS_TREE": "488530d6164e0dd6",
+    "tracker.layout.CLIENT_HOUSEHOLD": "2c784f90e61ac610",
+    "tracker.layout.HOUSEHOLD": "8de5259835758e72",
+    "tracker.layout.INBOX": "d9c4d1b7a70cb6f2",
+    "tracker.layout.INBOX_DIR_NAME": "919dcb2c2a774098",
+    "tracker.layout.IN_INBOX": "fc74c5d3e9ae9444",
+    "tracker.layout.IN_OPENED": "633c5d64586b470a",
+    "tracker.layout.IN_ORIGINALS": "20496354d6f1b26b",
+    "tracker.layout.IN_RETURN": "155a1bfd542aaa0d",
+    "tracker.layout.LOOK_ALIKES": "54c49454cf2f5689",
+    "tracker.layout.MISPLACED": "b8ca0cd70606f6d7",
+    "tracker.layout.NAMELESS": "1bad7ce20105964a",
+    "tracker.layout.NAME_COMPATIBILITY": "ec65d3d71fd72b3d",
+    "tracker.layout.NAME_DEVICE": "620b97404635bcec",
+    "tracker.layout.NAME_EMPTY": "aa82b128dcf1c993",
+    "tracker.layout.NAME_FIRST_CHARACTER": "bd62babfb5664dc1",
+    "tracker.layout.NAME_ILLEGAL": "305df1e9431d3276",
+    "tracker.layout.NAME_INVISIBLE": "2401333e2c513d23",
+    "tracker.layout.NAME_LAYOUT_WORD": "978aa80c1fbb2b52",
+    "tracker.layout.NAME_MAX_CHARS": "48449a14a4ff7d79",
+    "tracker.layout.NAME_SCRIPTS": "3de824b29b62bb49",
+    "tracker.layout.NAME_TOO_LONG": "7a5e00d8497fbe2d",
+    "tracker.layout.NAME_TRAILING": "7fafe7cda3544c33",
+    "tracker.layout.OPENED": "33bdc49eaabcbced",
+    "tracker.layout.OPENED_DIR_NAME": "5ef673f341874a6f",
+    "tracker.layout.ORIGINALS": "535087da73c5868d",
+    "tracker.layout.OUTSIDE": "2f2e7ba21585ff28",
+    "tracker.layout.PRIVATE": "68a262e0c0fb929f",
+    "tracker.layout.PRIVATE_TREE": "27c7f0479a0c896f",
+    "tracker.layout.RETURN": "08633b69eed18c1b",
+    "tracker.layout.ROOT": "11ccb349ede85740",
+    "tracker.layout.STEP_ABOVE_ROOT": "1385e84ae7f46b2d",
+    "tracker.layout.STEP_ABSOLUTE": "f523898e69fbc750",
+    "tracker.layout.STEP_BLANK": "a4e9e11cd18fd75b",
+    "tracker.layout.STEP_CLIENT_TREE": "5f51b518f9526119",
+    "tracker.layout.STEP_NOT_A_PLACE": "d1aa6f26861ccbee",
+    "tracker.layout.STEP_NOT_A_RETURN": "1e7d015db6355c80",
+    "tracker.layout.STEP_OTHER_HOUSEHOLD": "a0f05df5e57d787b",
+    "tracker.layout.STEP_OTHER_YEAR": "7994492387ba5850",
+    "tracker.layout.WINDOWS_ILLEGAL_CHARS": "0852803faa2a184a",
+    "tracker.layout.WINDOWS_ILLEGAL_CHARS_TEXT": "e4b68ca2e1ff6518",
+    "tracker.layout.WINDOWS_RESERVED_NAMES": "99bf9abac32f89f2",
+    "tracker.layout.WINDOWS_RESERVED_NAMES_TEXT": "c9d9ad8d312ac5a8",
+    "tracker.layout.YEAR": "74c6b2f8351bcc6d",
+    "tracker.layout._ASCII_LOOK_ALIKES": "5333fd34ff62ce29",
+    "tracker.layout._IGNORABLE_CODES": "999fbf22e2feeb49",
+    "tracker.layout._INVISIBLE_CATEGORIES": "bb62d3360fd14a4d",
+    "tracker.layout._LAYOUT_WORD_KEYS": "a6d47e2209691833",
+    "tracker.layout._ONE_SCRIPT": "17235d2097441c94",
+    "tracker.layout._SPOOFING_CODES": "136890ff2b21c3ef",
+    "tracker.layout._character": "bd5a8cc4e82855fc",
+    "tracker.layout._parts": "a2847013a67202c7",
+    "tracker.layout._parts_below_of": "93c8e3b3dcb1a968",
+    "tracker.layout._script": "f890f9bb62d24799",
+    "tracker.layout.file_name_part_problem": "e0c22d722c38392c",
+    "tracker.layout.invisible_problem": "a95be632ca4ceaf4",
+    "tracker.layout.is_invisible": "0c3785b4672742ba",
+    "tracker.layout.is_reserved_name": "3ee144cf8f5c095d",
+    "tracker.layout.is_year_folder": "c89c110db3cb607d",
+    "tracker.layout.name_key": "26ebf92810e1480a",
+    "tracker.layout.parts_below": "024b4df3065f0f7b",
+    "tracker.layout.place_of": "fc1a78ab7179dd32",
+    "tracker.layout.place_problem": "2e94883c849c9d08",
+    "tracker.layout.recorded_name": "84bfdf3a851f4652",
+    "tracker.layout.recorded_subfolder_part": "50620c73d7ae6dab",
+    "tracker.layout.segment_problem": "c85f6ed345abe1fd",
+    "tracker.layout.spoofing_problem": "2dea825aad86d0a7",
+    "tracker.ledger.ACCEPTED_KEY": "f4764fc7a8ddd588",
+    "tracker.ledger.ALSO_KEY": "da42922852e5dfcd",
+    "tracker.ledger.ASKED_KEY": "46da5b49eea2fbee",
+    "tracker.ledger.AT_KEY": "22eb1fa0c521db09",
+    "tracker.ledger.DIGEST_KEY": "889a0f98aa32537e",
+    "tracker.ledger.DRAFTED": "ef02a62df7dc350b",
+    "tracker.ledger.DRAFT_APPROVED": "41bf68b11dd88d88",
+    "tracker.ledger.EVENTS": "c6d719a66bc0b51d",
+    "tracker.ledger.EVENT_KEY": "9e0d5d1c8d94a5b6",
+    "tracker.ledger.FILE_KEY": "0efde3f4308de780",
+    "tracker.ledger.FINGERPRINT_KEY": "7df2d13d670e5ed4",
+    "tracker.ledger.FOLDER_NAME_ACCEPTED": "b7b92a8807e8bbf9",
+    "tracker.ledger.FORMAT_KEY": "04fc6c808adf51ac",
+    "tracker.ledger.FROM_KEY": "8ecb478c3dc0d3ae",
+    "tracker.ledger.HANDED_OVER_BY_PERSON_EVENT": "80f78f368d5a2a5b",
+    "tracker.ledger.HELD_KEY": "85c4d432c47707ee",
+    "tracker.ledger.HOST_KEY": "e293b75405af70cd",
+    "tracker.ledger.HOUSEHOLD_CHANGED": "783c776c223a869f",
+    "tracker.ledger.HOUSEHOLD_KEY": "8de5259835758e72",
+    "tracker.ledger.IDENTIFIER_KEY": "123a87f051936a7e",
+    "tracker.ledger.INFO_KEY": "ef3370879a96cf2e",
+    "tracker.ledger.KEYWORD_KEY": "a51a9ff6a628d820",
+    "tracker.ledger.KEYWORD_LEARNED": "7a5d6590fc40e09a",
+    "tracker.ledger.KEYWORD_UNLEARNED": "ce11d4a4c4da44a9",
+    "tracker.ledger.KEY_KEY": "632a3e84412d6ea8",
+    "tracker.ledger.LINE_KEYS": "bfa2973d92dd93ad",
+    "tracker.ledger.LINK_KEY": "67b4e6e1e90cbc98",
+    "tracker.ledger.MOVE_ABANDONED": "a11db9ac01cd5285",
+    "tracker.ledger.MOVING": "d290155f3097fcde",
+    "tracker.ledger.OPS_KEY": "2c35289e43246c9f",
+    "tracker.ledger.OP_COPY": "477c02e96b3c4061",
+    "tracker.ledger.OP_KEY": "b27b68850018781c",
+    "tracker.ledger.OP_MOVE": "c4a4adaf72f566c1",
+    "tracker.ledger.OP_REMOVE": "e8c2c1465f168081",
+    "tracker.ledger.REASON_KEY": "ffa78aeaf553b544",
+    "tracker.ledger.RECORD_FORMAT": "6b86b273ff34fce1",
+    "tracker.ledger.RELEASED": "81acce4087249f66",
+    "tracker.ledger.REMOVED_KEY": "760f3c525ed93b07",
+    "tracker.ledger.RETIRED_EVENTS": "ca06b9854a7990f9",
+    "tracker.ledger.ROW_EVENTS": "b53cc1cb7387825b",
+    "tracker.ledger.ROW_KEY": "e4d99047ca6a3721",
+    "tracker.ledger.RULES_CHANGED": "e4535fc89d8ef96d",
+    "tracker.ledger.RULES_IMPORTED": "cddb10ca0e4c2100",
+    "tracker.ledger.RULES_KEY": "a29e7581476cd7ad",
+    "tracker.ledger.SCANNED": "7e17f4790bff13d5",
+    "tracker.ledger.SHARING_CONFIRMED": "c8027ef3eb13f5e3",
+    "tracker.ledger.STAGE_KEY": "874095181f94a63d",
+    "tracker.ledger.STATUSES_KEY": "18c7785691d58b80",
+    "tracker.ledger.TEXT_FINGERPRINT_KEY": "0db6b5095dc3896e",
+    "tracker.ledger.TO_KEY": "e28f3243b469e21d",
+    "tracker.ledger.WAS_KEY": "1d383f963e096e21",
+    "tracker.ledger.op_ends": "a4e5e845ab4c8deb",
+    "tracker.reasons.KNOWN_CODES": "4ad3f21d00c7f8e5",
+    "tracker.records.BLANK_BOUNDS": "cec8e55a02712202",
+    "tracker.records.CANDIDATE_SEP": "3c01b9ef061065a0",
+    "tracker.records.DATE_FIELDS": "f0aaa0cb84de4063",
+    "tracker.records.FEED_REFUSED": "d601e93b18987f24",
+    "tracker.records.MAX_EXPECTED_COUNT": "888df25ae3577242",
+    "tracker.records.MAX_FILE_COUNT": "888df25ae3577242",
+    "tracker.records.MAX_ROW": "888df25ae3577242",
+    "tracker.records.MAX_ROW_SIZE_KB": "02bfbb85ecfba2af",
+    "tracker.records.MAX_SIZE_KB": "50b4b069390c1d79",
+    "tracker.records.MIN_EXPECTED_COUNT": "6b86b273ff34fce1",
+    "tracker.records.MIN_SIZE_KB_FLOOR": "5feceb66ffc86f38",
+    "tracker.records.MIN_SPELLING_WORDS": "d4735e3a265e16ee",
+    "tracker.records.OVERRIDE_BOUNDS": "22a3650c5fc6e021",
+    "tracker.records.PERSON_KINDS": "11ac10e2383de5cc",
+    "tracker.records.RULE_FLAG_FIELDS": "c500b9a01ed742b3",
+    "tracker.records.RULE_LIST_FIELDS": "8b3d25ca8662bd02",
+    "tracker.records.TEXT_BOUNDS": "ce369c3539b412af",
+    "tracker.records.WAITS_FOR_ANSWERS": "f0615f5bcc293884",
+    "tracker.records.WAITS_FOR_BOUNDS": "6f57ee0ee5ca0bbc",
+    "tracker.records.WAITS_FOR_SEP": "de9881cacd5c858e",
+    "tracker.records.YEAR_MAX": "1aaf97e300d50bac",
+    "tracker.records.YEAR_MIN": "e41d64db5703c644",
+    "tracker.records._ENTRY_LONG_TEXT": "108c25e4b80db4c6",
+    "tracker.records._ENTRY_NAMES": "5980f2d1176281a2",
+    "tracker.records._ENTRY_TEXT": "68e0df1c43ff5282",
+    "tracker.records._INFO_LONG_TEXT": "69674950c21f7eae",
+    "tracker.records._INFO_TEXT": "cbdf6035c202636d",
+    "tracker.records._RULE_TEXT": "4dbd8ce696bb0f8e",
+    "tracker.records._objects_from_json": "150fd8d193ee1603",
+    "tracker.records.entry_problem": "a79ea9e62a85223a",
+    "tracker.records.feed_from_json": "a4eba4d06934ee87",
+    "tracker.records.feeds_from_json": "73f791f77660a6d8",
+    "tracker.records.format_waits_for": "a9f50749433f46ce",
+    "tracker.records.household_problem": "d341e98e6700e560",
+    "tracker.records.info_problem": "a14147da699ad792",
+    "tracker.records.is_a_spelling": "9872f0754c1f928d",
+    "tracker.records.name_parts": "2fb3aa450c490a16",
+    "tracker.records.name_words": "888ff2df30e14d73",
+    "tracker.records.parse_waits_for": "fe2da49df5b9f8ce",
+    "tracker.records.people_from_json": "bd021c769cc1a5d8",
+    "tracker.records.person_from_json": "3fcf78177d79784b",
+    "tracker.records.rule_row_fault": "40478ee286dbf2db",
+    "tracker.records.rule_row_problem": "bfbfa65df0936781",
+    "tracker.records.split_codes": "312e8af4bdb2dc38",
+    "tracker.records.status_problem": "0a4507873e497b78",
+    "tracker.records.waits_for_problem": "463d041ef7fa9219",
+    "tracker.records.word_list_problem": "64d72805fbba0527",
 }}
 
 
@@ -1507,3 +1788,119 @@ def test_an_event_carried_in_also_is_refused_in_the_wording_of_the_line_that_car
     with pytest.raises(store.StoreError, match="line 2 of the record is malformed"):
         store._refuse_a_malformed_line(intent, 2, "where")
 
+
+
+#: The line SPEC-architecture-p3 P3.8 found: a release whose ``was`` is a
+#: list. Version 5 admitted it, and the store handed the list to its SQL.
+NOT_A_PLACE = ["not", "a", "place"]
+
+
+def test_a_released_line_whose_was_is_not_a_location_is_malformed(conn, root, by_hand):
+    """P328 (admission 6): a ``released`` line whose ``was`` is not a
+    location is refused by name - read back, as line N of the record
+    (decision 187), where version 5 let it through and the store's SQL
+    failed on it as a database that could not be used; offered as a change,
+    before anything is written (P292). On a return that holds no row: the
+    one that holds a row is tests/test_store.py's."""
+    build(conn, root, by_hand)
+    line = {ledger.EVENT_KEY: ledger.RELEASED, ledger.KEY_KEY: "x.pdf", ledger.WAS_KEY: NOT_A_PLACE}
+    lines = len(ledger.read_events(by_hand))
+    with engagement_lock(by_hand):
+        with pytest.raises(store.StoreError) as unwritten:
+            store.record(conn, by_hand, line)
+    assert str(unwritten.value) == "This change carries 'was' that is not a location; nothing was written"
+    assert len(ledger.read_events(by_hand)) == lines
+
+    written_elsewhere(by_hand, line)
+    with pytest.raises(store.StoreError) as refused:
+        store.catch_up(conn, root, by_hand)
+    said = str(refused.value)
+    assert f"line {lines + 1} of the record is malformed" in said
+    assert "'was' that is not a location" in said
+
+
+def a_release(**fields) -> dict:
+    """A ``released`` line of the key ``x.pdf``, with ``fields``."""
+    return ledger.new(ledger.RELEASED, **{ledger.KEY_KEY: "x.pdf", **fields})
+
+
+def a_hand_over(**fields) -> dict:
+    """A retired ``handed_over_by_person`` line of the key ``x.pdf``, with
+    ``fields`` - built by hand, because ``ledger.new`` writes no retired
+    name."""
+    return {ledger.EVENT_KEY: ledger.HANDED_OVER_BY_PERSON_EVENT, ledger.AT_KEY: ledger.stamp(),
+            ledger.KEY_KEY: "x.pdf", **fields}
+
+
+#: The two lines whose ``was`` P328 holds to the name rule.
+RELEASES = [pytest.param(a_release, id="release"), pytest.param(a_hand_over, id="hand-over")]
+
+
+@pytest.mark.parametrize("line", RELEASES)
+@pytest.mark.parametrize("was", [
+    pytest.param(5, id="a number"),
+    pytest.param(True, id="true"),
+    pytest.param(10**20, id="an integer too large for the database"),
+    pytest.param([], id="an empty list"),
+    pytest.param({"a": 1}, id="a mapping"),
+    pytest.param("x" * 1001, id="text over 1000 characters"),
+    pytest.param("w2\x00.pdf", id="text with a NUL"),
+])
+def test_a_release_or_hand_over_whose_was_is_not_a_name_is_refused(line, was):
+    """P328: every kind of ``was`` the name rule refuses is refused on both
+    lines, by the one sentence - those version 5 applied silently (a number,
+    true, an empty list, an over-long text, a NUL) and those that stopped
+    the household with an unexpected error (a mapping, an integer the
+    database cannot hold)."""
+    event = line(**{ledger.WAS_KEY: was})
+    with pytest.raises(store.StoreError, match=rf"line 2 of the record is malformed \({event[ledger.EVENT_KEY]} "
+                                               rf"carries 'was' that is not a location\)"):
+        store._refuse_a_malformed_line(event, 2, "where")
+
+
+@pytest.mark.parametrize("line", RELEASES)
+@pytest.mark.parametrize("was", [
+    pytest.param({ledger.WAS_KEY: "Prepared/x.pdf"}, id="a location"),
+    pytest.param({ledger.WAS_KEY: "../x"}, id="a name outside the folder"),
+    pytest.param({ledger.WAS_KEY: None}, id="None"),
+    pytest.param({}, id="absent"),
+])
+def test_a_release_or_hand_over_whose_was_is_a_name_none_or_absent_is_admitted(line, was):
+    """P328's rule is the name rule, not a place rule: a ``was`` that is text
+    of a name's bounds is admitted wherever it says - ``../x`` too - and so
+    is one that is ``None`` or not there."""
+    store._refuse_a_malformed_line(line(**was), 2, "where")
+
+
+def test_a_hand_over_with_no_key_is_malformed():
+    """P328: a hand-over that names no document - no key, or a key of
+    ``None`` - is refused at the admission in the release's words, where
+    version 5 left it to the fold's own ``LedgerError``. It stopped its
+    household before and stops it after; only the sentence is new."""
+    keyless = a_hand_over(**{ledger.WAS_KEY: "Prepared/x.pdf"})
+    del keyless[ledger.KEY_KEY]
+    for event in (keyless, a_hand_over(**{ledger.KEY_KEY: None})):
+        with pytest.raises(store.StoreError,
+                           match=r"line 2 of the record is malformed \(handed_over_by_person carries no 'key'\)"):
+            store._refuse_a_malformed_line(event, 2, "where")
+
+
+def test_a_hand_over_whose_key_is_blank_is_still_admitted():
+    """P328 holds a hand-over's key to what the fold refuses and no more
+    (R3.8.2): the fold reads a blank key safely, removing nothing, so the
+    line is admitted as version 5 admitted it."""
+    store._refuse_a_malformed_line(a_hand_over(**{ledger.KEY_KEY: "", ledger.WAS_KEY: "Prepared/x.pdf"}),
+                                   2, "where")
+
+
+def test_a_decision_129_hand_over_is_still_read():
+    """A hand-over as decision 129 wrote it - a text key, a text ``was`` and
+    the row it built - is admitted, and folds as the release decision 132
+    reads it as: the row goes."""
+    elsewhere = "../../../../Clients/Park & Lee LLC/2025/w2.pdf"
+    handed = a_hand_over(**{ledger.KEY_KEY: elsewhere, ledger.WAS_KEY: A_ROW_ORIGINAL,
+                            ledger.ROW_KEY: a_row(decision="Handed Over", pbc_location=elsewhere)})
+    store._refuse_a_malformed_line(handed, 3, "where")
+    parked = ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row())
+    assert set(ledger.replay([parked]).rows) == {A_ROW_ORIGINAL}
+    assert ledger.replay([parked, handed]).rows == {}

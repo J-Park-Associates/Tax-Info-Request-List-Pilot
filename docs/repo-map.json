@@ -16,7 +16,7 @@
   ],
   "counts": {
     "nodes": 359,
-    "edges": 1639,
+    "edges": 1642,
     "reused": 305
   },
   "node_types": [
@@ -134,8 +134,8 @@
       "id": "tracker/admission.py",
       "type": "module",
       "layer": "core",
-      "sha256": "1983ff0fc836942e",
-      "lines": 590,
+      "sha256": "4a831eeb24e6c75f",
+      "lines": 618,
       "exports": [
         "ADMISSION_VERSION",
         "ALSO_IN",
@@ -147,7 +147,7 @@
         "UNKNOWN_EVENT"
       ],
       "constants": {
-        "ADMISSION_VERSION": "5",
+        "ADMISSION_VERSION": "6",
         "KIND_RETURN": "'return'",
         "KIND_HOUSEHOLD": "'household'",
         "MALFORMED_LINE": "'{where}: line {seq} of the record is malformed ({event} {problem}); the journal is not applied past it'",
@@ -155,8 +155,8 @@
         "UNKNOWN_EVENT": "'an event this version does not know'",
         "ALSO_IN": "'also_in'"
       },
-      "role": "The admission (P323): the one rule every line of a record meets before the store writes or applies it (decision 187) - _refuse_a_malformed_line(event, seq, where, *, kind, written), with _line_keys_problem(event), its judgment of the three keys the record writes on every line (decision 159); ADMISSION_VERSION, which admission a row's applied lines were judged by (decision 209, R3b); MALFORMED_LINE and REFUSED_CHANGE, the two sentences a refused line or typed change is told in (decision 137, P292), with UNKNOWN_EVENT and ALSO_IN, the words they say; KIND_RETURN and KIND_HOUSEHOLD, the two records a line is judged in; and StoreError, what a refusal raises. Since P3.3 the rule is one function per event family: _refuse_a_malformed_line makes refuse, asks _admit_line (the stamp, the accepted key, the line keys) and hands the line to _admit_rules, _admit_row, _admit_scan, _admit_intent, _admit_abandoned, _admit_release, _admit_keyword, _admit_draft, _admit_household or _admit_sharing by an explicit if/elif on its name; the four helpers _a_place, _a_segment, _a_code and _a_row take refuse first, typed Refuse.",
-      "notes": "SPEC-architecture-p3 P3.2 (P323; the architecture audit's B-1). Layer 1, domain record. It is the store's admission, moved byte for byte with its comments and docstrings, but for one comment's file name: ADMISSION_VERSION's comment names tests/test_admission.py, where the pin went with it. Of the package it imports bounds, ledger and records at load time, and RULE_LIST_FIELDS from records by name, the one name the rule read through the store's from-import; layout and reasons at call time, as in the store - since P3.3 inside the helpers whose rules need them (_a_place, _a_segment and _a_row the layout, _a_code the reasons). Why its own module: the store is the database and the admission is a rule about a line, with its own version and its own pin, so a module whose whole content is the rule makes what the admission is a file, and the pin's roots name it. Who asks it: the store alone - record() before anything is appended (written=False, so a refusal is REFUSED_CHANGE), _apply() on every line read in, _judge_the_applied_lines() when a row's admitted_by is older than ADMISSION_VERSION, check() and verify() over every journal, and _judge(), the checkpoint's judgment of a writer, which asks _line_keys_problem. The store imports back the eight names it reads itself and calls them bare, so the five stand-ins on store._refuse_a_malformed_line (three in tests/test_store.py, one each in tests/test_after_install.py and tests/test_api.py) still replace what store.record calls; REFUSED_CHANGE and ALSO_IN are read only here, so the store does not import them. StoreError is the same class through the store, and CheckpointNotMade, StoreUnavailable and WouldDiscard stay in the store and subclass it. ADMISSION_PIN[5] was pinned again under version 5: nine keys follow the module (tracker.store.* became tracker.admission.*) and no digest moved. The docstrings came with the code, so record, _apply, check and _judge in them are the store's. SPEC-architecture-p3 P3.3 (the audit's B-7): the 332-line function with five closures became one function per family, chosen by an explicit if/elif in the order the branches always ran - never a dict of functions, because admission_closure() follows the names a function's source reads and a table's values would escape the pin, letting a family tighten without ADMISSION_VERSION rising. refuse stays the entry function's, which alone knows the line's place and whether it was written, and is passed to every family function and helper; a family function takes the arguments its branch read and no others (_admit_intent takes seq, where, kind and written for the also recursion), and takes dict, not the ledger's TypedDict, because the line is not yet proved. No rule changed, so ADMISSION_VERSION did not rise: ADMISSION_PIN[5] gained the fifteen new parts and moved the entry function's digest and records' person_from_json and feed_from_json (their docstrings now name tracker.admission), and an equivalence run over a generated corpus of 29,702 lines (every family's valid line, each key set to twelve values, alone and carried in an intent's also, in eight contexts) found no line judged differently by P3.2's copy."
+      "role": "The admission (P323): the one rule every line of a record meets before the store writes or applies it (decision 187) - _refuse_a_malformed_line(event, seq, where, *, kind, written), with _line_keys_problem(event), its judgment of the three keys the record writes on every line (decision 159); ADMISSION_VERSION, which admission a row's applied lines were judged by (decision 209, R3b); MALFORMED_LINE and REFUSED_CHANGE, the two sentences a refused line or typed change is told in (decision 137, P292), with UNKNOWN_EVENT and ALSO_IN, the words they say; KIND_RETURN and KIND_HOUSEHOLD, the two records a line is judged in; and StoreError, what a refusal raises. Since P3.3 the rule is one function per event family: _refuse_a_malformed_line makes refuse, asks _admit_line (the stamp, the accepted key, the line keys) and hands the line to _admit_rules, _admit_row, _admit_scan, _admit_intent, _admit_abandoned, _admit_release, _admit_hand_over, _admit_keyword, _admit_draft, _admit_household or _admit_sharing by an explicit if/elif on its name; the four helpers _a_place, _a_segment, _a_code and _a_row take refuse first, typed Refuse.",
+      "notes": "SPEC-architecture-p3 P3.2 (P323; the architecture audit's B-1). Layer 1, domain record. It is the store's admission, moved byte for byte with its comments and docstrings, but for one comment's file name: ADMISSION_VERSION's comment names tests/test_admission.py, where the pin went with it. Of the package it imports bounds, ledger and records at load time, and RULE_LIST_FIELDS from records by name, the one name the rule read through the store's from-import; layout and reasons at call time, as in the store - since P3.3 inside the helpers whose rules need them (_a_place, _a_segment and _a_row the layout, _a_code the reasons). Why its own module: the store is the database and the admission is a rule about a line, with its own version and its own pin, so a module whose whole content is the rule makes what the admission is a file, and the pin's roots name it. Who asks it: the store alone - record() before anything is appended (written=False, so a refusal is REFUSED_CHANGE), _apply() on every line read in, _judge_the_applied_lines() when a row's admitted_by is older than ADMISSION_VERSION, check() and verify() over every journal, and _judge(), the checkpoint's judgment of a writer, which asks _line_keys_problem. The store imports back the eight names it reads itself and calls them bare, so the five stand-ins on store._refuse_a_malformed_line (three in tests/test_store.py, one each in tests/test_after_install.py and tests/test_api.py) still replace what store.record calls; REFUSED_CHANGE and ALSO_IN are read only here, so the store does not import them. StoreError is the same class through the store, and CheckpointNotMade, StoreUnavailable and WouldDiscard stay in the store and subclass it. ADMISSION_PIN[5] was pinned again under version 5: nine keys follow the module (tracker.store.* became tracker.admission.*) and no digest moved. The docstrings came with the code, so record, _apply, check and _judge in them are the store's. SPEC-architecture-p3 P3.3 (the audit's B-7): the 332-line function with five closures became one function per family, chosen by an explicit if/elif in the order the branches always ran - never a dict of functions, because admission_closure() follows the names a function's source reads and a table's values would escape the pin, letting a family tighten without ADMISSION_VERSION rising. refuse stays the entry function's, which alone knows the line's place and whether it was written, and is passed to every family function and helper; a family function takes the arguments its branch read and no others (_admit_intent takes seq, where, kind and written for the also recursion), and takes dict, not the ledger's TypedDict, because the line is not yet proved. No rule changed, so ADMISSION_VERSION did not rise: ADMISSION_PIN[5] gained the fifteen new parts and moved the entry function's digest and records' person_from_json and feed_from_json (their docstrings now name tracker.admission), and an equivalence run over a generated corpus of 29,702 lines (every family's valid line, each key set to twelve values, alone and carried in an intent's also, in eight contexts) found no line judged differently by P3.2's copy. SPEC-architecture-p3 P3.8 (P328; Jason, 2026-10-14: \"a - the full rule\"), the one rule change of phase 3: _admit_release holds a release's was to bounds.name_problem (text, at most 1,000 characters, no NUL) in the row family's words, \"carries 'was' that is not a location\", and the chain gains _admit_hand_over, after the release's branch, for decision 129's retired handed_over_by_person line - a key that is absent or None refused (\"carries no 'key'\"), its was held to the same rule, and no row or reason checked, because its fold reads neither. Before, a was that was a list or a mapping reached the store's fold and SQL and stopped its household with an unexpected error, and one that was a number, true or false, an empty list or an over-long text was applied without complaint. ADMISSION_VERSION rose to 6, so each return's applied lines are judged again once, at its next sync (decision 209, R3b); ADMISSION_PIN[6] differs from 5 by exactly four parts: _admit_release and _refuse_a_malformed_line moved (the new branch, and its docstring's two check now naming tracker.store_check.check), and _admit_hand_over and ledger.HANDED_OVER_BY_PERSON_EVENT joined. Whether a real record holds such a line is answered by the office's read-only verify, run with this build before the merge to main. tests/test_store.py's version-five test applies its release under a sixth stand-in on store._refuse_a_malformed_line, so there are six now: three in tests/test_store.py and one each in tests/test_store_check.py, tests/test_after_install.py and tests/test_api.py."
     },
     {
       "id": "tracker/after_install.py",
@@ -4771,7 +4771,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "87a5276727707919",
+      "sha256": "d0882943ce8cba4a",
       "lines": 1771,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4780,8 +4780,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d7c5acef1a9847e1",
-      "lines": 2913,
+      "sha256": "a7f608b169a9e54a",
+      "lines": 2924,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine - on a Windows PC or on a Mac.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them. The Mac is written as parallel paragraphs, not edits to the Windows text (SPEC-mac R34): section 1's `### On a Mac` (the heading the pass's own root-not-permitted reason points at) and two paragraphs in section 6 (moving to or from a Mac, taking the app off one). The one-machine rule is still stated once. tests/test_single_source.py quotes the app's sentences against it and holds the data folder's name to settings.DATA_HOME_NAME on both systems (the Windows lines once named a folder the app does not make)."
     },
@@ -4874,8 +4874,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "62ccee0d76bbfe17",
-      "lines": 321
+      "sha256": "eff5bc63f20f0339",
+      "lines": 322
     },
     {
       "id": "pilot/HANDOFF-client-folder.md",
@@ -6626,23 +6626,33 @@
       "id": "tests/test_admission.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e2012b4b99b5321a",
-      "lines": 1509,
+      "sha256": "2661c210836b3103",
+      "lines": 1906,
       "exports": [
         "CLASS_MEMBER_MODULE",
+        "NOT_A_PLACE",
+        "RELEASES",
         "SHADOWED_BY",
         "SHADOWING_MODULE",
+        "a_hand_over",
+        "a_release",
         "admission_closure",
         "admission_digests",
         "class_member",
         "names_bound_in",
         "shadowing",
+        "test_a_decision_129_hand_over_is_still_read",
+        "test_a_hand_over_whose_key_is_blank_is_still_admitted",
+        "test_a_hand_over_with_no_key_is_malformed",
         "test_a_member_read_off_a_class_is_part_of_the_closure",
         "test_a_moving_line_in_a_households_record_is_refused",
         "test_a_name_declared_global_is_still_the_modules",
         "test_a_name_the_function_binds_itself_is_not_followed_as_a_callee",
         "test_a_parameter_that_shadows_a_function_does_not_pull_it_into_the_closure",
         "test_a_related_list_that_is_not_folder_names_is_refused_at_admission",
+        "test_a_release_or_hand_over_whose_was_is_a_name_none_or_absent_is_admitted",
+        "test_a_release_or_hand_over_whose_was_is_not_a_name_is_refused",
+        "test_a_released_line_whose_was_is_not_a_location_is_malformed",
         "test_admission_version_changes_with_the_admission",
         "test_an_event_carried_in_also_is_refused_in_the_wording_of_the_line_that_carries_it",
         "test_the_admission_pin_reaches_the_rules_it_calls",
@@ -6652,8 +6662,8 @@
         "SHADOWING_MODULE": "'\\ndef helper(row):\\n    return row\\n\\n\\ndef unshadowed(row):\\n    return helper(row)\\n\\n\\ndef by_parameter(row, helper):\\n    return helper(row)\\n\\n\\ndef by_assignment(row):\\n    helper = len\\n    return helper(row)\\n\\n\\ndef by_augmented_assignment(row):\\n    helper += 1\\n    return helper\\n\\n\\ndef by_annotated_assignment(row):\\n    helper: int = 1\\n    return helper\\n\\n\\ndef by_walrus(row):\\n    return (helper := len) and helper(row)\\n\\n\\ndef by_for_target(rows):\\n    for helper in rows:\\n        helper(rows)\\n\\n\\ndef by_with_target(path):\\n    with open(path) as helper:\\n        return helper(path)\\n\\n\\ndef by_comprehension(rows):\\n    return [helper(row) for helper in rows]\\n\\n\\ndef by_except_clause(row):\\n    try:\\n        return row\\n    except ValueError as helper:\\n        return helper(row)\\n\\n\\ndef by_nested_def(row):\\n    def helper(item):\\n        return item\\n    return helper(row)\\n\\n\\ndef by_nested_class(row):\\n    class helper:\\n        pass\\n    return helper(row)\\n\\n\\ndef by_import_inside(row):\\n    from os.path import join as helper\\n    return helper(row)\\n\\n\\ndef by_global_declaration(row):\\n    global helper\\n    taken = helper\\n    helper = None\\n    return taken(row)\\n'",
         "CLASS_MEMBER_MODULE": "'\\nclass Box:\\n    LIMIT = 3\\n\\n    @staticmethod\\n    def check(row):\\n        return row\\n\\n\\ndef reader(row):\\n    return Box.check(row) if len(row) <= Box.LIMIT else None\\n'"
       },
-      "role": "Holds the admission's pin: ADMISSION_PIN, the digest of every part tracker/admission.py's rule reaches - each package function _refuse_a_malformed_line and _line_keys_problem call, at any depth, and every constant they read, off a module or a class - by ADMISSION_VERSION; the walker that finds them (admission_closure, names_bound_in, admission_digests) with its own tests on made-up modules (the shadowing tests, and a member read off a class); and the tests that call the admission directly, with no store: a moving line in a household's record, the accepted key's one value, a related list that is not folder names, and an event carried in an intent's also, refused in the wording of the line that carries it.",
-      "notes": "SPEC-architecture-p3 R3.2.4 and R3.2.5 (P323). Cut and pasted from tests/test_store.py with the admission, because the admission's own file holds the rule and its test file holds the pin; the only edits are ADMISSION_PIN[5]'s nine keys, which follow the module with no digest changed, and the comment line saying so. The three tests are the ones that called the admission directly, took no fixture and read no test_store helper. The tests that drive the admission through the store's door (record, catch_up, check) or take its fixtures stay in tests/test_store.py, because they test the door's wiring as much as the rule; one more direct caller, test_an_event_carried_in_also_is_refused_in_the_wording_of_the_line_that_carries_it, stayed there until P3.4 moved its helper _a_rule to tests/store_helpers.py, and came here with P324, its body unchanged. The bodies still read the admission's names through tracker.store, which holds them by import, and admission_closure()'s default roots are store's two functions (the same objects) until P3.9. SPEC-architecture-p3 R3.3.1: the walker also reads a member off a tracker class - looked up with inspect.getattr_static, so no descriptor runs, and a static or class method unwrapped to the function it holds - and keys a constant module.Class.member, so records.rule_row_fault's Override.ALL and Override.RETIRED joined ADMISSION_PIN[5] with no digest moved; test_a_member_read_off_a_class_is_part_of_the_closure proves it on a made-up module."
+      "role": "Holds the admission's pin: ADMISSION_PIN, the digest of every part tracker/admission.py's rule reaches - each package function _refuse_a_malformed_line and _line_keys_problem call, at any depth, and every constant they read, off a module or a class - by ADMISSION_VERSION; the walker that finds them (admission_closure, names_bound_in, admission_digests) with its own tests on made-up modules (the shadowing tests, and a member read off a class); and the tests that call the admission directly, with no store: a moving line in a household's record, the accepted key's one value, a related list that is not folder names, and an event carried in an intent's also, refused in the wording of the line that carries it; and P328's tests of a release's and a retired hand-over's was and the hand-over's key, one of which drives the release through the store's two doors on a return that holds no row.",
+      "notes": "SPEC-architecture-p3 R3.2.4 and R3.2.5 (P323). Cut and pasted from tests/test_store.py with the admission, because the admission's own file holds the rule and its test file holds the pin; the only edits are ADMISSION_PIN[5]'s nine keys, which follow the module with no digest changed, and the comment line saying so. The three tests are the ones that called the admission directly, took no fixture and read no test_store helper. The tests that drive the admission through the store's door (record, catch_up, check) or take its fixtures stay in tests/test_store.py, because they test the door's wiring as much as the rule; one more direct caller, test_an_event_carried_in_also_is_refused_in_the_wording_of_the_line_that_carries_it, stayed there until P3.4 moved its helper _a_rule to tests/store_helpers.py, and came here with P324, its body unchanged. The bodies still read the admission's names through tracker.store, which holds them by import, and admission_closure()'s default roots are store's two functions (the same objects) until P3.9. SPEC-architecture-p3 R3.3.1: the walker also reads a member off a tracker class - looked up with inspect.getattr_static, so no descriptor runs, and a static or class method unwrapped to the function it holds - and keys a constant module.Class.member, so records.rule_row_fault's Override.ALL and Override.RETIRED joined ADMISSION_PIN[5] with no digest moved; test_a_member_read_off_a_class_is_part_of_the_closure proves it on a made-up module. SPEC-architecture-p3 P3.8 (P328): ADMISSION_PIN[6], pasted from admission_digests() when ADMISSION_VERSION rose to 6, differs from 5 by four parts; versions 2 to 5 are unchanged. P328's tests sit at the end of the file: each kind of was on a release and on a hand-over, refused or admitted by the name rule, the hand-over's key rule, a decision 129 hand-over still read, and test_a_released_line_whose_was_is_not_a_location_is_malformed, which reads the line back through catch_up and offers it through record - the one test here that takes the store's fixtures, named once by assignment from tests/store_helpers.py as tests/test_store.py names them, because the defect is the rule's own. Its twin on a return that holds a row, and the version-five re-judging, are tests/test_store.py's."
     },
     {
       "id": "tests/test_after_install.py",
@@ -11512,8 +11522,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b7eec03ac661ebe9",
-      "lines": 3933,
+      "sha256": "e7273f78235b412c",
+      "lines": 3987,
       "exports": [
         "AS_AT_16",
         "AS_AT_17",
@@ -11586,12 +11596,14 @@
         "test_a_rebuild_keeps_the_last_scans_status_across_spellings",
         "test_a_rebuild_racing_a_writer_saves_the_head_of_the_lines_it_applied",
         "test_a_rebuild_run_twice_says_and_holds_exactly_the_same",
+        "test_a_record_admitted_under_version_five_is_judged_again_for_its_release",
         "test_a_record_admitted_under_version_four_is_judged_again_for_its_document",
         "test_a_record_read_is_never_kept_past_a_rebuild_of_its_row",
         "test_a_record_whose_type_the_store_cannot_store_is_refused_before_it_is_written",
         "test_a_record_written_inside_a_read_only_reply_is_refused_before_anything_is_written",
         "test_a_refusal_never_quotes_the_value_it_refused",
         "test_a_released_line_takes_the_row_out_and_closes_its_intent_in_both_folds",
+        "test_a_released_line_whose_was_is_not_a_location_is_malformed_on_a_return_that_holds_a_row",
         "test_a_reordered_record_is_refused_by_a_fresh_store",
         "test_a_repaired_line_lets_the_household_go_on_and_is_not_judged_again",
         "test_a_return_created_again_after_its_store_row_is_gone_is_not_held_to_the_old_checkpoint",
@@ -13716,6 +13728,12 @@
     },
     {
       "from": "tests/test_admission.py",
+      "to": "pkg:tests",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_admission.py",
       "to": "tracker/__init__.py",
       "type": "exercises",
       "source": "derived"
@@ -13734,8 +13752,20 @@
     },
     {
       "from": "tests/test_admission.py",
+      "to": "tracker/locking.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_admission.py",
       "to": "tracker/store.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_admission.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
       "source": "derived"
     },
     {
