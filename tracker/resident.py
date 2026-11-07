@@ -151,7 +151,7 @@ PER_COMMAND: dict[tuple[str, str], object] = {
     # (finding A-7).
     ("content_check", "_COULD_NOT_START"): [],
     # The last line a reading looked at, one document's.
-    ("content_check", "_last_line"): None,
+    ("keywords", "_last_line"): None,
     # The full-sync warning is said once per command, as before P276 (C-3).
     ("fsio", "_full_sync_said"): False,
     ("locking", "_full_sync_said"): False,

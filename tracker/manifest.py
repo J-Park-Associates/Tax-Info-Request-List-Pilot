@@ -784,7 +784,7 @@ def entity_keyword(name: str) -> str:
     The consequence is worth saying out loud, because it is what the
     runbook tells a person: the name is then matched against the document
     the way every keyword is - whole tokens, case-insensitive, an
-    apostrophe or a dash forgiven (:func:`tracker.content_check.says`) -
+    apostrophe or a dash forgiven (:func:`tracker.keywords.says`) -
     and a legal suffix the K-1 prints as "L.P." is no longer in the
     keyword to be found. So the name to type is the distinctive part
     ("Ashford Holdings"), not the suffix.
@@ -810,7 +810,7 @@ def narrowing_rows(items: Iterable[RequestItem]) -> dict[str, tuple[str, ...]]:
 
     - the **broad** row recognises its document on looser words alone -
       Any Keywords, and no Required Keywords, so it can never be the
-      strongest evidence for anything (:func:`tracker.content_check.required_matched`);
+      strongest evidence for anything (:func:`tracker.keywords.required_matched`);
     - the **narrowing** row shares at least one of those looser words, so
       it is asking about the same document, and requires something on top.
 
@@ -2012,7 +2012,7 @@ def summarize(items: Iterable[RequestItem]) -> Summary:
 
 #: Form numbers that name a family, not a form: a keyword of just the number
 #: matches none of the family's members (``1099`` does not match ``1099-INT``;
-#: see ``tracker.content_check.contains_keyword``), so the check says so.
+#: see ``tracker.keywords.contains_keyword``), so the check says so.
 FORM_FAMILIES = {"1099": "1099-INT", "1095": "1095-A"}
 EMPTY_KEYWORD_WARNING = (
     "Row {row} ({identifier}): the keyword '{keyword}' has no letters or digits and "

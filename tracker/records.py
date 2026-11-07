@@ -192,8 +192,8 @@ EVIDENCE_RULES: tuple[str, ...] = (
 )
 
 #: Where in the document the term was said. ``title`` is within
-#: ``content_check.TITLE_CHARS`` of the start - a form printing its own
-#: name; ``footer`` is the last ``content_check._FOOTER_LINES`` non-blank
+#: ``keywords.TITLE_CHARS`` of the start - a form printing its own
+#: name; ``footer`` is the last ``keywords._FOOTER_LINES`` non-blank
 #: lines of a page, where a form repeats its number on every copy;
 #: ``first_page`` is the rest of page 1 and ``deep`` is anything further
 #: in, which is the weakest place a keyword can be said and the one a

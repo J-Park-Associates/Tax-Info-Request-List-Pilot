@@ -245,7 +245,7 @@ DATE_PATTERN_BOUND_MAX = 20
 #: counted through every repetition - a fixed ``{1}`` included, so wrapping
 #: a chain hides nothing - an alternation's branches added, an open-ended
 #: repetition counted as the longest line a pattern is run over
-#: (``content_check.DATE_LINE_MAX``). The limit is measured on 500-character
+#: (``keywords.DATE_LINE_MAX``). The limit is measured on 500-character
 #: lines of digits with no literal ending the engine can short-cut (the
 #: re-check of decision 187's review, M1b): at 16,384 ways the slowest
 #: pattern admitted took about a quarter of a second, where 220,500 ways -

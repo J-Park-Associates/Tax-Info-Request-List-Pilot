@@ -11,7 +11,8 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - scaffold      : folder scaffolding from the request list
 - validators    : tier 1-2 file checks + dry-run preview CLI
 - ocr           : the reader (RapidOCR, on the graphics card when it works and the processor when it does not) and the one child process a pass reads in
-- content_check : tier 3 text extraction + rules + verdict cache
+- content_check : tier 3 text extraction, the judgment + verdict cache
+- keywords      : the matcher and the rules a reading is judged by (pure functions of the text)
 - scanner       : orchestrator (scan, resolve, record)
 - router        : deterministic routing of a dropped file to one request
 - containers    : open a dropped email or zip in memory and hand back each attachment, running nothing

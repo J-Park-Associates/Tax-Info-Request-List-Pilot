@@ -660,14 +660,14 @@ def test_a_second_command_finds_nothing_the_first_left(capsys, monkeypatch):
     through the same engine, finds every one as a process of its own would,
     replies byte for byte as one would, and after it every per-command name
     is its fresh value again, in the same object where it is a container."""
-    from tracker import content_check, fsio, ocr
+    from tracker import content_check, fsio, keywords, ocr
 
     # Each per-command name as its module is imported, and put back after.
     monkeypatch.setattr(api, "_ASKED", {})
     monkeypatch.setattr(api, "_RUNNING", {"command": ""})
     monkeypatch.setattr(api, "_WARNINGS", [])
     monkeypatch.setattr(content_check, "_COULD_NOT_START", [])
-    monkeypatch.setattr(content_check, "_last_line", None)
+    monkeypatch.setattr(keywords, "_last_line", None)
     monkeypatch.setattr(fsio, "_full_sync_said", False)
     monkeypatch.setattr(locking, "_full_sync_said", False)
     monkeypatch.setattr(ocr, "_SAID", set())
@@ -680,7 +680,7 @@ def test_a_second_command_finds_nothing_the_first_left(capsys, monkeypatch):
         content_check.could_not_start(1.0, "OSError", "Smith W-2.pdf")
         api._warn("a sentence of the first command")
         api._ASKED.update({"identifier": "A01"})
-        content_check._last_line = ("a line of the first command", 0, 1)
+        keywords._last_line = ("a line of the first command", 0, 1)
         fsio._full_sync_said = True
         locking._full_sync_said = True
         ocr._SAID.add("a memory-limit sentence")
@@ -690,7 +690,7 @@ def test_a_second_command_finds_nothing_the_first_left(capsys, monkeypatch):
 
     def finds(argv):
         found.append({"could_not_start": list(content_check._COULD_NOT_START),
-                      "last_line": content_check._last_line,
+                      "last_line": keywords._last_line,
                       "full_sync_said": (fsio._full_sync_said, locking._full_sync_said),
                       "said": set(ocr._SAID), "asked": dict(api._ASKED), "warnings": list(api._WARNINGS)})
         return {"could_not_start": content_check.readers_that_could_not_start()}

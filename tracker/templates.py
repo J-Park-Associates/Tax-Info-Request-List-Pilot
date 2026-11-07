@@ -280,7 +280,7 @@ SHARED = {
     # scan of a notice's later pages carries "IRS" and not the heading.
     # All of it on the first page (the designer's ruling on the review, N2):
     # the matcher reads these header phrases there and nowhere else
-    # (``content_check.FIRST_PAGE_PHRASES``), so a county tax bill whose
+    # (``keywords.FIRST_PAGE_PHRASES``), so a county tax bill whose
     # back page says "notice date", "tax year" and "IRS" is not a notice.
     # No blank form says "notice date", and an EIN letter (CP 575) prints
     # no tax year, so it stays the 1041's A02. A notice laid out any other

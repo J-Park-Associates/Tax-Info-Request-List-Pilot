@@ -66,7 +66,7 @@ person chose to write is read by a person (security principle 11).
 
 ``--lint`` runs each candidate over the blank forms in ``tests/irs/`` the
 way ``tools/vocab_report.py`` runs the catalog's own keywords - the same
-extraction, the same :func:`tracker.content_check.says`, about thirty seconds -
+extraction, the same :func:`tracker.keywords.says`, about thirty seconds -
 and reports which forms would say it. Where a form that says it belongs
 somewhere else in a matching catalog, the keyword is marked ``would misfile``
 and is not a candidate for promotion: committing it would break a placement
@@ -96,7 +96,7 @@ for _entry in (str(ROOT), str(ROOT / "tools")):
 from vocab_report import corpus_documents, shipped_catalogs  # noqa: E402
 
 from tracker import door  # noqa: E402
-from tracker.content_check import dominant_forms, says  # noqa: E402
+from tracker.keywords import dominant_forms, says  # noqa: E402
 from tracker.manifest import (  # noqa: E402
     COL_ANY_KEYWORDS,
     COL_REQUIRED_KEYWORDS,

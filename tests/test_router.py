@@ -261,7 +261,7 @@ def test_a_scan_whose_form_number_is_only_below_the_title_parks_as_ocr_only(tmp_
     TITLE_CHARS of the reading. A heading that only says "dividend" and a
     "Form 1099-DIV" far below it is the looser match decision 50 parks,
     byte for byte as before P282."""
-    from tracker.content_check import TITLE_CHARS
+    from tracker.keywords import TITLE_CHARS
 
     boxes = ["Box 1a Total ordinary dividends   1,200.00   Box 1b Qualified   900.00"] * 8
     text = NL.join(["Year-end dividend summary 2025", *boxes, "Form 1099-DIV"])
@@ -338,7 +338,7 @@ def test_a_form_number_shown_only_as_the_first_pages_dominant_form_parks_as_ocr_
     "1099-DIV" is the page's dominant form and A02's verdict records it on the
     first page, so decision 140's reading says the row shows its form number;
     the title says only "dividend", so the scan is a lead and is not filed."""
-    from tracker.content_check import (
+    from tracker.keywords import (
         TITLE_CHARS,
         dominant_forms,
         self_named_forms,
@@ -378,7 +378,7 @@ def test_a_sideways_reading_whose_title_lines_came_late_parks(tmp_path):
     scrambles the lines, so the form's name falls past the first TITLE_CHARS
     and a phrase of the row is what the title says. It parks as a lead; it
     is never filed under the 1098 row either."""
-    from tracker.content_check import TITLE_CHARS
+    from tracker.keywords import TITLE_CHARS
 
     int_row = _scan_row("B01", "1099-int", "interest income")
     text = NL.join([
@@ -1310,7 +1310,7 @@ def test_a_k1_mentioning_w2_wages_suggests_nothing_and_holds_nothing(tmp_path):
     it parks as plain "matched no request" - no suggestion on the card,
     and no hold on A01's letter."""
     from tests.builders import parked_row
-    from tracker.content_check import _says_where
+    from tracker.keywords import _says_where
     from tracker.reminder import _parked_holds
 
     assert _says_where(K1_MISREAD, "W-2") == ("first_page", 1), "the premise: W-2 dominates page 1"
@@ -1329,7 +1329,7 @@ def test_a_form_number_said_only_deep_is_not_shown(tmp_path):
     """"Shows" means the title zone or the first page. A W-2 number that
     is the page's own only from page 2 on is no near miss: it is where a
     person opening the document would not see it first."""
-    from tracker.content_check import _says_where
+    from tracker.keywords import _says_where
     from tracker.records import PAGE_BREAK
 
     items = _catalog_1040()

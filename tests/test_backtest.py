@@ -136,7 +136,7 @@ def test_a_document_with_no_text_layer_is_counted_apart_and_is_not_parked(tmp_pa
 def test_the_name_documents_are_routed_under_reaches_no_keyword_in_any_catalog():
     """The hiding works by giving every document one neutral name. If that
     word were a keyword somewhere, the router would file on it."""
-    from tracker.content_check import contains_keyword
+    from tracker.keywords import contains_keyword
     from tracker.templates import template_items
 
     for catalog in CATALOGS:

@@ -31,7 +31,8 @@ from tests.builders import make_engagement, named_page
 from tests.children import CRASHED, STOP_IN_TESTS, STOPPED, eventually, no_child_left, running
 from tests.samples import scanned_pdf, text_pdf
 from tracker import content_check, ocr, reasons
-from tracker.content_check import check_content, contains_keyword, extract
+from tracker.content_check import check_content, extract
+from tracker.keywords import contains_keyword
 from tracker.manifest import RequestItem
 
 W2_WORDS = ["Form W-2 Wage and Tax Statement 2025",

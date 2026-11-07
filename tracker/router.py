@@ -78,7 +78,7 @@ such a page files a copy under each form it covers, and the exception is
 deliberately narrow (:func:`_multi_form`): each form must name *itself*
 the way decision 85 means it - its number heading a line, with or without
 its printed title, and its year after
-(:func:`tracker.content_check.self_named_forms`) - two families of them
+(:func:`tracker.keywords.self_named_forms`) - two families of them
 must do it, the menu rules must not fire, and the forms must sort one to
 a request and one request to a form. A cover letter or a checklist that
 merely lists several forms is a menu and parks, exactly as it did before.
@@ -118,7 +118,7 @@ A decision also keeps *why* it was reached. ``Routing.evidence`` names the
 tier the decision rested on - ``EVIDENCE_CONTENT`` or nothing, since no
 decision rests on a name any more; ``Routing.evidence_record`` carries, per
 candidate, the keywords that matched and where in the document they were
-said (:class:`tracker.content_check.Evidence`), a name's keywords as the
+said (:class:`tracker.records.Evidence`), a name's keywords as the
 file's own title, and a tier-2 refusal as that Reason's code. A *blocked* file -
 one whose content fits a request and whose file the same request's tier-2
 rules then refused - keeps both, because the refusal alone says which rule
@@ -153,7 +153,9 @@ is judged in its own process, by the same function.
 
 The decision itself - :class:`tracker.records.Routing` - lives in
 :mod:`tracker.records` since decision 100: the decision is a record, and this
-module is the deciding. It is re-exported here for one release.
+module is the deciding. This module reads it from there and so offers it
+too; ``tests/test_records.py`` (``RE_EXPORTED``) pins that it is the
+record's own object.
 
 Routing is read-only. Moving, renaming and indexing happen in
 :mod:`tracker.filer`, which uses the decisions made here. The verdicts the
@@ -172,27 +174,23 @@ from pathlib import Path
 
 from tracker import reasons
 from tracker.content_check import (
-    BROKER_FORM,
     OPEN_TEST_FINGERPRINT,
     ContentCache,
-    ContentResult,
     Extraction,
     Judgment,
     Questions,
-    contains_keyword,
-    form_key,
     judge_bounded,
     judgment_of,
     row_question,
-    rules_fingerprint,
 )
+from tracker.keywords import BROKER_FORM, ContentResult, contains_keyword, form_key, rules_fingerprint
 from tracker.manifest import Override, RequestItem, asks_for_a_return, has_routing_rules, narrowing_rows
 
 # The routing decision is a record and lives in tracker/records.py
-# (decision 100); this module is the deciding. Routing and EVIDENCE_CONTENT
-# are re-exported from here, so every `from tracker.router import Routing`
-# still resolves to the same class; kept for one release; import from
-# tracker.records.
+# (decision 100); this module is the deciding. It reads Routing and
+# EVIDENCE_CONTENT from there, so `from tracker.router import Routing`
+# resolves to the record's own class (tests/test_records.py, RE_EXPORTED).
+# A new reader imports both from tracker.records.
 from tracker.records import (
     EVIDENCE_CONTENT,
     RULE_ANY,
@@ -274,7 +272,7 @@ def _filename_evidence(path: Path, item: RequestItem) -> tuple[Evidence, ...]:
     neither ``ledger-10983.pdf`` nor ``1098-T.pdf`` - the tuition form is
     not the mortgage form, whichever side of the hyphen is read.
 
-    A file name is all title (``content_check.TITLE_CHARS``), and it has no
+    A file name is all title (``keywords.TITLE_CHARS``), and it has no
     pages, so that is what the evidence says.
     """
     # Clients write "W2" for "W-2" and "1099INT" for "1099-INT": the keyword
@@ -345,7 +343,7 @@ def _names_only_its_own(
 
     Read off what the decision already holds and nothing else. False when
     any form in ``self_named`` (the judgment's reading, decision 94's:
-    :func:`tracker.content_check.self_named_forms`, computed once in the
+    :func:`tracker.keywords.self_named_forms`, computed once in the
     reader child) is not one of ``title_forms``, or when any row of
     ``record`` other than ``only`` carries a form-number keyword (required
     or looser) whose form is not one of ``title_forms``; True otherwise. No
@@ -377,7 +375,7 @@ def _shows_its_form_number(evidence: tuple[Evidence, ...]) -> bool:
     """Whether a row's evidence says the page shows that row's own form number.
 
     Decision 140. A row's own form number is a keyword of the row that is a
-    form's number (``content_check.form_key``, the one normalisation, which
+    form's number (``keywords.form_key``, the one normalisation, which
     reads ``W-2``, ``1098`` and ``1099-INT`` as forms and a bare ``1099``
     only as its family). It is *shown* when the evidence says it was said
     in the title zone, or when it was said on the first page - where a form
@@ -490,7 +488,7 @@ def _explained_by(evidence: tuple[Evidence, ...], named: set[str]) -> tuple[str,
     A row is accepted *because of* a form when one of the keywords that
     matched it - a required keyword or an any-keyword, never the Period's
     year check, which is a check and not evidence (decision 40) - is that
-    form's number (``content_check.form_key``, the one normalisation).
+    form's number (``keywords.form_key``, the one normalisation).
     A row whose whole case rests on a phrase ("statement period",
     "brokerage") names no form and comes back empty, which is what stops a
     page being split on a row that only happened to be nearby.
@@ -559,7 +557,7 @@ def _multi_form(
     """Decision 94, the owner's: one page carrying several forms.
 
     ``named`` is every form the page prints its own name on
-    (:func:`tracker.content_check.self_named_forms`), and this is called
+    (:func:`tracker.keywords.self_named_forms`), and this is called
     only when two or more *families* of them do. The page is read a second
     time with all of them counted as the document's own - the ordinary
     reading calls at most one form a page's own, so the second form's
@@ -593,7 +591,7 @@ def _multi_form(
     than the any-keyword tier ``OCR_ONLY`` exists to distrust.
 
     The second reading is the judgment's row verdict (decision 189): a
-    page reaches here only when :func:`tracker.content_check.own_forms` is
+    page reaches here only when :func:`tracker.keywords.own_forms` is
     the set of ``named``, and that set is the forms the row verdict was
     read with, so the two readings have been one since decision 107.
     """
@@ -838,12 +836,13 @@ def _decide(
                 cache.put_by_digest(open_digest, OPEN_TEST_FINGERPRINT,
                                     ContentResult(ok=not opened, reason=opened, code=opened_code))
 
-    # Which forms the page counts as its own is content_check's one reading,
-    # own_forms() (decision 107): the ordinary reading here, the split below
-    # and the scanner's miss path all read through it, so a page that prints
-    # two forms' own names is those two documents and never files on a third
-    # form it merely mentions - decision 94's rule, by construction - and
-    # every verdict kept here is one a rebuilt store reaches again.
+    # Which forms the page counts as its own is the matcher's one reading,
+    # tracker.keywords.own_forms() (decision 107): the ordinary reading here,
+    # the split below and the scanner's miss path all read through it, so a
+    # page that prints two forms' own names is those two documents and never
+    # files on a third form it merely mentions - decision 94's rule, by
+    # construction - and every verdict kept here is one a rebuilt store
+    # reaches again.
     own = judgment.own
 
     def verdict_for(item: RequestItem):

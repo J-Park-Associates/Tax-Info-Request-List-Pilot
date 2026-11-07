@@ -494,7 +494,7 @@ def test_the_cache_save_refuses_outside_the_engagement_lock(tmp_path):
 
 def test_own_forms_is_none_for_one_family_and_the_named_set_for_two():
     from tests.samples import scanned_1098_lines, scanned_w2_lines
-    from tracker.content_check import MULTI_FORM_FAMILIES, own_forms, self_named_forms
+    from tracker.keywords import MULTI_FORM_FAMILIES, own_forms, self_named_forms
 
     one = "\n".join(scanned_w2_lines(2025))
     two = "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025))
@@ -608,7 +608,7 @@ def test_only_the_first_pages_of_a_pdf_are_read(tmp_path):
     ("Form W-2 Wage and Tax Statement 2025", "w2"),        # plain: nothing quotes it, it is named in its own right
 ])
 def test_a_form_names_itself_with_its_year_or_revision(text, own):
-    from tracker.content_check import _PLAIN_WEIGHT, _mentions
+    from tracker.keywords import _PLAIN_WEIGHT, _mentions
 
     (key, _, weight), = list(_mentions(text.lower()))
     assert key == own and weight >= _PLAIN_WEIGHT
@@ -620,7 +620,7 @@ def test_a_form_names_itself_with_its_year_or_revision(text, own):
     "such as Form 1040)", "Interest and dividends: attach Forms 1099-INT and 1099-DIV",
 ])
 def test_a_form_quoted_in_a_sentence_is_a_reference(text):
-    from tracker.content_check import _REFERENCE_WEIGHT, _mentions
+    from tracker.keywords import _REFERENCE_WEIGHT, _mentions
 
     assert all(weight == _REFERENCE_WEIGHT for _, _, weight in _mentions(text.lower()))
 
@@ -644,7 +644,7 @@ def test_the_dominant_form_is_the_heaviest_then_the_first_mentioned():
 def test_a_form_told_to_the_reader_is_a_reference_whatever_follows_it():
     # The tenth reading: "attach Form 1098 (2025)" read as a form naming
     # itself, because the year was looked at before the word in front.
-    from tracker.content_check import _REFERENCE_WEIGHT, _mentions, says
+    from tracker.keywords import _REFERENCE_WEIGHT, _mentions, says
 
     for text in ("attach Form 1098 (2025)", "see Form 1098 for 2025 mailed separately", "Forms W-2 2025"):
         assert all(weight == _REFERENCE_WEIGHT for _, _, weight in _mentions(text.lower())), text
@@ -653,7 +653,7 @@ def test_a_form_told_to_the_reader_is_a_reference_whatever_follows_it():
 
 
 def test_a_title_that_lists_three_forms_names_none_of_them():
-    from tracker.content_check import _title_forms, says
+    from tracker.keywords import _title_forms, says
 
     checklist = ("2025 Individual Income Tax Organizer\nIncome Documents Checklist\n"
                  "Form W-2 - Wage and Tax Statement\nForm 1098 - Mortgage Interest Statement\n"
@@ -684,7 +684,7 @@ def test_a_title_that_lists_three_forms_names_none_of_them():
 
 
 def test_a_form_number_in_the_title_counts_only_when_named_in_its_own_right():
-    from tracker.content_check import says
+    from tracker.keywords import says
 
     attention = ("Attention: Which Revision To Use for Which Year. For all forms that we do not issue annually "
                  "(such as Form 1099-NEC), we issue the revision to use for the next calendar year. ")
@@ -702,7 +702,7 @@ def test_a_single_dash_set_off_form_beside_its_year_names_itself():
     # Income" is how a bank prints its title. A menu *lists* - two such
     # lines or more in the title window - and a single one, dated on its
     # own line, is a form naming itself.
-    from tracker.content_check import _title_forms, says
+    from tracker.keywords import _title_forms, says
 
     assert says("2025 Form 1099-INT - Interest Income\nAlly Bank  1 Interest income 1,842.55", "1099-int")
     assert says("Form 1098 - Mortgage Interest Statement  2025\n1 Mortgage interest received 14,220.19", "1098")
@@ -718,7 +718,7 @@ def test_a_single_dash_set_off_form_beside_its_year_names_itself():
 def test_a_form_after_a_comma_continues_a_list():
     # A cover's last form carries no punctuation after it, so it was read as
     # named in its own right and blinded the form printed behind it.
-    from tracker.content_check import says
+    from tracker.keywords import says
 
     cover = ("Charles Schwab  2025 Tax Reporting Package\n"
              "Enclosed: Form 1099-INT, Form 1098, Form 5498\n"
@@ -732,7 +732,7 @@ def test_a_menu_line_names_neither_the_form_nor_its_title():
     # firm's organizer sets "Form 1099-B" off from "Proceeds From Broker
     # and Barter Exchange Transactions" with a dash, and the row that keys
     # on the broker's words filed the organizer page as the client's 1099-B.
-    from tracker.content_check import says
+    from tracker.keywords import says
 
     page = ("2025 Individual Income Tax Organizer - Investment Income\n"
             "Form 1099-B - Proceeds From Broker and Barter Exchange Transactions\n"
@@ -750,7 +750,7 @@ def test_a_menu_line_names_neither_the_form_nor_its_title():
 def test_a_document_does_not_ask_for_itself():
     # An ask governs the rest of its sentence, because one ask names several
     # documents; across a line break it governs only the wrap.
-    from tracker.content_check import says
+    from tracker.keywords import says
 
     organizer = ("2025 Individual Income Tax Organizer - Investment Income\n"
                  "Did you sell any stocks, bonds or mutual funds in 2025?\n"
@@ -779,7 +779,7 @@ def test_a_keyword_may_name_alternatives_and_the_words_one_of_them_wants_togethe
     # or this one" - which is what the prior-year return row has to say,
     # because a standalone state return shares none of the federal
     # return's lines, jurat included.
-    from tracker.content_check import contains_keyword, says
+    from tracker.keywords import contains_keyword, says
 
     prior_return = ("individual income tax return + filing status + under penalties of perjury"
                     " | resident income tax return")
@@ -826,7 +826,7 @@ def test_the_any_keywords_are_read_apart_from_every_other_rule():
 
 
 def test_a_keywords_words_are_on_one_line_or_wrap_as_a_heading():
-    from tracker.content_check import contains_keyword
+    from tracker.keywords import contains_keyword
 
     # Two labels on two lines are not one phrase.
     assert not contains_keyword("19 Distributions\nSchedule K-1 (Form 1065) 2025", "distribution schedule")
@@ -847,7 +847,7 @@ def test_a_keywords_words_are_on_one_line_or_wrap_as_a_heading():
 
 
 def test_a_sheets_row_is_a_line_and_its_cells_are_set_apart(tmp_path):
-    from tracker.content_check import contains_keyword
+    from tracker.keywords import contains_keyword
 
     wb = Workbook()
     ws = wb.active
@@ -1105,22 +1105,22 @@ def test_a_date_pattern_runs_line_by_line_and_skips_lines_over_the_limit():
     at a time, and a line longer than ``DATE_LINE_MAX`` is skipped, so a
     typo that backtracks is bounded by one short line rather than the whole
     OCR text. Where it matched is still found in the whole text."""
-    import tracker.content_check as content_check
+    import tracker.keywords as keywords
 
     rules = item(period="TY2025", date_pattern=r"2025")
     text = "Statement\n" + "2025 " * 200 + "\nPeriod ending 12/31/2025\n"
     verdict = evaluate_rules(text, rules)
     assert verdict.ok
-    assert content_check.date_pattern_at(r"2025", text) == text.index("12/31/2025") + 6
+    assert keywords.date_pattern_at(r"2025", text) == text.index("12/31/2025") + 6
 
     only_long = "x" + "2025 " * 200
-    assert content_check.date_pattern_at(r"2025", only_long) is None
+    assert keywords.date_pattern_at(r"2025", only_long) is None
     assert not evaluate_rules(only_long, rules).ok
-    assert content_check.date_pattern_at(r"(unclosed", "anything") is None
+    assert keywords.date_pattern_at(r"(unclosed", "anything") is None
     # A catastrophic pattern over a long run of what it backtracks on
     # finishes at once: the line holding the run is past the limit.
     evil = "a" * 5000 + "!"
-    assert content_check.date_pattern_at(r"(a+)+b", evil) is None
+    assert keywords.date_pattern_at(r"(a+)+b", evil) is None
 
 
 def test_a_picture_past_pillows_guard_is_a_kept_too_large_verdict_not_a_retry(tmp_path, monkeypatch):
@@ -2070,7 +2070,7 @@ def test_the_line_a_mention_is_on_is_found_as_before_without_walking_the_text():
     row, so the line remembered from one is tried on the next."""
     import random
 
-    from tracker.content_check import _line_of
+    from tracker.keywords import _line_of
 
     rng = random.Random(163)
     alphabets = ("ab w-2 \r\n\f\v", "ab w-2 \r", "ab w-2 ")
@@ -2095,7 +2095,7 @@ def test_the_line_finder_is_quick_on_a_text_with_no_line_feed():
     the first two texts; the new one about a hundredth of that)."""
     import time
 
-    from tracker.content_check import _line_of
+    from tracker.keywords import _line_of
 
     word = "w-2 wages "
     texts = {
@@ -2307,6 +2307,7 @@ def test_no_client_text_is_matched_in_the_pass_own_process(tmp_path, in_a_child)
     a household still files the W-2 and the 1099-INT and scans both as
     received."""
     import tracker.content_check as content_check
+    import tracker.keywords as keywords
     import tracker.names as names_module
     from tests.builders import named_page
     from tracker.layout import inbox_of
@@ -2326,10 +2327,12 @@ def test_no_client_text_is_matched_in_the_pass_own_process(tmp_path, in_a_child)
     def matched_in_the_pass(*_args, **_kwargs):
         raise AssertionError("a document's words were matched in the pass's own process")
 
-    for name in ("evaluate_rules", "says", "own_forms", "dominant_forms", "self_named_forms",
+    for name in ("evaluate_rules", "own_forms", "dominant_forms", "self_named_forms",
                  "required_matched", "any_keyword_matched", "carries_a_1099b_section",
                  "judgment_of"):
         in_a_child.setattr(content_check, name, matched_in_the_pass)
+    for name in ("says", "dominant_forms"):
+        in_a_child.setattr(keywords, name, matched_in_the_pass)
     in_a_child.setattr(names_module, "check_name", matched_in_the_pass)
     in_a_child.setattr(names_module, "read_names", matched_in_the_pass)
 
@@ -2540,7 +2543,7 @@ def _the_pass_before_189(text: str, row: RequestItem):
     """What the pass computed in its own process before decision 189, call
     for call: the router's ordinary reading, its ``_required_matched`` and
     ``any_keyword_matched`` - each reading the form scan for itself."""
-    from tracker.content_check import any_keyword_matched, own_forms, says, self_named_forms
+    from tracker.keywords import any_keyword_matched, own_forms, says, self_named_forms
 
     own = own_forms(self_named_forms(text)) if text else None
     required = bool(row.required_keywords) and all(says(text, k) for k in row.required_keywords)
@@ -2645,17 +2648,19 @@ def test_the_form_scan_runs_once_per_judgment(monkeypatch):
     one file. It runs once a judgment now, and ``self_named_forms`` once,
     however many rows are asked."""
     import tracker.content_check as content_check
+    import tracker.keywords as keywords
     from tracker.content_check import Extraction, judgment_of
 
     counts = {"dominant_forms": 0, "self_named_forms": 0}
-    for name in counts:
-        real = getattr(content_check, name)
+    for module, name in ((keywords, "dominant_forms"), (content_check, "dominant_forms"),
+                         (content_check, "self_named_forms")):
+        real = getattr(module, name)
 
         def counted(text, _real=real, _name=name):
             counts[_name] += 1
             return _real(text)
 
-        monkeypatch.setattr(content_check, name, counted)
+        monkeypatch.setattr(module, name, counted)
 
     rows = [item(required_keywords=("W-2", f"box {n}"), any_keywords=("wages", "1099-B"),
                  date_pattern=r"2025") for n in range(20)]
