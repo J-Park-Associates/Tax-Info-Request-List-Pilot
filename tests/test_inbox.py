@@ -17,10 +17,10 @@ section comments they sat under in ``tests/test_filer.py`` stay there above
 the tests of those sections that stay; decision 102's, which headed only the
 first of them there, went (``tests/test_index.py`` carries it above that
 section's tests). Two of them drive the code through a pass, as they did;
-the claim each makes is about the code here. Where a body still imports a
-name through the filer that the filer imports back for its own code
-(``unlistable_folders``, ``unrecorded_in_pbc``, ``ignored_in_inbox``), it
-reads the very object defined here.
+the claim each makes is about the code here. Each imports what it reads
+of the inbox from ``tracker.inbox`` (``_storable``, ``unlistable_folders``,
+``unrecorded_in_pbc``, ``ignored_in_inbox``), never through the filer's
+import-back.
 """
 
 import sys
@@ -62,7 +62,7 @@ def test_only_a_name_the_journal_cannot_hold_is_refused(engagement):
 
 def test_the_unlistable_walk_covers_the_same_ground_as_the_others(engagement, tmp_path):
     from tests.samples import listing_denied
-    from tracker.filer import unlistable_folders
+    from tracker.inbox import unlistable_folders
 
     inbox = inbox_of(engagement)
     inside = inbox / "from my phone" / "scans"
@@ -83,7 +83,7 @@ def test_the_unlistable_walk_covers_the_same_ground_as_the_others(engagement, tm
 
 def test_a_folder_the_run_cannot_list_is_reported_every_pass(engagement):
     from tests.samples import listing_denied
-    from tracker.filer import unlistable_folders
+    from tracker.inbox import unlistable_folders
 
     denied = inbox_of(engagement) / "from my accountant"
     denied.mkdir()
@@ -101,7 +101,7 @@ def test_a_folder_the_run_cannot_list_is_reported_every_pass(engagement):
 def test_the_originals_folder_is_shared_and_another_returns_original_is_never_a_stray(two_returns):
     """One folder of originals serves the household-year, so a file one
     return's row holds must never look like another return's stray."""
-    from tracker.filer import unrecorded_in_pbc
+    from tracker.inbox import unrecorded_in_pbc
 
     personal, business = two_returns
     drop(personal, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
@@ -120,7 +120,7 @@ def test_the_inbox_count_of_names_left_alone_skips_what_is_named_as_syncing(enga
     nothing it already names (decision 190): an unfinished transfer is in
     the report by name as syncing, so it is not in the count as well, and
     the README and a real drop are neither."""
-    from tracker.filer import ignored_in_inbox
+    from tracker.inbox import ignored_in_inbox
 
     inbox = inbox_of(engagement)
     before = ignored_in_inbox(inbox)
