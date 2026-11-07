@@ -29,7 +29,6 @@ from tests.content_check_helpers import an_engagement, item
 from tests.samples import photo, text_pdf
 from tracker import reasons, store
 from tracker.content_check import (
-    ContentCache,
     check_content,
     evaluate_rules,
     extract_text,
@@ -38,7 +37,7 @@ from tracker.content_check import (
 )
 from tracker.locking import engagement_lock
 from tracker.manifest import RequestItem
-from tracker.verdicts import CACHE_VERSION
+from tracker.verdicts import CACHE_VERSION, ContentCache
 
 # ------------------------------------------------------------------ rules ----
 
@@ -740,9 +739,9 @@ def test_a_picture_past_pillows_guard_is_a_kept_too_large_verdict_not_a_retry(tm
     from PIL import Image
 
     import tracker.content_check as content_check
-    from tracker.content_check import ContentCache
     from tracker.router import route_file
     from tracker.validators import check_file
+    from tracker.verdicts import ContentCache
 
     monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 1_000)          # 2,000 px is a bomb now
     photo = tmp_path / "photo.png"
@@ -790,8 +789,8 @@ def test_no_page_starts_past_the_safety_stop_and_the_stopped_reading_is_kept(tmp
 
     import tracker.content_check as content_check
     from tracker import ocr
-    from tracker.content_check import ContentCache
     from tracker.router import route_file
+    from tracker.verdicts import ContentCache
 
     pypdfium2 = pytest.importorskip("pypdfium2")
     now = [1000.0]

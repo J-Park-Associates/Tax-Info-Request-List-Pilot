@@ -1610,7 +1610,8 @@ def test_a_scan_with_an_empty_cache_reaches_the_verdict_the_router_filed_on_for_
     miss reads the page as the router read it - both forms its own - and
     the second copy passes without the cache."""
     from tests.samples import scanned_1098_lines, scanned_w2_lines
-    from tracker.content_check import ContentCache, check_content
+    from tracker.content_check import check_content
+    from tracker.verdicts import ContentCache
 
     drop(engagement, "scan0003.pdf",
          "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025)))

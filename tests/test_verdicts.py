@@ -13,11 +13,10 @@ import pytest
 
 from tests.content_check_helpers import an_engagement, item
 from tracker import store
-from tracker.content_check import ContentCache, rules_fingerprint
-from tracker.keywords import ContentResult
+from tracker.keywords import ContentResult, rules_fingerprint
 from tracker.locking import engagement_lock
 from tracker.records import Evidence
-from tracker.verdicts import CACHE_VERSION
+from tracker.verdicts import CACHE_VERSION, ContentCache
 
 
 def test_the_cache_version_moved_so_a_verdict_read_sideways_is_read_again(tmp_path):

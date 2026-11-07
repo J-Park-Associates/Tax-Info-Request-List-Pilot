@@ -524,7 +524,8 @@ def test_the_router_and_the_scanner_reach_one_verdict_for_one_document(tmp_path,
     # The verdicts the router reaches on a drop are the scanner's verdicts on
     # the working copy: same bytes, same reading, read once.
     from tests.builders import counting_extractor
-    from tracker.content_check import ContentCache, check_content
+    from tracker.content_check import check_content
+    from tracker.verdicts import ContentCache
 
     calls = counting_extractor(monkeypatch)
     cache = ContentCache()
@@ -546,7 +547,8 @@ def test_a_page_naming_two_forms_never_files_on_a_third_and_the_miss_path_agrees
     times deep in its text is those two documents - it parks on a list that
     asks only for a 1099, and an empty cache reaches the same verdict."""
     from tests.samples import scanned_1098_lines, scanned_w2_lines
-    from tracker.content_check import ContentCache, check_content, rules_fingerprint
+    from tracker.content_check import check_content, rules_fingerprint
+    from tracker.verdicts import ContentCache
 
     third = RequestItem(identifier="A02", document="1099 Statements", period="TY2025",
                         allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("1099",))
