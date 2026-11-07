@@ -113,7 +113,7 @@ def test_a_return_written_since_its_row_was_kept_is_read_again(firm, reads):
     identifier = load_manifest(changed)[0].identifier
     edit_rows(changed, **{identifier: {"manual_override": Override.NOT_APPLICABLE}})
     parked = "a second scan.pdf"
-    from tests.conftest import seed_index
+    from tests.builders import seed_index
     from tracker.index import NEEDS_REVIEW
     from tracker.records import IndexEntry
     seed_index(changed, [IndexEntry(

@@ -594,7 +594,7 @@ def _first_pass(registered: _Step) -> _Step:
 def _tmutil(command: list[str]) -> subprocess.CompletedProcess:
     """Run one ``tmutil`` command line and hand back what it said. **The one
     seam for Time Machine** (SPEC-mac R7), as ``scheduling._schtasks`` is for
-    Task Scheduler: the suite's autouse guard (``tests/conftest.py``) fails a
+    Task Scheduler: the suite's autouse guard (``tests/plugin_fakes.py``) fails a
     test that reaches the real one. One that does not answer within the
     schedulers' limit is stopped and raises ``TimeoutError``, an ``OSError``."""
     try:

@@ -25,7 +25,8 @@ import threading
 import pytest
 
 import tracker.api as api
-from tests.conftest import REPO, child_env, make_engagement
+from tests.builders import make_engagement
+from tests.plugin_session import REPO, child_env
 from tracker import errlog, hold, locking, resident, settings, store
 from tracker.manifest import RequestItem
 
@@ -105,7 +106,7 @@ def test_a_write_with_a_payload_is_answered_as_a_fresh_process_would_byte_for_by
     """The claim P220's spare test made, kept for the engine: an ``edit`` that
     carries a payload, through ``serve``, prints what ``api.main`` prints for
     the same bytes on its standard input, and leaves the engine serving."""
-    from tests.conftest import app_stdin
+    from tests.builders import app_stdin
 
     rules = json.loads(fresh(capsys, ["state", api.ENGAGEMENT_FLAG, str(engine_root)])[1])["rules"]
     store.close()

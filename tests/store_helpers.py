@@ -36,8 +36,8 @@ from pathlib import Path
 
 import pytest
 
-from tests.builders import engagement_fixture
-from tests.conftest import child_env, sort
+from tests.builders import engagement_fixture, sort
+from tests.plugin_session import child_env
 from tracker import ledger, store, store_check
 from tracker.manifest import RequestItem, load_engagement_info, save_rules
 from tracker.records import rule_from_json, rule_to_json

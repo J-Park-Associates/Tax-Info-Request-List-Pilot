@@ -26,8 +26,7 @@ from pathlib import Path
 import pytest
 
 from tests import store_helpers
-from tests.builders import drop
-from tests.conftest import sort
+from tests.builders import drop, sort
 from tests.store_helpers import A_ROW_ORIGINAL, DAY1, a_row, build, cli, unlinked
 from tracker import checkpoint, ledger, store, verify
 from tracker.index import read_index

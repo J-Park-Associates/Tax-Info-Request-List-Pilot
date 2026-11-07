@@ -7,14 +7,7 @@ from dataclasses import replace
 
 import pytest
 
-from tests.builders import k1_rows
-from tests.conftest import (
-    TEST_HOUSEHOLD,
-    TEST_PEOPLE,
-    TEST_RETURN,
-    TEST_YEAR,
-    make_engagement,
-)
+from tests.builders import TEST_HOUSEHOLD, TEST_PEOPLE, TEST_RETURN, TEST_YEAR, k1_rows, make_engagement
 from tracker import ledger, store, store_check
 from tracker.bounds import (
     COUNT_BOUNDS,
@@ -325,7 +318,7 @@ def test_a_waived_row_in_an_old_journal_reads_as_not_applicable_and_saving_the_l
     """The retired-value rule of decision 104, applied to a value: the
     journal keeps the spelling it holds, every reader sees the successor,
     and an untouched list is not an event."""
-    from tests.conftest import ensure
+    from tracker.index import ensure
     from tracker.locking import engagement_lock
 
     folder = make_engagement(tmp_path / "Old 2025", SAMPLE_ITEMS[:2], scaffold=False)
@@ -1189,7 +1182,7 @@ def test_a_list_read_without_following_is_the_store_as_it_stands(tmp_path):
     the store is not seen that way and is seen by every other reader; a
     return the store does not hold is followed either way, never shown
     empty."""
-    from tests.conftest import written_elsewhere
+    from tests.builders import written_elsewhere
     from tracker.manifest import Status
     from tracker.records import StatusUpdate, status_to_json
 
@@ -1328,7 +1321,7 @@ def test_a_held_reading_builds_the_list_once_per_record_head(engagement, monkeyp
 
 
 def test_a_held_list_is_built_again_once_the_journal_moves(engagement, monkeypatch):
-    from tests.conftest import seed_statuses
+    from tests.builders import seed_statuses
     from tracker import hold
     from tracker.records import StatusUpdate
 
@@ -1345,7 +1338,7 @@ def test_a_held_list_is_built_again_once_the_journal_moves(engagement, monkeypat
 _ANOTHER_PROCESS = """
 import sys
 from pathlib import Path
-from tests.conftest import seed_statuses
+from tests.builders import seed_statuses
 from tracker.manifest import Status
 from tracker.records import StatusUpdate
 seed_statuses(Path(sys.argv[1]), {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
@@ -1358,7 +1351,7 @@ def test_a_line_another_process_appends_is_seen_by_the_next_read_in_the_hold(eng
     import subprocess
     import sys
 
-    from tests.conftest import REPO, child_env
+    from tests.plugin_session import REPO, child_env
     from tracker import hold
 
     with hold.one_reading():

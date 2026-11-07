@@ -101,7 +101,7 @@ the other.
 tables with :func:`tracker.ledger.replay` over the journal and names every
 place they disagree, in sentences. Each stage was built on a store that had been
 silent there across the whole suite - which is what the agreement fixture
-in ``tests/conftest.py`` does after every test: rebuild, check, and fail
+in ``tests/plugin_agreement.py`` does after every test: rebuild, check, and fail
 on a sentence.
 
 **The index is here** (decision 102, stage 2). ``index.read_index()``

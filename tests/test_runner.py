@@ -20,7 +20,7 @@ import pytest
 
 import tracker.runner as runner_module
 from tests import passes
-from tests.conftest import make_engagement, seed_index, written_elsewhere
+from tests.builders import make_engagement, seed_index, written_elsewhere
 from tests.passes import (
     _a_parked_file,
     _lines,
@@ -2017,8 +2017,7 @@ def test_a_return_short_of_room_files_everything_and_is_not_warned(tmp_path, pat
 def test_a_return_with_requests_that_cannot_receive_says_how_many(tmp_path, path_setting):
     """A request that Prepared leaves no room for even its shortest name is
     counted and said: a document for it parks until the root is shorter."""
-    from tests.builders import ROOM_ITEMS, no_room_return, with_the_long_period
-    from tests.conftest import root_for_a_return_of
+    from tests.builders import ROOM_ITEMS, no_room_return, root_for_a_return_of, with_the_long_period
     from tracker.filer import ROOM_PARKS, room_for
     from tracker.manifest import load_manifest
 
@@ -2040,8 +2039,7 @@ def test_a_household_with_no_room_for_a_review_copy_is_skipped_whole_before_anyt
     stops its household: every working return carries HOUSEHOLD_NO_ROOM,
     the inbox is untouched, no lock is taken, and nothing is scaffolded,
     scanned, drafted or drawn - the held-lock shape."""
-    from tests.builders import ROOM_ITEMS, drop
-    from tests.conftest import floor_return, root_for_a_return_of
+    from tests.builders import ROOM_ITEMS, drop, floor_return, root_for_a_return_of
     from tracker.filer import HOUSEHOLD_NO_ROOM
     from tracker.layout import README_NAME, path_limit
     from tracker.locking import LOCK_FILENAME
@@ -3511,7 +3509,7 @@ def test_a_new_return_or_a_roll_forward_never_makes_a_gone_client_folder_again(
     import sys
 
     import tracker.api as api
-    from tests.conftest import app_stdin
+    from tests.builders import app_stdin
     from tracker.households import CLIENT_FOLDER_MISSING
     from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
     from tracker.manifest import ManifestError
@@ -3640,7 +3638,7 @@ def test_a_line_written_on_another_machine_is_named_until_acknowledged(tmp_path,
     # The clients root is a folder of its own, not tmp_path: the suite's
     # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
     root = tmp_path / "root"
-    from tests.conftest import written_elsewhere
+    from tests.builders import written_elsewhere
     from tracker import checkpoint
     from tracker.runner import STATUS_RECORDS_HEADING
 
@@ -3908,7 +3906,7 @@ def test_the_page_names_the_acknowledge_command_with_this_machines_store(tmp_pat
     # The clients root is a folder of its own, not tmp_path: the suite's
     # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
     root = tmp_path / "root"
-    from tests.conftest import written_elsewhere
+    from tests.builders import written_elsewhere
 
     engagement = build_engagement(root, samples)
     assert main([str(root), "--date", FRIDAY.isoformat()]) == 0
@@ -4529,7 +4527,7 @@ def test_run_engagement_says_an_unexpected_error_by_class_only(tmp_path, samples
 
 
 def test_a_hold_older_than_seven_days_is_on_the_page(tmp_path, samples, monkeypatch):
-    from tests.conftest import seed_statuses
+    from tests.builders import seed_statuses
     from tracker import reasons
     from tracker.locking import engagement_lock
     from tracker.manifest import Status, StatusUpdate
@@ -5075,7 +5073,7 @@ def test_the_pass_fills_the_firm_cache_with_the_apps_own_summary(tmp_path, sampl
     cache in the data folder is whole under today's head for the saved
     root when the pass returns - and nothing of the reply reaches the
     console or the run log."""
-    from tests.conftest import REAL_FILL
+    from tests.plugin_fakes import REAL_FILL
     from tracker import door, firm_cache
 
     root = tmp_path / "Clients"
@@ -5242,7 +5240,7 @@ def test_each_reason_a_fill_fails_is_said_by_its_kind(tmp_path, monkeypatch, end
     finished without leaving the cache whole under today's head."""
     import subprocess
 
-    from tests.conftest import REAL_FILL
+    from tests.plugin_fakes import REAL_FILL
     from tracker.runner import (
         FILL_NOT_KEPT,
         FILL_NOT_STARTED,
@@ -5275,7 +5273,7 @@ def test_the_product_name_reaches_the_fill_and_never_the_page(tmp_path, samples,
     import os
     import subprocess
 
-    from tests.conftest import REAL_FILL
+    from tests.plugin_fakes import REAL_FILL
     from tracker.runner import PRODUCT_FLAG
     from tracker.settings import ENV_PRODUCT_NAME
 
@@ -5737,7 +5735,7 @@ def test_a_scheduled_pass_off_windows_ends_at_the_run_limit_and_its_lock_is_clea
     import sys
     import time
 
-    from tests.conftest import REPO, child_env
+    from tests.plugin_session import REPO, child_env
     from tracker.locking import acquire_lock, lock_status, release_lock
     from tracker.runner import RUN_LIMIT_EXIT_CODE
 

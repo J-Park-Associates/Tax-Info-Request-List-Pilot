@@ -39,7 +39,7 @@ import ast
 import pytest
 
 from tests import store_helpers
-from tests.conftest import written_elsewhere
+from tests.builders import written_elsewhere
 from tests.store_helpers import A_ROW_ORIGINAL, _a_rule, a_row, build
 from tracker import admission, ledger, store
 from tracker.locking import engagement_lock

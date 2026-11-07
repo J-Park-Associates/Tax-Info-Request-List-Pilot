@@ -8,7 +8,7 @@ from openpyxl import Workbook
 from pypdf import PdfWriter
 
 from tests import children
-from tests.builders import cache_rows, counting_extractor
+from tests.builders import cache_rows, counting_extractor, make_engagement
 from tests.children import (
     CRASHED,
     STOP_IN_TESTS,
@@ -19,7 +19,6 @@ from tests.children import (
     process_state,
     running,
 )
-from tests.conftest import make_engagement
 from tests.samples import photo, text_pdf
 from tracker import reasons, store
 from tracker.content_check import (
@@ -1299,7 +1298,7 @@ def test_a_pattern_the_record_calls_derived_runs_line_by_line_unless_it_is():
 #
 # Decision 150. The pass reads each document in a child process and waits
 # for it at most the document's stop; the claims below run a real child.
-# The suite reads in its own process everywhere else (tests/conftest.py),
+# The suite reads in its own process everywhere else (tests/plugin_fakes.py),
 # so each of these turns the child back on. The stops are patched down to
 # seconds - never minutes - and the child is handed a stand-in reader from
 # tests/child_readers.py, because a patch made here never reaches it.
@@ -1455,7 +1454,7 @@ def test_a_reader_that_crashes_is_a_failed_reading_not_a_dead_pass(tmp_path, in_
     the abandoned one - and the pass goes on to the next document."""
     import tracker.content_check as content_check
     from tests import child_readers
-    from tests.conftest import named_page, sort
+    from tests.builders import named_page, sort
     from tracker.layout import inbox_of
 
     in_a_child.setattr(content_check, "_CHILD_READER", child_readers.a_reader_that_dies_on_a_crash)
@@ -1517,7 +1516,7 @@ def test_a_cached_verdict_starts_no_child(tmp_path, in_a_child):
     from pathlib import Path
 
     import tracker.content_check as content_check
-    from tests.conftest import named_page
+    from tests.builders import named_page
     from tracker.layout import inbox_of
     from tracker.registry import discover_engagements
     from tracker.runner import REMINDERS_NEVER, run_registry
@@ -1696,7 +1695,7 @@ def test_a_page_tree_bomb_cannot_stall_the_pass(tmp_path, a_short_stop):
     from pathlib import Path
 
     import tracker.content_check as content_check
-    from tests.conftest import named_page
+    from tests.builders import named_page
     from tracker.index import read_index
     from tracker.layout import inbox_of
     from tracker.registry import discover_engagements
@@ -1754,7 +1753,7 @@ def test_an_open_test_that_never_returns_is_stopped(tmp_path, a_short_stop):
 
     import tracker.content_check as content_check
     from tests import child_readers
-    from tests.conftest import named_page
+    from tests.builders import named_page
     from tracker.router import route_file
     from tracker.validators import check_file
 
@@ -1792,7 +1791,7 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
     import multiprocessing.context
 
     import tracker.content_check as content_check
-    from tests.conftest import named_page
+    from tests.builders import named_page
     from tracker.index import read_index
     from tracker.layout import inbox_of, originals_of
     from tracker.registry import discover_engagements
@@ -1858,7 +1857,7 @@ def test_a_drop_the_reader_could_not_start_on_is_routed_next_pass(tmp_path, in_a
     nowhere. Pass 2's reader works: the W-2 is a stray in the year's folder,
     routed where it lies, and filed."""
     import tracker.content_check as content_check
-    from tests.conftest import named_page
+    from tests.builders import named_page
     from tracker.index import read_index
     from tracker.layout import inbox_of, originals_of
     from tracker.registry import discover_engagements
@@ -1901,7 +1900,7 @@ def test_a_resent_file_the_reader_could_not_start_on_waits_for_the_next_pass(
     as here - the first W-2's original still syncing.)"""
     import tracker.content_check as content_check
     import tracker.filer as filer_module
-    from tests.conftest import named_page
+    from tests.builders import named_page
     from tracker.index import read_index
     from tracker.layout import inbox_of, locate, originals_of
     from tracker.registry import discover_engagements
@@ -2229,7 +2228,7 @@ def test_no_document_word_crosses_the_pipe(tmp_path, in_a_child):
     import pickle
 
     import tracker.content_check as content_check
-    from tests.conftest import TEST_CLIENT
+    from tests.builders import TEST_CLIENT
     from tracker.content_check import NameQuestion
 
     page = text_pdf(tmp_path / "w2.pdf", "\n".join([
@@ -2304,7 +2303,7 @@ def test_no_client_text_is_matched_in_the_pass_own_process(tmp_path, in_a_child)
     received."""
     import tracker.content_check as content_check
     import tracker.names as names_module
-    from tests.conftest import named_page
+    from tests.builders import named_page
     from tracker.layout import inbox_of
     from tracker.manifest import Status, load_manifest
     from tracker.registry import discover_engagements
@@ -2351,7 +2350,7 @@ def test_a_catastrophic_date_pattern_costs_one_stop_and_the_next_pass_takes_the_
     from pathlib import Path
 
     import tracker.content_check as content_check
-    from tests.conftest import named_page, sort
+    from tests.builders import named_page, sort
     from tracker.index import read_index
     from tracker.layout import inbox_of
 
@@ -2414,7 +2413,7 @@ def test_a_one_line_workbook_parks_within_the_stop_and_never_stalls_the_pass(tmp
     the same pass, and the pass takes the stop and not the scan's time."""
     import time
 
-    from tests.conftest import named_page, sort
+    from tests.builders import named_page, sort
     from tests.samples import sheet_xlsx
     from tracker.content_check import READING_CHAR_BUDGET
     from tracker.layout import inbox_of
@@ -2449,7 +2448,7 @@ def test_a_transient_judgment_is_neither_kept_nor_recorded(tmp_path, in_a_child)
     pass records nothing for the drop and keeps no verdict for its bytes,
     and the scanner keeps neither its open test nor its row verdict."""
     import tracker.content_check as content_check
-    from tests.conftest import named_page, sort
+    from tests.builders import named_page, sort
     from tracker.index import read_index
     from tracker.layout import inbox_of
 
@@ -2489,7 +2488,7 @@ def test_a_file_in_flight_when_the_child_is_retired_or_killed_is_read_again_next
     document is judged whole by one child and files."""
     import tracker.content_check as content_check
     from tests import child_readers
-    from tests.conftest import named_page, sort
+    from tests.builders import named_page, sort
     from tracker import ocr
     from tracker.index import read_index
     from tracker.layout import inbox_of

@@ -209,16 +209,18 @@ across the package:
   README's tables, the floor, the data folder's name, the one-time-step
   wording.
 - `test_repo_map.py` fails when the committed map has drifted from the tree.
-- `test_tripwire.py` and `conftest.py`: every test gets a settings folder
-  and a store of its own, and the run fails if any test, or any process a
-  test starts, reaches the checkout's real ones (decision 185).
+- `test_tripwire.py`, `plugin_isolation.py` and `plugin_session.py`: every
+  test gets a settings folder and a store of its own (`plugin_isolation.py`),
+  and the run fails if any test, or any process a test starts, reaches the
+  checkout's real ones (`plugin_session.py`'s tripwire verdict; decision 185).
 - `samples.py` and `child_readers.py` draw the made-up documents and run the
   real reader in a child, the way a pass does. No test holds a client's
   document; the corpus under `tests/irs/` is blank IRS forms, and the walk
   over it is the `corpus` marker.
 - No test file imports another. What two files need goes in a helper module,
   and `test_suite_shape.py` fails when a test file, a helper module or
-  `conftest.py` imports a test file, or a helper module is imported by none:
+  `conftest.py` imports a test file, or a helper module is imported by none
+  nor named in `tests/conftest.py`'s `pytest_plugins`:
   `samples.py` (the made-up documents; `text_pdf` has a style for each of the
   three writers it replaced), `builders.py` (a return, a document dropped
   into it, the filer's scenes), `passes.py` (whole passes over a household),

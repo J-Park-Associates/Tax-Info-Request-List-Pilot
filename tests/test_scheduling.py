@@ -14,7 +14,7 @@ from xml.etree import ElementTree
 import pytest
 
 # At collection, before any test's fixtures replace it (decision 209).
-from tests.conftest import REAL_SCHEDULER_HERE
+from tests.plugin_fakes import REAL_SCHEDULER_HERE
 from tracker import scheduling
 from tracker import settings as settings_module
 from tracker.scheduling import (
@@ -245,7 +245,7 @@ def test_a_schtasks_that_hangs_is_stopped_at_its_limit_as_an_os_error(monkeypatc
     the stand-in, so no real Task Scheduler is reached."""
     import subprocess
 
-    from tests.conftest import REAL_SCHTASKS
+    from tests.plugin_fakes import REAL_SCHTASKS
     from tracker import scheduling
 
     given = {}
@@ -801,7 +801,7 @@ def test_a_launchctl_that_hangs_is_stopped_at_its_limit_as_an_os_error(monkeypat
     the after-install step's lock."""
     import subprocess
 
-    from tests.conftest import REAL_LAUNCHCTL
+    from tests.plugin_fakes import REAL_LAUNCHCTL
 
     given = {}
 
@@ -826,7 +826,7 @@ def test_a_launchctl_that_hangs_is_stopped_at_its_limit_as_an_os_error(monkeypat
     ('"{label}.other" => disabled', False),
 ])
 def test_the_switch_in_login_items_is_read_from_print_disabled(a_mac, monkeypatch, listed, off):
-    from tests.conftest import Said
+    from tests.plugin_fakes import Said
 
     line = listed.format(label=scheduling.LAUNCH_AGENT_LABEL)
     monkeypatch.setattr(scheduling, "_launchctl",
@@ -884,7 +884,7 @@ def test_the_first_pass_is_started_with_launchctl_kickstart(a_mac, tmp_path):
 def test_a_mac_names_its_designation_as_a_windows_computer_does(a_mac, tmp_path, monkeypatch, short_root):
     """R25: the first Mac to register claims the schedule by ``locking.this_host``; the Mac
     the file names registers; any other does not. Nothing about the file changes on a Mac."""
-    from tests.conftest import make_engagement
+    from tests.builders import make_engagement
     from tracker.layout import designation_file
     from tracker.locking import this_host
     from tracker.templates import template_items

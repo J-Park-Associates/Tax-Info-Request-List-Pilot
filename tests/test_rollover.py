@@ -9,8 +9,10 @@ import datetime as dt
 
 import pytest
 
-from tests.conftest import child_env, ensure, make_engagement, seed_statuses, written_elsewhere
+from tests.builders import make_engagement, seed_statuses, written_elsewhere
+from tests.plugin_session import child_env
 from tracker import ledger
+from tracker.index import ensure
 from tracker.layout import inbox_of, root_of
 from tracker.manifest import (
     EngagementInfo,
@@ -297,7 +299,7 @@ def test_rows_added_as_not_asked_are_on_the_list_and_never_asked_for(prior, tmp_
 
 def test_unfiled_documents_from_last_year_are_surfaced(prior, tmp_path):
     """What arrived and fitted nowhere is exactly next year's gap."""
-    from tests.conftest import seed_index
+    from tests.builders import seed_index
     from tracker.index import NEEDS_REVIEW
     from tracker.records import IndexEntry
 
@@ -317,7 +319,7 @@ def test_two_unfiled_documents_of_one_name_are_two_and_no_subfolder_is_quoted(pr
     scans both called ``scan.pdf`` are two documents never filed, keyed by
     where each original rests, and the subfolder each came from is its
     row's own column, never a clause of the line next year's report quotes."""
-    from tests.conftest import seed_index
+    from tests.builders import seed_index
     from tracker import reasons
     from tracker.index import NEEDS_REVIEW
     from tracker.records import IndexEntry
@@ -1472,7 +1474,7 @@ def test_a_return_moved_into_another_household_pauses_until_the_folders_name_is_
     import shutil
 
     import tracker.api as api
-    from tests.conftest import app_stdin
+    from tests.builders import app_stdin
     from tracker import store
     from tracker.api import _carried_payload
     from tracker.filer import refresh_household_readme

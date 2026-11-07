@@ -27,8 +27,7 @@ import ast
 from dataclasses import replace
 from pathlib import Path
 
-from tests.builders import DAY1, DAY2, ITEMS, engagement_fixture
-from tests.conftest import make_engagement
+from tests.builders import DAY1, DAY2, ITEMS, engagement_fixture, make_engagement
 from tests.import_graph import import_edges
 from tracker import filer, index, ledger, store
 from tracker.index import FILED, NEEDS_REVIEW, ensure, read_index
@@ -102,7 +101,7 @@ def test_an_index_read_without_following_is_the_store_as_it_stands(tmp_path):
     walk left the store, without reading its journal again. A line behind
     the store is not seen that way and is seen by every other reader; a
     return the store does not hold is followed either way."""
-    from tests.conftest import seed_index, written_elsewhere
+    from tests.builders import seed_index, written_elsewhere
     from tracker.records import IndexEntry, entry_to_json, ledger_key
 
     engagement = make_engagement(tmp_path / "Clients", ITEMS, scaffold=False)

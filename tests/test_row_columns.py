@@ -57,7 +57,7 @@ from types import SimpleNamespace
 import pytest
 
 import tracker.api as api
-from tests.conftest import app_stdin, make_engagement
+from tests.builders import app_stdin, make_engagement
 from tests.node_harness import js_function
 from tracker import ledger, records, store, templates, view
 from tracker.manifest import (

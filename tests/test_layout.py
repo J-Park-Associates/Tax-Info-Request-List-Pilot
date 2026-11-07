@@ -301,7 +301,7 @@ def test_the_suites_long_paths_off_refuses_what_windows_refuses(tmp_path, monkey
     """The stand-in the room claims run under on every machine: a folder of
     248 characters or more and a file path of 260 or more are refused, as
     ``WinError 206`` is on Windows - and one character shorter is not."""
-    from tests.conftest import refuse_what_windows_refuses
+    from tests.plugin_fakes import refuse_what_windows_refuses
 
     base = tmp_path.resolve()
     refuse_what_windows_refuses(monkeypatch)
@@ -613,7 +613,7 @@ def test_the_designation_file_is_never_a_misfit(tmp_path):
     sits directly in the private tree, where only households live - and
     every walk of that tree lists folders only, so discovery never names it
     a folder that does not fit, and a household beside it is found as ever."""
-    from tests.conftest import TEST_HOUSEHOLD, make_engagement
+    from tests.builders import TEST_HOUSEHOLD, make_engagement
     from tracker.layout import DESIGNATION_FILENAME, PRIVATE_TREE, designation_file, private_tree_of
     from tracker.registry import discover_engagements
 

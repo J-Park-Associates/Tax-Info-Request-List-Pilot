@@ -2002,7 +2002,7 @@ def abandoned(seconds: float) -> Extraction:
 
 #: Whether :func:`judge_bounded` reads in a child process (decision 150).
 #: Always, in the tracker. The suite turns it off for every test but the
-#: ones about the child (``tests/conftest.py``): its stand-in readers are
+#: ones about the child (``tests/plugin_fakes.py``): its stand-in readers are
 #: patched into the test's own process, which a child never shares.
 READ_IN_A_CHILD = True
 #: What reads in the child: the open test and the one reading

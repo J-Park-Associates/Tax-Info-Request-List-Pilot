@@ -1,7 +1,7 @@
 """Tests for tracker/store_check.py - the gate, and the export a person keeps.
 
 The check's main claim is not made here: it is the autouse fixture in
-tests/conftest.py, which builds a store for every engagement the suite
+tests/plugin_agreement.py, which builds a store for every engagement the suite
 leaves behind and asks :func:`tracker.store_check.check` to hold it to the
 record. What is made here is the check's own behaviour - that it names the
 engagement, the row and the field; that an engagement the store never saw
@@ -26,8 +26,7 @@ import csv
 import pytest
 
 from tests import store_helpers
-from tests.builders import drop
-from tests.conftest import seed_statuses, sort
+from tests.builders import drop, seed_statuses, sort
 from tests.store_helpers import (
     DAY1,
     DAY2,

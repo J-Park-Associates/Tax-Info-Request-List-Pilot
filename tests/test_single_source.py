@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import child_env
 from tests.node_harness import APP_SCRIPTS, js_function, renderer_text, stripped_js
+from tests.plugin_session import child_env
 from tests.source_pins import calls_of, py_function
 from tracker.content_check import RETIRED_CACHE_FILENAME
 from tracker.reasons import OTHER_MACHINE

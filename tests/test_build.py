@@ -1218,7 +1218,7 @@ def test_every_mac_script_opens_in_its_own_folder_and_finds_tools_by_command_v()
 def test_the_path_block_drops_an_empty_or_relative_folder_and_keeps_the_rest():
     import subprocess
 
-    from tests.conftest import child_env
+    from tests.plugin_session import child_env
 
     bash = _bash()
     block = _path_block(MAC_SETUP)

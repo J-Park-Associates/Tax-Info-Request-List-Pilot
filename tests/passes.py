@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import make_engagement, seed_index
+from tests.builders import make_engagement, seed_index
 from tests.samples import DEMO_ITEMS, SCRATCH_PEOPLE, YEAR, build_samples
 from tracker import store
 from tracker.index import NEEDS_REVIEW

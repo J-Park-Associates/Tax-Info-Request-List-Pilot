@@ -1,7 +1,7 @@
 """Tests for tracker/store.py - the database on this machine, rebuilt from the record.
 
 The store's main claim is not made here either: it is the autouse fixture
-in tests/conftest.py, which builds a store for every engagement the suite
+in tests/plugin_agreement.py, which builds a store for every engagement the suite
 leaves behind and holds it to what the readers say. What is made here is
 the store's own behaviour - the schema it refuses to guess at, the
 journal-then-apply guarantee and the replay that repairs a torn one, the
@@ -27,8 +27,7 @@ from pathlib import Path
 import pytest
 
 from tests import store_helpers
-from tests.builders import cache_rows, drop
-from tests.conftest import make_engagement, seed_statuses, sort, written_elsewhere
+from tests.builders import cache_rows, drop, make_engagement, seed_statuses, sort, written_elsewhere
 from tests.samples import text_pdf
 from tests.store_helpers import (
     A_ROW_ORIGINAL,
@@ -1267,7 +1266,7 @@ def test_two_years_of_one_return_are_two_rows_when_the_settings_name_no_root(roo
     both."""
     import logging
 
-    from tests.conftest import seed_index
+    from tests.builders import seed_index
 
     caplog.set_level(logging.WARNING, logger="tracker.scaffold")
     earlier = make_engagement(root, _one_request(2025), household="Smith", year=2025,
@@ -2490,7 +2489,7 @@ def test_a_version_16_store_is_upgraded_in_place_and_keeps_its_cached_verdicts(t
     written before 204 - says, cell for cell as a rebuild leaves it. It goes on
     through decision 190's step and 209's to this version. Any other earlier
     version is set aside and rebuilt (decision 159, E3)."""
-    from tests.conftest import sort
+    from tests.builders import sort
     from tracker.records import entry_from_json
 
     engagement = make_engagement(tmp_path / "root", [RequestItem(
@@ -2581,7 +2580,7 @@ def test_a_version_17_store_gains_the_cause_columns_in_place_and_every_old_row_r
     version 18 where it stands. That is what a rebuild from a journal
     written before 190 gives, cell for cell - no such line carries a cause -
     and no row's cause is read out of its words."""
-    from tests.conftest import sort
+    from tests.builders import sort
     from tracker.records import entry_from_json
 
     engagement = make_engagement(tmp_path / "root", [RequestItem(
@@ -2621,7 +2620,7 @@ def test_a_store_that_204s_old_step_upgraded_with_empty_cells_passes_check_after
     one value in the columns an in-place step added, and in those only - a
     real value there, and NULL against ``''`` in any other column, are
     still named."""
-    from tests.conftest import sort
+    from tests.builders import sort
 
     root = tmp_path / "root"
     engagement = make_engagement(root, [RequestItem(
@@ -3369,7 +3368,7 @@ def test_households_are_every_stored_household_row_read_as_it_stands(root, monke
     they stand, even with a line behind them it has not applied."""
     from dataclasses import replace
 
-    from tests.conftest import written_elsewhere
+    from tests.builders import written_elsewhere
     from tracker.households import load_household_info, save_household
     from tracker.layout import private_household_dir
     from tracker.records import Feed

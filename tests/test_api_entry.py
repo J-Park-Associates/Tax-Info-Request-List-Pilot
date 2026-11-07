@@ -13,7 +13,8 @@ import sys
 import textwrap
 from pathlib import Path
 
-from tests.conftest import child_env, make_engagement
+from tests.builders import make_engagement
+from tests.plugin_session import child_env
 from tests.samples import text_pdf
 from tracker.manifest import RequestItem
 from tracker.runner import PRODUCT_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG
@@ -87,7 +88,7 @@ def test_runner_mode_reads_a_drop_in_a_child_and_files_it(tmp_path):
     child the pass can stop (decision 150) - no suite fixture turns the
     child off in a process of its own - and the drop is filed on what the
     child read."""
-    from tests.conftest import named_page
+    from tests.builders import named_page
     from tracker.layout import inbox_of
 
     root = tmp_path / "Clients"

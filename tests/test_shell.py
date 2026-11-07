@@ -2486,7 +2486,7 @@ def test_the_harness_stub_speaks_the_apis_vocabulary(tmp_path):
     live = json.loads(json.dumps(api._vocab()))
     dumped = tmp_path / "vocab.json"
     # The child answers the question of the same computer as this process
-    # does: the suite's pin of ``settings.host_system`` (tests/conftest.py)
+    # does: the suite's pin of ``settings.host_system`` (tests/plugin_fakes.py)
     # is in-process, so on a Mac the child would say "Another Mac Sorting"
     # against this process's "Another PC Sorting". The seam is handed on,
     # never the comparison loosened.

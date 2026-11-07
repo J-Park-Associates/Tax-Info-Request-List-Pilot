@@ -19,7 +19,8 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import checkout_snapshot, make_engagement, real_places
+from tests.builders import make_engagement
+from tests.plugin_session import checkout_snapshot, real_places
 from tracker import ledger
 from tracker.manifest import (
     EngagementInfo,
@@ -82,8 +83,8 @@ def taught(folder: Path, identifier: str, keyword: str) -> None:
     (decision 103): the word lives in the engagement's record now, and
     ``load_manifest()`` is what puts it in front of this report.
     """
-    from tests.conftest import ensure
     from tracker import ledger, store
+    from tracker.index import ensure
     from tracker.locking import engagement_lock
 
     with engagement_lock(folder):

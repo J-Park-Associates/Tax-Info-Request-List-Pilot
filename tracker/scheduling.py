@@ -546,7 +546,7 @@ _DISABLED_LINE = re.compile(rf'"{re.escape(LAUNCH_AGENT_LABEL)}"\s*=>\s*(?:disab
 def _launchctl(command: list[str]) -> subprocess.CompletedProcess:
     """Run one ``launchctl`` command line and hand back what it said. **The
     one seam for launchd** (SPEC-mac R24), as :func:`_schtasks` is for Task
-    Scheduler: the suite's autouse guard (``tests/conftest.py``) fails a test
+    Scheduler: the suite's autouse guard (``tests/plugin_fakes.py``) fails a test
     that reaches the real one. One that does not answer within the same
     limit is stopped and raises ``TimeoutError``."""
     return _run_within_the_limit(command, LAUNCHCTL_TOO_LONG)

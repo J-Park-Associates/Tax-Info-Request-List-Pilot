@@ -549,7 +549,7 @@ def test_an_unwritable_folder_is_a_run_error_not_another_run(tmp_path, monkeypat
     # cannot write to the folder. Called "another run", every pass would skip
     # the return quietly, for a run that does not exist.
     import tracker.locking as locking_module
-    from tests.conftest import make_engagement
+    from tests.builders import make_engagement
     from tests.samples import DEMO_ITEMS
     from tracker.registry import engagement_from
     from tracker.runner import REMINDERS_NEVER, run_engagement
@@ -1310,7 +1310,7 @@ def test_the_one_clock_tick_test_leaves_no_lock_for_the_engine_after_it():
     import subprocess
     import sys
 
-    from tests.conftest import REPO, child_env
+    from tests.plugin_session import REPO, child_env
     from tracker import settings, store
 
     first = "tests/test_locking.py::test_two_takes_in_one_clock_tick_write_two_tokens"

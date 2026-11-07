@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from tests.builders import engagement_fixture, parked_row
-from tests.conftest import child_env, make_engagement, seed_index, sort
+from tests.builders import engagement_fixture, make_engagement, parked_row, seed_index, sort
+from tests.plugin_session import child_env
 from tests.samples import text_pdf
 from tracker import reasons
 from tracker.index import NOT_REQUESTED, read_index

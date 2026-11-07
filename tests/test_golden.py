@@ -60,7 +60,7 @@ import pytest
 import tracker.api as api
 from tests import passes
 from tests.api_driver import HOUSEHOLD, SAMPLE_PEOPLE, run, scan, where
-from tests.conftest import RECORD_GOLDEN
+from tests.plugin_session import RECORD_GOLDEN
 from tests.samples import SCRATCH_RETURN, YEAR
 from tracker import ledger
 from tracker.bounds import Override

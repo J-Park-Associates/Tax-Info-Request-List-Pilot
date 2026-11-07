@@ -276,7 +276,7 @@ def test_corpus_rows_are_named_by_number_in_ids_messages_and_the_cache(office_sh
     column, never by the document's name or the corpus's path."""
     import os
 
-    from tests.conftest import run_in_copy
+    from tests.plugin_session import run_in_copy
 
     copy, _fabricated = office_shaped_copy
     name = "Zephyrine Quillfeather W-2 2025.pdf"

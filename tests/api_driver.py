@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 import tracker.api as api
-from tests.conftest import TEST_CLIENT, app_stdin
+from tests.builders import TEST_CLIENT, app_stdin
 from tests.samples import SCRATCH_PEOPLE
 from tracker import ledger
 from tracker.layout import inbox_of, return_dir_for

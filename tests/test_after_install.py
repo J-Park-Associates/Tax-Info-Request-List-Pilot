@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import TEST_HOUSEHOLD, make_engagement
+from tests.builders import TEST_HOUSEHOLD, make_engagement
 from tracker import after_install, ledger, scheduling, settings, store
 from tracker.content_check import RETIRED_CACHE_FILENAME
 from tracker.fsio import TEMP_SUFFIX
@@ -779,7 +779,7 @@ def test_no_test_reaches_the_real_checkouts_test_cache(app, tmp_path, monkeypatc
     cache, whatever it holds, is left exactly as it was - nothing real is
     made or deleted here."""
     real = Path(after_install.__file__).resolve().parent.parent
-    assert after_install.CHECKOUT != real            # the suite's own guard (tests/conftest.py)
+    assert after_install.CHECKOUT != real            # the suite's own guard (tests/plugin_fakes.py)
     real_cache = real / after_install.TEST_CACHE_DIRNAME
     before = sorted(os.listdir(real_cache)) if real_cache.is_dir() else None
 
@@ -1533,7 +1533,7 @@ def test_a_tmutil_that_cannot_start_is_said_by_its_class(root, mac, monkeypatch)
 def test_a_tmutil_that_hangs_is_stopped_at_its_limit_as_an_os_error(monkeypatch):
     import subprocess
 
-    from tests.conftest import REAL_TMUTIL
+    from tests.plugin_fakes import REAL_TMUTIL
 
     def hangs(command, **kwargs):
         assert kwargs["timeout"] == scheduling.SCHTASKS_TIME_LIMIT_SECONDS == 60

@@ -64,7 +64,7 @@ uses, folded by the same functions and rebuilt by the same store, because
 one journal machinery for the two is one thing to keep honest instead of
 two. Nothing about a document goes in it, and no client's text ever does.
 
-What keeps it honest is the agreement fixture in ``tests/conftest.py``:
+What keeps it honest is the agreement fixture in ``tests/plugin_agreement.py``:
 after every test in the suite a store built from nothing is held to
 :func:`replay` over these lines - the index rows, the statuses and the
 rules alike. ``python -m tracker.store <store> check <root>`` is that check

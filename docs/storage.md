@@ -541,7 +541,7 @@ person retyped by case is one request to the gate, as it is to the store;
 the index rows, the rules, the intents and the household are compared
 exactly as before.
 
-The autouse fixture in `tests/conftest.py` does exactly this after **every
+The autouse fixture in `tests/plugin_agreement.py` does exactly this after **every
 test in the suite**: for every engagement folder the test left behind, build
 a store in a throwaway database and assert the check says nothing. That runs
 the store over every drop sorted, every parked file a person filed, every

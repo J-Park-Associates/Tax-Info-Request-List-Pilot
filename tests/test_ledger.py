@@ -1,7 +1,7 @@
 """Tests for tracker/ledger.py - the engagement's own append-only record.
 
 The record's main claim is not made here: it is the autouse fixture in
-tests/conftest.py, which after every test in the suite holds a store built
+tests/plugin_agreement.py, which after every test in the suite holds a store built
 from nothing to what these lines fold to. What is made here is the
 record's own behaviour - one line per event, a torn tail nobody trips
 over, the fold that is the index's own order, and the refusal to write a
@@ -22,8 +22,7 @@ from typing import NotRequired, get_origin, get_type_hints, is_typeddict
 
 import pytest
 
-from tests.builders import drop, engagement_fixture
-from tests.conftest import make_engagement, sort
+from tests.builders import drop, engagement_fixture, make_engagement, sort
 from tracker import bounds, ledger, store, store_check
 from tracker.filer import (
     ASSIGNED_BY_PERSON,

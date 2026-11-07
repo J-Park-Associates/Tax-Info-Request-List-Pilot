@@ -6,8 +6,7 @@ from dataclasses import replace
 
 import pytest
 
-from tests.builders import cache_rows, engagement_fixture
-from tests.conftest import make_engagement, named_page, sort
+from tests.builders import cache_rows, engagement_fixture, make_engagement, named_page, sort
 from tests.samples import text_pdf
 from tracker import ledger, reasons, store
 from tracker.content_check import RETIRED_CACHE_FILENAME
@@ -150,7 +149,7 @@ def test_manual_override_status_untouched(tmp_path):
     ]
     eng = make_engagement(tmp_path, items, return_name="1040 - Another Client")
     # the status the last scan recorded, which the override keeps
-    from tests.conftest import seed_statuses
+    from tests.builders import seed_statuses
     from tracker.manifest import StatusUpdate
 
     seed_statuses(
@@ -511,7 +510,7 @@ def test_a_regression_note_written_before_this_decision_is_read_as_files_changed
     # A regressed row whose last note carries no regression sentence: the
     # count comparison would say "raised" (2 files now, 1 recorded, 3
     # expected, nothing failed), and nobody raised anything.
-    from tests.conftest import seed_statuses
+    from tests.builders import seed_statuses
     from tracker.manifest import StatusUpdate
 
     seed_statuses(engagement, {"A02": StatusUpdate(
@@ -607,7 +606,7 @@ def test_a_document_a_person_filed_is_not_second_guessed_by_the_rules(engagement
     # A person filed it from Needs Review; the row's required keyword is not
     # in it. Their decision stands: Received, not "wrong document" and a
     # client asked for the right file.
-    from tests.conftest import sort
+    from tests.builders import sort
     from tracker.filer import assign_review_file
     from tracker.scanner import ACCEPTED_NOTE
 
@@ -631,7 +630,7 @@ def test_a_persons_acceptance_covers_only_the_bytes_they_filed(engagement):
     # do route into that folder passes the same rules the scan applies, so
     # the only way a stranger reaches that name is a person putting it
     # there. That is what this writes, and the claim is unchanged.
-    from tests.conftest import sort
+    from tests.builders import sort
     from tracker.filer import assign_review_file
 
     text_pdf(inbox_of(engagement) / "statement.pdf", "Annual account statement 2025 interest paid")
@@ -654,7 +653,7 @@ def copy_moved_events(engagement):
 
 def a_filed_pdf(engagement, text="Chase Bank Statement Dec 2025"):
     """One document sorted and scanned the ordinary way: A01, Received."""
-    from tests.conftest import sort
+    from tests.builders import sort
 
     text_pdf(inbox_of(engagement) / "chase.pdf", named_page(text))
     filed = sort(engagement, today=DAY1).filed[0]
@@ -668,7 +667,7 @@ def test_a_moved_copys_request_reads_missing_with_the_firm_side_note_and_the_wan
     """The whole of decision 109 from the scan's side: the request whose copy
     was dragged away is Missing, truthfully, and says whose fault that is;
     the request the copy was dragged into counts nothing it did not earn."""
-    from tests.conftest import sort
+    from tests.builders import sort
     from tracker.index import FILE_MOVED, moved_to, read_index
 
     filed = a_filed_pdf(engagement)
@@ -698,7 +697,7 @@ def test_a_filed_copy_replaced_by_a_different_passing_file_is_not_counted_and_sa
     the file is not the one the record filed there, and the file is not
     counted - it is not the document, whatever rules it passes. Until 155
     the newcomer kept the request Received."""
-    from tests.conftest import sort
+    from tests.builders import sort
 
     filed = a_filed_pdf(engagement)
     home = engagement / filed.prepared_location
@@ -723,7 +722,7 @@ def test_a_filed_copy_replaced_by_a_different_passing_file_is_not_counted_and_sa
 
 def test_a_filed_copy_replaced_by_a_failing_file_is_not_counted_either_and_says_copy_changed(
         engagement):
-    from tests.conftest import sort
+    from tests.builders import sort
 
     filed = a_filed_pdf(engagement)
     home = engagement / filed.prepared_location
@@ -748,7 +747,7 @@ def test_a_copy_that_disagrees_with_its_original_is_not_counted(engagement):
     rule, so a count would read the request Received on half a statement.
     It is named in the warnings, firm-side, and the letter does not ask the
     client for a document the client sent correctly."""
-    from tests.conftest import sort
+    from tests.builders import sort
     from tracker.filer import assign_review_file
     from tracker.index import read_index
     from tracker.reminder import draft_reminder
@@ -790,7 +789,7 @@ def test_an_unrecorded_file_named_for_a_request_is_counted_and_said(engagement):
     its name since. A file a person can see going uncounted would be a lie
     in the other direction, so it counts - and the pass says every pass that
     nothing on the record put it there."""
-    from tests.conftest import sort
+    from tests.builders import sort
     from tracker.filer import UNRECORDED_COPY
 
     stray = text_pdf(folder(engagement, "A01") / "someone dragged this.pdf",
@@ -812,7 +811,7 @@ def test_the_scans_memo_survives_for_parked_copies_and_strays(engagement, monkey
     copy and a file nothing claims were forgotten every scan and read again
     every pass. Every file in the firm's folder keeps its memo."""
     import tracker.content_check as content_check_module
-    from tests.conftest import sort
+    from tests.builders import sort
 
     text_pdf(inbox_of(engagement) / "irs-notice.pdf", "nothing the rules recognise")
     stray = text_pdf(folder(engagement, "A01") / "someone dragged this.pdf",
@@ -844,7 +843,7 @@ def test_a_person_filed_copy_is_proved_through_the_memo(engagement, monkeypatch)
     under the firm's folder, so a second scan over an unchanged tree reads
     nothing at all."""
     import tracker.content_check as content_check_module
-    from tests.conftest import sort
+    from tests.builders import sort
     from tracker.filer import assign_review_file
     from tracker.scanner import ACCEPTED_NOTE
 

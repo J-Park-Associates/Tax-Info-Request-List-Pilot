@@ -15,8 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.builders import engagement_dirs
-from tests.conftest import TEST_HOUSEHOLD, make_engagement
+from tests.builders import TEST_HOUSEHOLD, engagement_dirs, make_engagement
 from tracker import ledger
 from tracker.layout import CLIENTS_TREE, PRIVATE_TREE, client_household_dir, private_household_dir
 from tracker.manifest import EngagementInfo, RequestItem

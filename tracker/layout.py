@@ -1117,7 +1117,7 @@ def place_problem(return_dir: Path | str, location: str, *, writes: bool,
 def on_a_mac() -> bool:
     """Whether this is macOS, read when called so a test stands in for a Mac
     by replacing this function and never by changing ``sys.platform``
-    (``tests/conftest.py`` pins it off for every test, as the room fixture)."""
+    (``tests/plugin_fakes.py`` pins it off for every test, as the room fixture)."""
     return sys.platform == "darwin"
 
 

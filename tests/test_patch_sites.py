@@ -1441,7 +1441,7 @@ def test_every_stand_in_in_the_suite_lands_where_the_code_reads_it(the_suite):
     assert [site.where() + " " + site.module + "." + site.name for site, mark in marked
             if mark == patch_sites.UNREAD] == []
     # The helper modules patch too (tests/children.py's seams are read there).
-    assert {site.file for site, _mark in marked} >= {"tests/conftest.py", "tests/test_filer.py"}
+    assert {site.file for site, _mark in marked} >= {"tests/plugin_fakes.py", "tests/test_filer.py"}
     assert any(site.module == "tests.children" for site, _mark in marked)
 
 

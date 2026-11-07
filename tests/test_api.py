@@ -18,7 +18,7 @@ import pytest
 
 import tracker.api as api
 from tests.api_driver import HOUSEHOLD, PEOPLE, SAMPLE_PEOPLE, one_reply, run, sample_engagement, scan, where
-from tests.conftest import TEST_CLIENT, app_stdin, make_engagement
+from tests.builders import TEST_CLIENT, app_stdin, make_engagement
 from tests.node_harness import RENDERER_SCRIPTS, js_function, read, renderer_text, stripped_js
 from tests.samples import PRIOR_YEAR, text_pdf
 from tests.source_pins import py_function
@@ -491,7 +491,7 @@ def test_a_client_of_only_illegal_characters_still_makes_one_folder_name(capsys,
 def test_state_shows_the_status_the_record_holds(capsys, demo_root):
     """Nothing waits for anything (decision 103): a status is recorded,
     and what the app shows is what the record says."""
-    from tests.conftest import seed_statuses
+    from tests.builders import seed_statuses
     from tracker.manifest import StatusUpdate
 
     spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
@@ -3006,7 +3006,7 @@ def test_state_carries_the_held_rows_and_every_word_is_the_vocabularys(capsys, d
     come from the reminder's own triage over the rows state already loaded,
     the sentence from the module that holds the draft, and the renderer
     types neither - it reads ``vocab.reminder`` and counts."""
-    from tests.conftest import seed_statuses
+    from tests.builders import seed_statuses
     from tracker import reasons
     from tracker.manifest import StatusUpdate
     from tracker.reminder import AMBIGUOUS_HOLD, HELD_SUMMARY
@@ -3442,7 +3442,7 @@ def test_the_moved_card_offers_mark_missing_on_a_row_whose_copy_and_original_are
 
 def chased_engagement(capsys, demo_root, name="Chase", client="John Smith"):
     """One engagement with two documents outstanding and a scan behind them."""
-    from tests.conftest import seed_statuses
+    from tests.builders import seed_statuses
     from tracker.manifest import StatusUpdate
 
     spec = {"household": HOUSEHOLD, "return_name": name, "client": client, "due": "2026-03-15", "filing_deadline": "2026-04-15",
@@ -3520,7 +3520,7 @@ def test_a_held_reminder_shows_no_letter_and_offers_no_action(capsys, demo_root)
     """Decision 115's rule on this surface: a held client's composed text
     would ask for the clean rows alone, and the card is something a person
     can copy from. The hold, the rows, the toggle - and nothing else."""
-    from tests.conftest import seed_statuses
+    from tests.builders import seed_statuses
     from tracker import reasons
     from tracker.manifest import StatusUpdate
     from tracker.reminder import stage_for
@@ -3552,7 +3552,7 @@ def test_a_letter_that_only_asks_about_a_program_is_offered_on_the_card(capsys, 
     editable, as the scheduler writes it - at no stage, and a stage asked
     for re-stages nothing, because a file that is not a document is no
     rung."""
-    from tests.conftest import seed_index, seed_statuses
+    from tests.builders import seed_index, seed_statuses
     from tracker import reasons
     from tracker.manifest import StatusUpdate
     from tracker.records import IndexEntry
@@ -3727,7 +3727,7 @@ def test_an_edited_drafts_footer_is_neither_shown_nor_copied(capsys, demo_root):
     the email - so the card must not show them and Copy for Outlook must
     not put them one paste from a client.
     """
-    from tests.conftest import seed_statuses
+    from tests.builders import seed_statuses
     from tracker import reasons
     from tracker.manifest import StatusUpdate
     from tracker.reminder import (
@@ -5210,7 +5210,7 @@ def _a_long_row_return(root, household=HOUSEHOLD, second="B01"):
     Prepared itself, so the depth below the return is one name, not a
     folder and a name. Both rows ask for :data:`LONG_ROW_PERIOD`. ``second``
     is the long row's identifier, three characters wide whatever it is."""
-    from tests.conftest import TEST_YEAR
+    from tests.builders import TEST_YEAR
     from tracker.layout import NAME_MAX_CHARS, path_limit
     from tracker.manifest import RequestItem
 
@@ -5245,7 +5245,7 @@ def test_set_root_answers_with_every_return_short_of_room_under_the_new_root(
     """Setting the root is the one moment every move passes through, so its
     reply names every return short of room under the new root, with its
     numbers, in label order - and records the root regardless."""
-    from tests.conftest import TEST_YEAR
+    from tests.builders import TEST_YEAR
     from tracker.api import ROOM_SHORT_WORDS as ROOM_SHORT
     from tracker.filer import room_for
     from tracker.manifest import RequestItem
@@ -5503,8 +5503,7 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
     and nothing has moved. Since decision 168 Prepared is the only folder
     a copy is in, and it is shallower than the review folder, so a request
     is left no room only by a period as long as test_filer's LONG_PERIOD."""
-    from tests.builders import LONG_PERIOD, no_room_prepared, no_room_return
-    from tests.conftest import named_page, root_for_a_return_of, sort
+    from tests.builders import LONG_PERIOD, named_page, no_room_prepared, no_room_return, root_for_a_return_of, sort
     from tracker.filer import PATH_NO_ROOM
     from tracker.layout import path_limit
     from tracker.manifest import RequestItem
@@ -5826,7 +5825,7 @@ def test_creation_measures_the_room_of_asked_rows_only(capsys, tmp_path, monkeyp
     period so that it is past the limit in a return whose review folder has
     room (pilot decision P29; 212 with TY2025 before it, 205 while each
     request had a folder)."""
-    from tests.conftest import named_page, root_for_a_return_of, sort
+    from tests.builders import named_page, root_for_a_return_of, sort
     from tracker.layout import PATH_TOO_LONG, path_limit
     from tracker.scaffold import PREPARED_DIR_NAME
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
@@ -5927,7 +5926,7 @@ def test_the_apps_request_table_folds_not_asked_rows_with_no_document_into_a_clo
     document at all folds - and the request table draws those rows in a
     closed "Not asked (N)" group headed in the API's words; the editor
     regroups a row live on the same fact."""
-    from tests.conftest import seed_statuses
+    from tests.builders import seed_statuses
     from tracker.manifest import Status, StatusUpdate
 
     spec = {"household": HOUSEHOLD, "return_name": "Folded", "items": [
@@ -6556,7 +6555,7 @@ def test_a_filing_racing_a_save_is_seen_under_the_lock(capsys, demo_root, tmp_pa
         assert not lock_is_held(folder)
         (inbox_of(folder) / "Form 1098 Mortgage Interest.pdf").write_bytes(
             (samples / "Form 1098 Mortgage Interest.pdf").read_bytes())
-        from tests.conftest import sort
+        from tests.builders import sort
         sort(folder)
         return before_the_lock(folder, items)
 
@@ -6814,7 +6813,7 @@ def test_a_client_folder_no_household_owns_is_never_adopted(capsys, demo_root):
 def _a_renamed_household(capsys, demo_root, *, received=False):
     """Park Family with one return, its private folder then renamed in
     Explorer to Park Household: the record still claims Park Family."""
-    from tests.conftest import seed_index
+    from tests.builders import seed_index
     from tracker.index import FILED
     from tracker.records import IndexEntry
 
@@ -7032,7 +7031,7 @@ def test_a_person_acknowledges_a_line_another_machine_wrote(capsys, demo_root):
     """C-1 (a): the line is accepted and named until a person says they have
     looked; ``acknowledge-foreign`` is that, a writing command under the
     return's lock."""
-    from tests.conftest import written_elsewhere
+    from tests.builders import written_elsewhere
 
     spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
@@ -7593,7 +7592,7 @@ def test_a_root_that_cannot_be_walked_says_so_on_the_feeds_and_the_list(capsys, 
 
 
 def test_a_reminder_held_a_week_says_so(capsys, demo_root, monkeypatch):
-    from tests.conftest import seed_statuses
+    from tests.builders import seed_statuses
     from tracker import reasons
     from tracker.manifest import StatusUpdate
 
@@ -7705,7 +7704,7 @@ def payload_of_label(capsys, engagement) -> str:
 
 def _held_engagement(capsys, demo_root, name):
     """One return held by a failed row: a card with no letter (decision 115)."""
-    from tests.conftest import seed_statuses
+    from tests.builders import seed_statuses
     from tracker import reasons
     from tracker.manifest import StatusUpdate
 
@@ -8151,7 +8150,7 @@ def test_the_vocabulary_carries_the_three_sides(capsys, demo_root):
 def _sided_engagement(capsys, demo_root):
     """A return with a Client row, an Us row, a Decide row and rows with no
     side: one in, one set aside, one nobody asked for."""
-    from tests.conftest import seed_statuses
+    from tests.builders import seed_statuses
     from tracker import reasons
     from tracker.manifest import Override, StatusUpdate
 
@@ -8637,7 +8636,7 @@ def _a_practice_for_the_firm_view(capsys, demo_root):
     """Three returns: one with a request in, one out and one nobody asked for
     plus a program parked for a person; one with everything in; one inactive.
     Made-up names only."""
-    from tests.conftest import seed_index, seed_statuses
+    from tests.builders import seed_index, seed_statuses
     from tracker.manifest import StatusUpdate
     from tracker.records import IndexEntry
 
@@ -8708,7 +8707,7 @@ def test_every_return_row_the_pages_link_carries_its_year_beside_its_label(capsy
 def test_firm_counts_parked_moved_and_set_aside_files_as_the_return_page_does(capsys, demo_root):
     """A return whose only work is files still needs a person and its counts
     are the tally of its own page (SPEC-shell 9.1: one source)."""
-    from tests.conftest import seed_index, seed_statuses
+    from tests.builders import seed_index, seed_statuses
     from tracker.index import FILE_MOVED, NOT_REQUESTED
     from tracker.manifest import StatusUpdate
     from tracker.records import IndexEntry
@@ -8824,7 +8823,7 @@ def test_a_real_firm_replys_paths_reveal_a_firm_file_and_refuse_an_unreported_on
 
 
 def test_two_returns_spelling_one_key_for_different_paths_get_a_deterministic_suffix(capsys, demo_root):
-    from tests.conftest import seed_index
+    from tests.builders import seed_index
     from tracker.records import IndexEntry
 
     homes = []
@@ -8864,7 +8863,7 @@ def test_firm_lists_every_file_it_counts_and_buckets_a_return_with_only_a_file(c
     """A file moved by hand is listed with its code and its return's path, so
     the rows under the count agree with it; a return whose only work for a
     person is a parked file (every request received) needs a person."""
-    from tests.conftest import seed_index, seed_statuses
+    from tests.builders import seed_index, seed_statuses
     from tracker.index import FILE_MOVED
     from tracker.manifest import StatusUpdate
     from tracker.records import IndexEntry
@@ -9126,7 +9125,7 @@ def test_a_prior_that_another_household_stops_retiring_is_read_again(capsys, dem
     blank - though its own folders did not change."""
     import shutil
 
-    from tests.conftest import make_engagement
+    from tests.builders import make_engagement
     from tracker.layout import client_household_dir, private_household_dir
     from tracker.manifest import EngagementInfo, RequestItem
 
@@ -10242,7 +10241,7 @@ def test_importing_the_api_loads_no_pdf_reader():
     import subprocess
     import sys
 
-    from tests.conftest import REPO, child_env
+    from tests.plugin_session import REPO, child_env
 
     probe = "import sys\nimport tracker.api\nprint(sorted(m for m in sys.modules if m.split('.')[0] == 'pypdf'))\n"
     done = subprocess.run([sys.executable, "-c", probe], cwd=REPO, env=child_env(),
@@ -10343,7 +10342,7 @@ def test_importing_the_api_opens_no_file_but_the_programs_own():
     import subprocess
     import sys
 
-    from tests.conftest import REPO, TRIPWIRE_DIR, child_env
+    from tests.plugin_session import REPO, TRIPWIRE_DIR, child_env
 
     done = subprocess.run([sys.executable, "-c", _IMPORT_PROBE], cwd=REPO,
                           env=child_env(TRACKER_PRODUCT_NAME="Fabricated Product"),
@@ -10383,7 +10382,7 @@ def _fixed_at_import() -> set[tuple[str, str]]:
     functions; ``if __name__ == "__main__"`` blocks are a command line's."""
     import ast
 
-    from tests.conftest import REPO
+    from tests.plugin_session import REPO
 
     def asks(node, defined, seen):
         for sub in ast.walk(node):
@@ -11349,7 +11348,7 @@ def test_a_stored_spelling_past_the_rule_refuses_a_row_only_save_and_names_the_p
     store's gate does not judge a spelling (P304), so a return written
     before the rule keeps one and a row-only edit is refused. The refusal
     says whose spelling, and nothing is written."""
-    from tests.conftest import TEST_YEAR
+    from tests.builders import TEST_YEAR
     from tracker.manifest import RequestItem, list_head
     from tracker.records import Person
 

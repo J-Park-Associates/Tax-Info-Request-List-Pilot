@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from tests.builders import DROPPED, failure, item, locked, sample_sentence
-from tests.conftest import child_env
+from tests.plugin_session import child_env
 from tests.samples import text_pdf
 from tracker import ledger, reasons
 from tracker import reminder as reminder_module
@@ -157,7 +157,7 @@ def engagement(tmp_path, items=SCANNED, name="Smith TY2025"):
     statuses are recorded the way a scan records them: one ``scanned``
     event through the store, under the lock.
     """
-    from tests.conftest import make_engagement, seed_statuses
+    from tests.builders import make_engagement, seed_statuses
 
     folder = make_engagement(tmp_path, items, return_name=name, scaffold=False)
     updates = {
@@ -269,7 +269,7 @@ def test_a_file_a_person_said_nothing_asks_for_is_not_counted_against_the_draft(
     the draft over the top of it. The count is still the folder's, though:
     a file dragged in by hand has no row and is nobody's decision yet.
     """
-    from tests.conftest import seed_index
+    from tests.builders import seed_index
     from tracker.index import NEEDS_REVIEW, NOT_REQUESTED
     from tracker.records import IndexEntry
 
@@ -300,7 +300,7 @@ def test_a_resend_after_a_dismissal_counts_in_the_files_waiting_warning(tmp_path
     and the fresh copy beside it is, so the warning says there is one file
     waiting rather than none.
     """
-    from tests.conftest import make_engagement, seed_statuses, sort
+    from tests.builders import make_engagement, seed_statuses, sort
     from tracker.filer import dismiss_review_file
     from tracker.reminder import REVIEW_WARNING
 
@@ -452,7 +452,7 @@ def test_the_draft_is_built_from_the_record_and_nothing_else(tmp_path):
     carries none of this, and Excel being open on Friday cannot hold a
     status back any more.
     """
-    from tests.conftest import seed_statuses
+    from tests.builders import seed_statuses
 
     folder = engagement(tmp_path, [
         item("A01", "W-2 Wage Statements", Status.MISSING),
@@ -930,7 +930,7 @@ def sorted_drop(folder, write):
     typed: what a parked file points at is exactly what a person sees on
     the review card.
     """
-    from tests.conftest import sort
+    from tests.builders import sort
     from tracker.scaffold import scaffold_engagement
 
     scaffold_engagement(folder)
@@ -1045,7 +1045,7 @@ def test_a_set_aside_row_never_holds(tmp_path):
 def gone_both(folder, row):
     """Staff tidy the review folder and the client deletes the original,
     then a pass runs (decision 157, ruling B5)."""
-    from tests.conftest import sort
+    from tests.builders import sort
     from tracker.layout import locate
 
     (folder / row.prepared_location).unlink()
@@ -1854,7 +1854,7 @@ def test_an_inbox_of_another_household_that_feeds_this_return_does_not_hold_it(t
     its arrivals are not this household's letter to decide."""
     from dataclasses import replace as replaced
 
-    from tests.conftest import make_engagement
+    from tests.builders import make_engagement
     from tracker.households import load_household_info, save_household
     from tracker.layout import private_household_dir
     from tracker.records import Feed
@@ -2059,8 +2059,7 @@ def test_no_client_facing_text_carries_a_reason_sentence(tmp_path):
     label: only the fixed asks reach a client."""
     import string
 
-    from tests.builders import parked_row
-    from tests.conftest import seed_index
+    from tests.builders import parked_row, seed_index
     from tracker.api import CAME_FROM_SUBFOLDER
     from tracker.filer import CONTESTED_BETWEEN_RETURNS, refresh_household_readme
     from tracker.layout import household_of
@@ -2111,7 +2110,7 @@ def test_a_file_that_is_not_a_document_is_asked_about_in_the_letter_and_holds_no
     the kept "could not use it" heading, by the name the client gave it and
     in the unusable-file words, and the letter is still written. A program
     a person has set aside is their answer and is not asked again."""
-    from tests.conftest import seed_index
+    from tests.builders import seed_index
     from tracker.index import NEEDS_REVIEW, NOT_REQUESTED
     from tracker.records import IndexEntry
 
@@ -2146,7 +2145,7 @@ def test_a_program_only_weeks_letter_says_one_file_could_not_be_used_and_never_t
     one new sentence pointing at the note below; a week with no problem at
     all still says it, and a week with a request outstanding and a program
     keeps its staged letter."""
-    from tests.conftest import seed_index
+    from tests.builders import seed_index
     from tracker.index import NEEDS_REVIEW
     from tracker.records import IndexEntry
     from tracker.reminder import NOTHING_OWED, UNUSABLE_ONLY_NOTE
@@ -2181,7 +2180,7 @@ def test_a_program_only_week_with_two_files_says_some_files_could_not_be_used_ne
     counts. Two files that are not documents are both listed under the
     failed heading, so the letter says "Some files you sent could not be
     used", once, above that list - never "One file"."""
-    from tests.conftest import seed_index
+    from tests.builders import seed_index
     from tracker.index import NEEDS_REVIEW
     from tracker.records import IndexEntry
     from tracker.reminder import UNUSABLE_ONLY_NOTE, UNUSABLE_SOME, UNUSABLE_SOME_NOTE
@@ -2213,7 +2212,7 @@ def test_a_program_alone_is_asked_about_but_never_climbs_the_ladder(tmp_path):
     letter has no stage on any day, not even past the firm's deadline, no
     deadline paragraph, and neither the subject nor the progress line
     counts it as a document still needed."""
-    from tests.conftest import seed_index
+    from tests.builders import seed_index
     from tracker.index import NEEDS_REVIEW
     from tracker.records import IndexEntry
     from tracker.reminder import STAGE_4_CONSEQUENCES, SUBJECT_COMPLETE, UNUSABLE_ONLY

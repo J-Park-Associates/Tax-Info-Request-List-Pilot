@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import checkout_snapshot, real_places
+from tests.plugin_session import checkout_snapshot, real_places
 from tests.samples import lines_1099_int, text_pdf, w2_lines
 from tracker.settings import COLUMN_EXPECTED, EXPECTATIONS_COLUMNS, EXPECTATIONS_FILENAME
 

@@ -1015,7 +1015,7 @@ def test_a_caught_errors_words_reach_no_console_during_a_pass(tmp_path, monkeypa
     a client's path. The pass goes on, its log lines name the class, and
     the path reaches the debug sink and nothing a console prints
     (decision 190, D-6)."""
-    from tests.conftest import make_engagement
+    from tests.builders import make_engagement
     from tests.samples import DEMO_ITEMS
     from tracker import scaffold, view
     from tracker.layout import household_of, root_of

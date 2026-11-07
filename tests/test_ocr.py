@@ -27,8 +27,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.builders import make_engagement, named_page
 from tests.children import CRASHED, STOP_IN_TESTS, STOPPED, eventually, no_child_left, running
-from tests.conftest import make_engagement, named_page
 from tests.samples import scanned_pdf, text_pdf
 from tracker import content_check, ocr, reasons
 from tracker.content_check import check_content, contains_keyword, extract

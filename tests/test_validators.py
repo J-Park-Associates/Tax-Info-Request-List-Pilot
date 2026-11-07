@@ -349,7 +349,7 @@ def test_the_dry_run_names_a_persons_folder_once(tmp_path):
     import subprocess
     import sys
 
-    from tests.conftest import make_engagement
+    from tests.builders import make_engagement
     from tracker.scaffold import PREPARED_DIR_NAME
 
     # The clients root is a folder of its own, not tmp_path: the suite's
@@ -443,7 +443,7 @@ def test_the_pdf_reader_is_imported_only_when_a_pdf_is_opened(tmp_path):
     import subprocess
     import sys
 
-    from tests.conftest import REPO, child_env
+    from tests.plugin_session import REPO, child_env
 
     pdf = tmp_path / "statement.pdf"
     writer = PdfWriter()

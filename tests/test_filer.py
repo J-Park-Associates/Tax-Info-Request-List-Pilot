@@ -34,6 +34,8 @@ from tests.builders import (
     OVER,
     ROOM_ITEMS,
     SCHWAB_146,
+    TEST_CLIENT,
+    TEST_YEAR,
     TIGHT_PERIOD,
     _consolidated_return,
     cache_rows,
@@ -42,13 +44,16 @@ from tests.builders import (
     feeding,
     killed_at_the_record,
     link_to,
+    make_engagement,
+    named_page,
     no_room_prepared,
     no_room_return,
     original_at,
+    sort,
+    sort_all,
     tight_return,
     with_the_long_period,
 )
-from tests.conftest import TEST_CLIENT, TEST_YEAR, make_engagement, named_page, sort, sort_all
 from tests.samples import text_pdf
 from tracker import checkpoint, ledger, reasons, store, store_check
 from tracker.filer import (
@@ -4152,7 +4157,7 @@ def killed(source, target, *args, **kwargs):
     os._exit(9)
 
 shutil.copy2 = killed
-from tests.conftest import sort
+from tests.builders import sort
 sort(Path(sys.argv[1]), today=dt.date(2026, 7, 1))
 """
 
@@ -6422,7 +6427,7 @@ def test_received_for_reads_each_index_once(tmp_path, monkeypatch):
     else (S-2): one index read and one request-list read per return, and
     no second copy anywhere."""
     import tracker.filer as filer_module
-    from tests.conftest import seed_index
+    from tests.builders import seed_index
     from tracker.filer import received_for
     from tracker.records import IndexEntry
 
@@ -6485,7 +6490,7 @@ def test_a_second_copy_whose_request_was_deleted_reads_other_document_never_anot
     only when its folder is that request's own folder name, or the text
     after the identifier begins with the label separator. Since decision
     168 the test is made of the copy's own name, in Prepared itself."""
-    from tests.conftest import seed_index
+    from tests.builders import seed_index
     from tracker.filer import received_for
     from tracker.records import IndexEntry
     from tracker.scaffold import OTHER_DOCUMENT, PREPARED_DIR_NAME
@@ -6654,7 +6659,7 @@ def test_a_request_with_no_room_for_its_shortest_name_parks_with_the_sentence(tm
     ``A01 - January 01 2025 - December 31 2025.pdf``: it parks, with PATH_NO_ROOM naming
     both numbers, the request as its candidate, a review copy a person can
     open and the original where every original rests."""
-    from tests.conftest import root_for_a_return_of
+    from tests.builders import root_for_a_return_of
     from tracker.filer import PATH_NO_ROOM
     from tracker.layout import path_limit
 
@@ -6684,7 +6689,7 @@ def test_a_review_copy_is_named_to_fit_and_the_row_keeps_the_clients_name(short_
     is cut to fit - the extension kept - and the row's ``original_name`` is
     the client's whole name, which is what the queue's *what the name says*
     line reads."""
-    from tests.conftest import root_for_a_return_of
+    from tests.builders import root_for_a_return_of
     from tracker import review
     from tracker.layout import path_limit
 
@@ -6715,7 +6720,7 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
     person's filing with PATH_NO_ROOM, a hand-over with PATH_NO_ROOM_IN
     naming the taking return, since the person reads it on another
     return's page (decision 204's review, S-1)."""
-    from tests.conftest import root_for_a_return_of
+    from tests.builders import root_for_a_return_of
     from tracker.filer import PATH_NO_ROOM_IN, _details_of, _label_of, assign_review_file, hand_over
     from tracker.layout import path_limit
 
@@ -6884,7 +6889,7 @@ def test_unfiling_a_long_named_document_cuts_its_review_copy_to_fit(tmp_path, pa
     does - the client's name cut to the room the review folder leaves,
     the extension kept - where before it was written under the whole name,
     past the limit. The row keeps the client's whole name."""
-    from tests.conftest import root_for_a_return_of
+    from tests.builders import root_for_a_return_of
     from tracker.filer import unfile_document
     from tracker.layout import path_limit
 
@@ -6912,7 +6917,7 @@ def test_a_recovery_copy_is_cut_to_fit_and_one_that_cannot_be_made_names_no_copy
     and where none can be made the row names **no** copy - never the one
     the interrupted step was making, which is not there - and says why in
     a fixed sentence."""
-    from tests.conftest import root_for_a_return_of
+    from tests.builders import root_for_a_return_of
     from tracker import filer
     from tracker.filer import REVIEW_NO_ROOM, NoRoom
     from tracker.layout import path_limit
@@ -7004,7 +7009,7 @@ def test_an_existing_copy_is_found_before_a_name_is_measured(tmp_path, path_sett
     Prepared that has no room for a new name. The pass finds it by its
     bytes first - as the hand-over already did - and files under the name
     it has, rather than parking a document whose copy is already there."""
-    from tests.conftest import root_for_a_return_of
+    from tests.builders import root_for_a_return_of
 
     items = [replace(ROOM_ITEMS[0], period=LONG_PERIOD)]
     engagement = make_engagement(root_for_a_return_of(tmp_path, no_room_return()), items)
@@ -7027,7 +7032,7 @@ def test_a_filing_that_parks_for_room_leaves_nothing_it_made(short_root, path_se
     would have made for the first is left behind: nothing is made until
     every copy of the filing is named. Since decision 168 there is no
     request folder to make either, only the copy."""
-    from tests.conftest import root_for_a_return_of
+    from tests.builders import root_for_a_return_of
     from tests.samples import scanned_1098_lines, scanned_w2_lines
     from tracker.filer import PATH_NO_ROOM
     from tracker.layout import path_limit
@@ -7068,7 +7073,7 @@ def test_a_workbook_review_copy_fitted_past_a_readers_limit_says_so(tmp_path):
     """Deviation 4: a reader's shorter limit never stops a park - the copy
     is fitted to Windows's own - but the row says the copy is longer than
     a spreadsheet program may open, and what to do about it."""
-    from tests.conftest import root_for_a_return_of
+    from tests.builders import root_for_a_return_of
     from tracker.filer import REVIEW_COPY_PAST_READER
 
     engagement = make_engagement(root_for_a_return_of(tmp_path, 200), ROOM_ITEMS)   # review: 227
@@ -7090,7 +7095,7 @@ def test_a_fed_return_with_no_room_parks_at_home_naming_the_fed_return(tmp_path,
     The pass never files across households, so the document parks where it
     was dropped for one click, the row naming the fed return by its label;
     and the click itself refuses on the room, with nothing moved."""
-    from tests.conftest import root_for_a_return_of
+    from tests.builders import root_for_a_return_of
     from tracker.filer import PATH_NO_ROOM_IN, NoRoom
     from tracker.layout import path_limit
     from tracker.records import Feed
@@ -7133,7 +7138,7 @@ def test_a_sibling_return_with_no_room_parks_in_the_home_return_naming_it(tmp_pa
     name, while John's list also accepts it. The name vetoes John's return,
     Maria's has no room, and the row parks in John's - the home return -
     naming Maria's return by its label, never "this request"."""
-    from tests.conftest import root_for_a_return_of
+    from tests.builders import root_for_a_return_of
     from tracker.filer import PATH_NO_ROOM_IN
     from tracker.layout import path_limit
     from tracker.registry import discover_engagements
@@ -7896,7 +7901,7 @@ def test_an_also_filed_copy_is_read_back_by_its_own_name(engagement):
     in the received list, read from each copy's own name; and a copy whose
     name a person changed to one no request begins reads "Other
     document", never a guessed request."""
-    from tests.conftest import seed_index
+    from tests.builders import seed_index
     from tests.samples import scanned_1098_lines, scanned_w2_lines
     from tracker.filer import received_for
     from tracker.records import IndexEntry
@@ -7990,7 +7995,7 @@ def test_a_rename_intent_written_before_168_is_finished_as_written(engagement):
     old_home.parent.mkdir()
     old_home.write_bytes(original.read_bytes())
 
-    from tests.conftest import seed_index
+    from tests.builders import seed_index
 
     [row] = seed_index(engagement, [IndexEntry(
         received="2026-07-01 09:00:00", original_name="w2.pdf",
@@ -8057,7 +8062,7 @@ def test_an_old_return_with_request_folders_is_named_and_left_alone(engagement):
     per request. Nothing is moved or migrated, nothing in the folders is
     counted - the recorded copy there included - and the pass names each
     folder, once."""
-    from tests.conftest import seed_index
+    from tests.builders import seed_index
     from tracker.manifest import Status
     from tracker.records import IndexEntry
     from tracker.scanner import scan_engagement
@@ -8903,7 +8908,7 @@ def _forge_line(engagement, event: dict) -> bytes:
     would; returns the journal as it was. Linked to the line before
     (decision 159), so it is the store's admission and the filer's own
     checks that judge it, not the ledger's link."""
-    from tests.conftest import written_elsewhere
+    from tests.builders import written_elsewhere
 
     honest = ledger.path_for(engagement).read_bytes()
     written_elsewhere(engagement, event)

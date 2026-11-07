@@ -28,9 +28,9 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import (
+from tests.plugin_fakes import REAL_HOST_SYSTEM, stand_on_the_floor
+from tests.plugin_session import (
     ENV_OFFICE_SHAPED_FULL,
-    REAL_HOST_SYSTEM,
     REPO,
     TRIPWIRE_DIR,
     TRIPWIRE_HEADING,
@@ -42,7 +42,6 @@ from tests.conftest import (
     read_tripwire_log,
     real_places,
     run_in_copy,
-    stand_on_the_floor,
     tripwire_log_said,
 )
 from tests.tripwire import sitecustomize as tripwire
@@ -110,7 +109,7 @@ def test_no_test_opens_the_real_data_home(tmp_path, monkeypatch):
     the session, and no test's own data home is it or lies inside it; each
     is a sibling of the test's folder, never a clients root's child."""
     # The home the session armed is the real computer's, worked out before
-    # the suite pinned a Mac to the floor's answer (conftest), so it is asked
+    # the suite pinned a Mac to the floor's answer (plugin_fakes), so it is asked
     # the same way here.
     monkeypatch.setattr(settings, "host_system", REAL_HOST_SYSTEM)
     try:
@@ -121,7 +120,7 @@ def test_no_test_opens_the_real_data_home(tmp_path, monkeypatch):
     assert ["data home", str(real)] in armed
     if REAL_HOST_SYSTEM() == "darwin":
         # The suite's pin makes a bare test on a Mac resolve the floor's home
-        # (conftest.stand_on_the_floor): that one is armed as well.
+        # (plugin_fakes.stand_on_the_floor): that one is armed as well.
         try:
             floor = floors_data_home()
         except settings.SettingsError:
@@ -359,7 +358,7 @@ def test_no_test_starts_a_python_child_around_the_tripwire():
     shapes = ("PYTHON" + "PATH", "os.environ" + ".items()", "env={**" + "os.environ")
     here = Path(__file__).resolve()
     for path in sorted((REPO / "tests").rglob("*.py")):
-        if path.name == "conftest.py" or path.parent.name == "tripwire" or path.resolve() == here:
+        if path.name == "plugin_session.py" or path.parent.name == "tripwire" or path.resolve() == here:
             continue
         text = path.read_text(encoding="utf-8")
         for shape in shapes:
@@ -377,7 +376,8 @@ CANARY = textwrap.dedent('''
 
     import pytest
 
-    from tests.conftest import REAL_HOST_SYSTEM, REPO, child_env
+    from tests.plugin_fakes import REAL_HOST_SYSTEM
+    from tests.plugin_session import REPO, child_env
     from tracker import settings, store
     from tracker.layout import CLIENTS_TREE
 
@@ -535,7 +535,7 @@ ALL_PASS = textwrap.dedent('''
     import subprocess
     import sys
 
-    from tests.conftest import REPO, child_env
+    from tests.plugin_session import REPO, child_env
     from tests.tripwire.sitecustomize import TripwireError
     from tracker import settings
 
@@ -610,7 +610,7 @@ def test_pytest_xdist_workers_hand_their_hits_to_the_one_verdict(office_shaped_c
 
 #: A test that reaches a folder the shell names as the settings folder, and tolerates the refusal.
 SHELL_NAMED_REACH = textwrap.dedent('''
-    from tests.conftest import REPO
+    from tests.plugin_session import REPO
     from tests.tripwire.sitecustomize import TripwireError
     from tracker import settings
 

@@ -1,7 +1,7 @@
 """Tests for tracker/view.py - the page a pass regenerates for one engagement.
 
 The view's standing claim is not made here: it is the autouse fixture in
-tests/conftest.py, which draws every view the suite leaves behind again from
+tests/plugin_agreement.py, which draws every view the suite leaves behind again from
 the readers and compares it with what is on disk, byte for byte. What is
 made here is the view's own behaviour - the four sections and the navigation,
 the stamp in the head, the escaping, the shortlist under each parked file,
@@ -27,8 +27,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.builders import drop, engagement_dirs, engagement_fixture
-from tests.conftest import make_engagement, sort
+from tests.builders import drop, engagement_dirs, engagement_fixture, make_engagement, sort
 from tracker import ledger, review, view
 from tracker.index import NEEDS_REVIEW, read_index
 from tracker.layout import household_of, root_of
@@ -93,8 +92,8 @@ def type_a_keyword(engagement, identifier, keyword):
 
 def teach_a_keyword(engagement, identifier, keyword):
     """A person's filing teaching a request a keyword: recorded, not typed."""
-    from tests.conftest import ensure
     from tracker import store
+    from tracker.index import ensure
     from tracker.locking import engagement_lock
 
     with engagement_lock(engagement):
@@ -856,7 +855,7 @@ def test_a_not_asked_row_with_any_document_sits_in_the_active_table_and_only_one
     syncing - is work for the preparer, so the row sits in the active table
     with its real status; only a row with no document at all folds, and
     only those are counted in the fold's N and ``Summary.not_asked``."""
-    from tests.conftest import seed_statuses
+    from tests.builders import seed_statuses
     from tracker.manifest import STATUS_LABELS, StatusUpdate, is_idle_unasked, summarize
 
     def unasked(identifier):
@@ -901,7 +900,7 @@ def test_current_names_the_host_that_wrote_the_last_line(engagement):
     line it is fresh to - the host and the time the record's last line
     carries, and whether the pass or a person decided it. A last line from
     before 159 says it recorded no writer."""
-    from tests.conftest import written_elsewhere
+    from tests.builders import written_elsewhere
     from tracker.locking import this_host
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")

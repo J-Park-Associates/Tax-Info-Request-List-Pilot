@@ -505,7 +505,7 @@ def _kit_block(name: str) -> str:
 def _in_bash(code: str, cwd: Path, **env: str) -> subprocess.CompletedProcess:
     """``code`` run by bash, with the suite's one way to build a child's
     environment (decision 185), though this child is bash."""
-    from tests.conftest import child_env
+    from tests.plugin_session import child_env
 
     return subprocess.run([_bash(), "-c", code], capture_output=True, text=True, cwd=cwd, check=False,
                           env=child_env(**env))
@@ -654,7 +654,7 @@ split_test_list " a , b,,c.py ," | tr '\\n' '|'
 def _run_kit(tmp_path: Path, *args: str, path: str | None = None) -> tuple[subprocess.CompletedProcess, dict]:
     """The real script, run by bash with a home of its own, and what it wrote
     to checks.json (``{}`` when it wrote none)."""
-    from tests.conftest import child_env
+    from tests.plugin_session import child_env
 
     home = tmp_path / "home"
     home.mkdir(exist_ok=True)
@@ -852,7 +852,7 @@ def test_the_season_builder_in_the_prompt_makes_scans_no_two_of_which_share_thei
     verdict by content, so scans alike would be read once and the timing would
     mean nothing; the builder's program, lifted from the prompt and run, makes
     each household's own, and writes only under the folder it is given."""
-    from tests.conftest import child_env
+    from tests.plugin_session import child_env
 
     program = _prompt().split("THE SEASON BUILDER (")[1].split("\n\n", 1)[1].rstrip("`\n ")
     root = tmp_path / "season"
@@ -908,7 +908,7 @@ def test_the_sample_pile_holds_a_macro_workbook_an_email_and_a_zip(tmp_path):
     refuses any folder but ``~/PilotTest``), adds the three to the inbox after
     the suite's own pile, which is otherwise untouched; the email opens with
     the engine's own reader to one attachment and the zip to one member."""
-    from tests.conftest import child_env
+    from tests.plugin_session import child_env
     from tests.samples import SCRATCH_SCAN, YEAR, build_samples
     from tracker import containers
     from tracker.validators import bears_macros
