@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 360,
-    "edges": 1642,
-    "reused": 305
+    "edges": 1645,
+    "reused": 306
   },
   "node_types": [
     "artifact",
@@ -8860,8 +8860,8 @@
       "id": "tests/test_locking.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3d0f09a67ad42dc5",
-      "lines": 1407,
+      "sha256": "30116fdedce4db80",
+      "lines": 1431,
       "exports": [
         "test_a_breaker_another_racer_is_reading_is_still_removed_on_release",
         "test_a_breaker_from_before_the_boot_is_abandoned_whatever_its_pid_says_now",
@@ -8926,6 +8926,7 @@
         "test_the_boot_time_is_in_the_past_or_unknown",
         "test_the_lock_line_is_fsynced",
         "test_the_lock_refusal_never_tells_a_person_to_delete_the_lock_file",
+        "test_the_one_clock_tick_test_leaves_no_lock_for_the_engine_after_it",
         "test_the_stale_threshold_outlives_the_scheduled_jobs_time_limit",
         "test_two_processes_contending_for_one_lock_lose_no_line_and_leave_no_lock",
         "test_two_processes_racing_a_dead_lock_end_with_exactly_one_holder",
@@ -16159,6 +16160,12 @@
     },
     {
       "from": "tests/test_locking.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_locking.py",
       "to": "tracker/errors.py",
       "type": "exercises",
       "source": "derived"
@@ -16172,6 +16179,18 @@
     {
       "from": "tests/test_locking.py",
       "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_locking.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_locking.py",
+      "to": "tracker/store.py",
       "type": "exercises",
       "source": "derived"
     },

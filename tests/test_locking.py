@@ -1299,6 +1299,30 @@ def test_two_takes_in_one_clock_tick_write_two_tokens(tmp_path, monkeypatch, cap
     release_lock(b)
 
 
+def test_the_one_clock_tick_test_leaves_no_lock_for_the_engine_after_it():
+    """P4.1's R4.1.2. The test above drives a release that can neither delete
+    nor mark its file, which ``locking._unreleased`` remembers for the life of
+    the process. Left there, an engine test that later ran in the same xdist
+    worker retired with ``lock-left``, so the suite failed or passed by where
+    xdist put the two files. Here the two run in that order in one fresh
+    process, as that worker would run them."""
+    import subprocess
+    import sys
+
+    from tests.conftest import REPO, child_env
+    from tracker import settings, store
+
+    first = "tests/test_locking.py::test_two_takes_in_one_clock_tick_write_two_tokens"
+    second = "tests/test_resident.py::test_a_second_command_finds_nothing_the_first_left"
+    env = child_env(drop=(settings.ENV_SETTINGS_DIR, store.ENV_STORE, settings.ENV_DATA_HOME,
+                          "PYTEST_CURRENT_TEST"))
+    done = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:xdist", "-p", "no:randomly",
+                           "-p", "no:cacheprovider", first, second],
+                          cwd=REPO, env=env, capture_output=True, text=True, timeout=600)
+    last = "\n".join((done.stdout + done.stderr).splitlines()[-40:])
+    assert done.returncode == 0, last
+
+
 # ------------------------- one judgment of stale (decisions 159 and 189) ----
 
 
