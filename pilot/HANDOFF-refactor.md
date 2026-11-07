@@ -1,17 +1,20 @@
-# Refactor handoff: phase 3 complete (P3.1-P3.9), the phase 4 SPEC in progress
+# Refactor handoff: phase 3 complete (P3.1-P3.9), the phase 4 SPEC committed, its builds waiting on Jason
 
 **Paused 2026-10-14 at Jason's word** ("pause at a good spot and leave notes so you can pick it up next week"); the
 loop resumed on 2026-11-07 and phase 3 is now complete: P3.1-P3.9 have landed on the branch, head `68b9212`, and the
-phase 4 SPEC is being written by the phase-SPEC loop. This file was brought up to date at that point and is the whole
+phase 4 SPEC ([`SPEC-architecture-p4.md`](SPEC-architecture-p4.md), 13 jobs) passed review and is committed at
+`f674d93`. Its builds wait on Jason's two questions (section "Open for Jason"). This file was brought up to date at that
+point and is the whole
 hand-over. A new session reads it, `CLAUDE.md`, [`PROMPT-refactor.md`](PROMPT-refactor.md)
 (sections 1 and 2) and the ledger ([`SPEC-architecture.md`](SPEC-architecture.md) section 13), and nothing of an
 earlier session's transcript.
 
 ## Where it stopped
 
-- **Branch** `claude/quirky-johnson-22edtv`, head `68b9212` ("SPEC-architecture P3.9: landed"), pushed. No build job
-  is in flight. The phase 4 SPEC loop was running in the cloud session (draft `ORCH/jobs/P4/SPEC-architecture-p4.md`);
-  if that draft is lost, rerun the loop with the brief below.
+- **Branch** `claude/quirky-johnson-22edtv`, head after `f674d93` ("SPEC-architecture phase 4: the sorting engine, 13
+  jobs"), pushed. No build job is in flight. The phase 4 SPEC was reviewed in three rounds (4, 4 and 0 blocking
+  findings) and a check of round 3's two minor fixes, all measured at `68b9212`; the board thread `P4` holds the
+  record. Phase 4's code base is still `68b9212` (the SPEC and this file change no code).
 - **Landed on the branch:** tranche 1 (J1-J6), phase 2 (P2.1-P2.14, no facade left), the phase 3 SPEC
   ([`SPEC-architecture-p3.md`](SPEC-architecture-p3.md), `6cfb1c9`), and all of phase 3, each with its row in the
   ledger (build commits, then the landing commit):
@@ -27,9 +30,11 @@ earlier session's transcript.
 - **Nothing is on `main`.** Landing on `main` is a person's step, and no pull request is open: Jason has not asked
   for one. When he does, CLAUDE.md's cost rules apply (open it as a draft, mark it ready once), and **P3.8's office
   `verify` must be recorded first** (section "Owed to the office PC").
-- **Next: the phase 4 SPEC** (the sorting engine), base `68b9212`; its brief is in section "For phase 4: the SPEC
-  brief". Its **builds wait on Jason's answer** about the office backtest (section "Open for Jason"). Then phases 5 to
-  7, each with its own SPEC written when the phase before has landed.
+- **Next: phase 4's builds**, P4.1 first, in the SPEC's order (section 4's table: tier, dependency, whether it moves
+  routing code, whether it carries the `windows` label). They **wait on Jason's answers** to the SPEC's section 7 Q1
+  (build now, with the office backtest before and after phase 4, or wait for the office baseline) and Q2 (which
+  modules the map lists as upholding "Originals are never altered"; the SPEC's default is (A)). Then phases 5 to 7,
+  each with its own SPEC written when the phase before has landed.
 
 ## What did not survive the session, and where it is now
 
@@ -89,7 +94,7 @@ them.
 6. **Save the loop scripts:** appendix B is the one-job loop, appendix C the phase-SPEC loop. Run them with the
    `Workflow` tool (`scriptPath`), with the arguments below. Each prompts its agents to read PROMPT-refactor, the
    board and the brief, so the brief does the steering.
-7. **Write the phase 4 brief** at `ORCH/board/threads/P4/000-orchestrator-brief.md`: the text is in section "For phase 4:
+7. **(Done: the phase 4 SPEC is committed; skip to step 9.)** Write the phase 4 brief at `ORCH/board/threads/P4/000-orchestrator-brief.md`: the text is in section "For phase 4:
    the SPEC brief", below. Re-measure its anchors if the branch has moved past `68b9212`.
 8. **Run the phase-SPEC loop** with appendix C: `phase` "4", `repo` the checkout, `branch`
    "claude/quirky-johnson-22edtv", `orch`, `py311`, `py314` (absolute paths), `base` "68b9212", `thread` "P4", `draft`
@@ -157,15 +162,25 @@ None of this can run in the cloud. The ledger's last column is the record; gathe
   release or an old hand-over whose `was` is not a location, or a hand-over with no key (such a household stops after
   the upgrade until the line is repaired). If it names any household, the list goes to Jason before P3.8 merges
   (SPEC-architecture-p3 section 6).
-- **Phase 4 needs the office backtest baseline first** (it owns the matcher): `docs/backtest-baseline.json` records no
-  agreement yet. See "Open for Jason".
+- **Phase 4's backtest** (SPEC-architecture-p4 section 6, with the exact commands): `tools/backtest.py run` (plain
+  and `--ocr`) and `check`, and `tests/test_real_corpus.py` with `TRACKER_REAL_CORPUS` set, once on the build at
+  `68b9212` (before phase 4) and once after P4.13, both before phase 4 merges to `main`; the two reports must agree.
+  Plus the whole-suite Windows check on the stack and the `-Tests` lists of P4.4, P4.6, P4.9 and P4.12 (the `windows`
+  jobs). Whether builds may start before the office records its baseline is Jason's Q1.
 
 ## Open for Jason
 
 - **P313's Q-B** (whether the re-send road's across-household park carries a shortlist) and **Q-F** (if unifying the
   room check would change a save's outcome): kept as today until his word. Q-B touches phase 4, Q-F phase 5.
 - **P3.8's office `verify`** (above): its list, if any, is his before P3.8 merges.
-- **Phase 4's build gate.** The plan holds phase 4's builds until the office has recorded its backtest baseline (`docs/backtest-baseline.json` records no agreement yet). The orchestrator asked on 2026-11-07 whether phase 4 may instead build on the branch now, with `tools/backtest.py run` and `check` run at the office on the build before phase 4 and on the build after (agreement must not move) before phase 4 merges to `main`. Until he answers, the phase 4 SPEC is written and its builds wait.
+- **Phase 4's Q1, the build gate** (SPEC-architecture-p4 section 7). The plan holds phase 4's builds until the office
+  has recorded its backtest baseline (`docs/backtest-baseline.json` records no agreement yet). Asked on 2026-11-07:
+  may phase 4 instead build on the branch now, with the backtest run at the office on the build before phase 4 and on
+  the build after (agreement must not move), before phase 4 merges to `main`? Recommended: build now. Until he
+  answers, builds wait.
+- **Phase 4's Q2** (section 7): which modules the map lists as upholding "Originals are never altered" once the copy
+  and the intents leave the filer: (A) the modules that do the work join (`copies`, `intents`; the SPEC's default),
+  (B) only the filer, (C) as (A), and `keywords` also joins the no-AI rule. Map labels only; no behaviour changes.
 - Q1 of phase 3 is answered ("a - the full rule", 2026-10-14) and written into the SPEC.
 
 ## For phase 4: the SPEC brief
