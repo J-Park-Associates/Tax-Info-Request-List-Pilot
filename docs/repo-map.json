@@ -3,7 +3,7 @@
   "generated": "2026-11-07",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
-  "module_table_sha256": "31a658d3cb5a2f33",
+  "module_table_sha256": "7f8a84cda91f566a",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 365,
-    "edges": 1690,
-    "reused": 311
+    "nodes": 367,
+    "edges": 1708,
+    "reused": 0
   },
   "node_types": [
     "artifact",
@@ -4776,8 +4776,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "f53fb0062521c822",
-      "lines": 1796,
+      "sha256": "d2209b666aa261cb",
+      "lines": 1804,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -6226,6 +6226,25 @@
       },
       "role": "The renderer's stylesheets read as text: the rules at any depth (blocks), the top-level rules by balanced braces (top_level), a declaration's property and value (declarations), what in a value is a colour that is not a token or a system colour (colour_faults), and the grid's steps.",
       "notes": "SPEC-architecture J2 (R2.1, E-4). Moved with their words from tests/test_pilot_ui.py, which test_shell borrowed them from. app/renderer/pilot-ui.css redefines the look by overriding style.css, so what can be pinned is what the file may and may not contain."
+    },
+    {
+      "id": "tests/filer_helpers.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "cb3c5bdb76a06d45",
+      "lines": 109,
+      "exports": [
+        "A_CLIENT_PATH",
+        "RequestFiles",
+        "originals",
+        "prepared",
+        "review_dir"
+      ],
+      "constants": {
+        "A_CLIENT_PATH": "'/Clients/Test Household/Drop files here/W2.pdf'"
+      },
+      "role": "What the filer's family of test files shares: originals (the client's folder for a return's year), RequestFiles and prepared (a request's files in Prepared, flat since decision 168, and the review folder), review_dir, _catalog_w2 (the 1040 catalog's A01, decision 144), and the fabricated client path a refused read names (A_CLIENT_PATH, _refused_with_a_client_path) with _logged_outside_the_debug_log, every line logged but the debug log's (decision 190).",
+      "notes": "SPEC-architecture-p4 section 4.1 and R4.4.6 (P331), in tests/store_helpers.py's form. tests/test_filer.py wrote these for itself; with P331 the tests that drive only the code that moved to tracker/copies.py left it for tests/test_copies.py, each still reading the helpers it was written against, and a test file may not import another (tests/test_suite_shape.py), so what both read sits in a module that is not a test file and each names it by import - the map draws 'exercised by'. Each came with its words. No fixture lives here: the one both files take, engagement, is tests.builders' engagement_fixture(ITEMS), named once in each file. Each later move out of the filer (P4.6 to P4.9) adds what its own split shares."
     },
     {
       "id": "tests/golden/pass.samples.json",
@@ -7833,6 +7852,37 @@
       "notes": "The process helper `running(pid)` (now in tests/children.py) asks whether a process has ended without reading anything Linux-only (SPEC-mac R36): a zombie has ended, and where there is no /proc - a Mac - the state comes from `ps -o stat=` through the seam `PROC`, which a test points at a place that is not there to stand in for a Mac. Before this a Mac took every zombie for a live process and each wait-for-the-child test waited out its fifteen seconds."
     },
     {
+      "id": "tests/test_copies.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "8b8f03ef9b5ab97c",
+      "lines": 641,
+      "exports": [
+        "test_a_copy_already_there_is_reused_only_under_its_own_request",
+        "test_a_mac_cuts_a_working_copys_name_to_the_room_a_windows_desk_leaves",
+        "test_a_move_whose_source_is_now_behind_a_link_moves_nothing",
+        "test_a_return_that_fits_on_windows_fits_on_a_mac_and_one_character_more_does_not",
+        "test_a_review_copy_with_an_odd_suffix_is_cut_to_fit_or_said_as_a_review_copy",
+        "test_a_spreadsheet_limit_is_never_called_what_windows_allows",
+        "test_a_sweep_that_cannot_read_a_returns_rows_logs_the_class_never_the_path",
+        "test_a_temp_that_cannot_be_swept_is_counted_not_named",
+        "test_a_working_copy_is_named_to_fit_the_room_left_under_its_folder",
+        "test_an_unproved_copy_says_its_names_as_the_record_keeps_them",
+        "test_creation_and_the_rollover_still_refuse_the_canonical_name_past_the_limit",
+        "test_no_review_copy_is_ever_named_for_a_program",
+        "test_prepared_name_for_collides_safely",
+        "test_room_is_measured_without_a_request_folder",
+        "test_the_one_numbering_function_takes_a_name_a_row_still_names",
+        "test_the_period_survives_a_long_label",
+        "test_the_room_is_measured_from_the_list_alone_and_creations_figure_is_unchanged",
+        "test_the_sweep_never_walks_through_a_junction",
+        "test_the_trackers_own_temp_files_are_swept_and_nothing_else",
+        "test_the_working_copy_uses_the_short_title"
+      ],
+      "role": "The copies module's own tests: a working copy's name - a collision numbered safely, the short title, the period kept past a long label, a spreadsheet's limit never called what Windows allows; the one numbering function, which never hands out a name a row still names; the room a return has, measured from its list alone, and the refusal at creation and at the rollover, in Windows's numbers on a Mac too; a review copy cut to fit or refused as a review copy, and never named for a program; a copy already there reused only under its own request; an unproved copy said in the record's names; a move whose source is now behind a link moving nothing; and the sweep of what a killed write left - only the tracker's own temps, never through a junction, a temp that stays counted and not named, and a refused read of a return's rows logged by class, never by path.",
+      "notes": "SPEC-architecture-p4 R4.4.6 (P331). Cut and pasted from tests/test_filer.py with the code, names kept: the twenty tests whose only homes, by the SPEC's section 4.1 rule, are in tracker/copies.py - a test's homes being the modules that define the old module's functions and classes it calls or constructs, in its body or through a fixture of its own file, with exception classes, sentences and stand-in targets not counted. Their bodies are unchanged, so a few still import, through the filer, names the filer imports back for its own code (_unique_path, _existing_copy, copies_of, _copy_whole, COPY_UNPROVED); P4.13 retargets those. Many drive the code through a pass (sort), as they did. The stand-ins they carry are where P4.4's first commit set them: read_index's on the filer and copies both, make_writable's on copies, iter_drops' on the filer. The helpers both files read are tests/filer_helpers.py's; the engagement fixture is tests.builders' engagement_fixture(ITEMS), named here as in test_filer."
+    },
+    {
       "id": "tests/test_corpus.py",
       "type": "test",
       "layer": "tests",
@@ -7975,10 +8025,9 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8b5899ab75b3ace7",
-      "lines": 10268,
+      "sha256": "9eabc31815a7f691",
+      "lines": 9631,
       "exports": [
-        "A_CLIENT_PATH",
         "A_PASS_KILLED_MID_COPY",
         "CRASH_POINTS",
         "DANA",
@@ -7998,7 +8047,6 @@
         "NEXT_PASSES",
         "NOT_ASKED_ITEMS",
         "REAL_ROOT",
-        "RequestFiles",
         "SETTLE_CASES",
         "SET_ASIDE",
         "TRIAL_BALANCE",
@@ -8032,12 +8080,9 @@
         "moved_again",
         "moves_made",
         "open_intents",
-        "originals",
         "parked_notice",
-        "prepared",
         "re_escape",
         "records_rule",
-        "review_dir",
         "rows_rest_at_home",
         "seq_of",
         "taught_keywords",
@@ -8047,7 +8092,6 @@
         "test_a_cloud_placeholder_is_not_a_link",
         "test_a_confirmed_name_is_evidence_of_its_own_rule_and_says_where",
         "test_a_consolidated_statement_waiting_for_another_household_files_whole_with_its_also_answers_on_the_click",
-        "test_a_copy_already_there_is_reused_only_under_its_own_request",
         "test_a_copy_and_original_both_gone_is_named_not_chased",
         "test_a_copy_cut_to_its_identifier_alone_still_reads_under_its_request",
         "test_a_copy_deleted_outright_is_made_again_and_nothing_else_moves",
@@ -8109,12 +8153,10 @@
         "test_a_keyword_the_request_already_has_is_said_and_not_recorded_twice",
         "test_a_killed_filing_that_adds_its_row_is_finished_forward_with_the_row",
         "test_a_legitimate_filing_into_a_fed_return_still_completes",
-        "test_a_mac_cuts_a_working_copys_name_to_the_room_a_windows_desk_leaves",
         "test_a_macro_copy_that_cannot_be_marked_is_not_made",
         "test_a_macro_workbook_copy_is_marked_for_protected_view",
         "test_a_macro_working_copy_moved_into_review_is_marked_or_not_moved",
         "test_a_move_into_a_linked_folder_moves_nothing",
-        "test_a_move_whose_source_is_now_behind_a_link_moves_nothing",
         "test_a_moved_copy_dragged_back_by_hand_is_filed_again_on_the_next_pass",
         "test_a_moved_copy_that_is_then_deleted_says_nowhere_once_and_is_made_again_the_pass_after",
         "test_a_moved_row_is_written_once_per_move_and_a_quiet_pass_appends_nothing",
@@ -8186,11 +8228,9 @@
         "test_a_respelled_identifier_renames_the_copies_only",
         "test_a_restore_killed_between_the_move_and_the_record_is_finished",
         "test_a_retired_cache_file_is_never_read_and_is_not_the_passs_to_remove",
-        "test_a_return_that_fits_on_windows_fits_on_a_mac_and_one_character_more_does_not",
         "test_a_return_with_no_people_parks_its_named_requests_with_the_add_them_sentence",
         "test_a_returning_original_still_goes_home_across_households",
         "test_a_review_copy_is_named_to_fit_and_the_row_keeps_the_clients_name",
-        "test_a_review_copy_with_an_odd_suffix_is_cut_to_fit_or_said_as_a_review_copy",
         "test_a_row_a_person_deleted_is_recorded_as_removed_and_leaves_the_store",
         "test_a_row_recorded_without_its_bytes_is_never_moved_onto_another_file",
         "test_a_row_recorded_without_its_bytes_still_gets_a_proved_working_copy",
@@ -8210,7 +8250,6 @@
         "test_a_sort_past_its_deadline_takes_no_file_and_leaves_each_where_it_was",
         "test_a_sort_that_raises_still_keeps_its_verdicts",
         "test_a_split_rows_second_copy_dragged_away_is_said_on_the_request_that_lost_it",
-        "test_a_spreadsheet_limit_is_never_called_what_windows_allows",
         "test_a_statement_counts_as_the_statements_inside_it_and_no_more",
         "test_a_statement_whose_copy_is_not_counted_answers_nothing_until_it_is_made_again",
         "test_a_step_may_touch_only_its_returns_places",
@@ -8220,14 +8259,11 @@
         "test_a_stray_no_record_names_is_sorted_like_a_drop_across_the_household",
         "test_a_subfolder_file_keeps_its_name_when_nothing_else_has_it",
         "test_a_subfolder_named_with_a_windows_illegal_character_is_recorded_with_an_underscore_and_the_pass_completes",
-        "test_a_sweep_that_cannot_read_a_returns_rows_logs_the_class_never_the_path",
-        "test_a_temp_that_cannot_be_swept_is_counted_not_named",
         "test_a_third_send_of_set_aside_bytes_is_a_duplicate_of_the_parked_row",
         "test_a_true_duplicate_is_still_a_duplicate",
         "test_a_w2_naming_nobody_on_the_list_parks_even_in_a_one_return_household",
         "test_a_w2_naming_one_spouse_files_to_that_1040_in_a_two_1040_household",
         "test_a_workbook_review_copy_fitted_past_a_readers_limit_says_so",
-        "test_a_working_copy_is_named_to_fit_the_room_left_under_its_folder",
         "test_a_working_copy_somebody_re_saved_is_left_where_it_is_and_said_so",
         "test_a_working_copys_number_takes_a_name_an_open_intent_will_write_as_taken",
         "test_after_unfiling_the_request_is_not_received_and_the_note_says_why",
@@ -8268,7 +8304,6 @@
         "test_an_unnamed_re_send_already_held_in_another_household_parks_too",
         "test_an_unnamed_request_files_on_keywords_alone_when_no_name_is_on_the_page",
         "test_an_unnamed_request_is_vetoed_by_another_returns_name",
-        "test_an_unproved_copy_says_its_names_as_the_record_keeps_them",
         "test_an_unrecorded_copys_advice_never_sends_it_to_a_clients_folder",
         "test_assigning_a_parked_file_moves_it_under_the_canonical_name",
         "test_assigning_a_replaced_original_is_refused_not_recorded_under_the_old_bytes",
@@ -8278,7 +8313,6 @@
         "test_bytes_gone_from_both_places_park_the_row_and_say_so",
         "test_bytes_recorded_after_the_fact_are_tied_to_the_row_or_not_recorded",
         "test_client_subfolders_are_flattened",
-        "test_creation_and_the_rollover_still_refuse_the_canonical_name_past_the_limit",
         "test_deleting_the_store_and_rebuilding_leaves_every_status_and_note_byte_identical",
         "test_details_that_cannot_be_read_are_none_and_the_failure_is_kept_on_the_log",
         "test_dismiss_still_refuses_a_moved_row_by_name",
@@ -8305,14 +8339,12 @@
         "test_name_collision_in_pbc_never_overwrites",
         "test_no_pass_leaves_a_workbook_behind",
         "test_no_record_ever_holds_a_row_for_an_original_resting_under_another_household_once_no_intent_is_open",
-        "test_no_review_copy_is_ever_named_for_a_program",
         "test_nothing_ever_routes_to_a_return_outside_the_feed_list",
         "test_ocr_text_still_files_on_required_keywords_only_with_the_name_confirmed",
         "test_one_inbox_feeds_every_return_of_the_open_year_and_a_drop_files_where_exactly_one_accepts",
         "test_only_a_name_the_journal_cannot_hold_is_refused",
         "test_pbc_contents_are_never_re_sorted",
         "test_placeholders_are_left_where_they_are",
-        "test_prepared_name_for_collides_safely",
         "test_put_it_back_copies_from_the_original_when_nothing_under_prepared_holds_the_bytes",
         "test_put_it_back_moves_the_wanderer_home_and_the_row_is_filed_again",
         "test_put_it_back_never_overwrites_a_different_file_at_home_and_parks_this_documents_copy",
@@ -8330,7 +8362,6 @@
         "test_recovery_runs_before_the_sweep_so_an_interrupted_action_is_never_called_a_hand_move",
         "test_rerunning_changes_nothing",
         "test_review_copies_keep_the_clients_own_name",
-        "test_room_is_measured_without_a_request_folder",
         "test_same_document_dropped_twice_is_kept_but_filed_once",
         "test_second_file_for_the_same_request_is_numbered",
         "test_send_to_review_parks_the_wanderer_under_the_clients_name_as_the_persons",
@@ -8350,24 +8381,18 @@
         "test_the_one_click_files_the_waiting_document_where_it_waits_and_releases_the_row_here",
         "test_the_one_click_is_refused_on_a_row_rewritten_since_it_was_shown",
         "test_the_one_click_is_refused_when_its_return_is_no_longer_fed_or_its_request_is_gone",
-        "test_the_one_numbering_function_takes_a_name_a_row_still_names",
         "test_the_originals_folder_is_shared_and_another_returns_original_is_never_a_stray",
         "test_the_pass_never_moves_an_original_into_another_household",
         "test_the_pass_reads_a_document_once_for_every_return_it_feeds",
-        "test_the_period_survives_a_long_label",
-        "test_the_room_is_measured_from_the_list_alone_and_creations_figure_is_unchanged",
         "test_the_routers_candidates_travel_as_data_in_the_index",
         "test_the_same_bytes_dropped_back_under_a_deleted_originals_name_rest_under_it",
         "test_the_same_document_sent_again_after_a_dismissal_parks_again_and_names_the_earlier_decision",
         "test_the_scan_after_a_two_form_split_accepts_the_copy_under_each_request",
         "test_the_statement_answers_the_int_div_row_and_the_letter_does_not_ask_for_it",
         "test_the_subfolder_is_removed_once_empty",
-        "test_the_sweep_never_walks_through_a_junction",
         "test_the_sweep_on_a_read_only_prepared_folder_detects_and_touches_nothing",
         "test_the_taking_returns_recovery_finishes_the_move_after_the_dropping_pass_has_run",
-        "test_the_trackers_own_temp_files_are_swept_and_nothing_else",
         "test_the_unlistable_walk_covers_the_same_ground_as_the_others",
-        "test_the_working_copy_uses_the_short_title",
         "test_two_programs_in_one_zip_each_answer_to_their_own_handle",
         "test_two_returns_in_one_household_that_both_accept_a_notice_park_it_unless_the_name_decides",
         "test_two_w2s_for_one_request_number_side_by_side",
@@ -8393,8 +8418,7 @@
         "HAND_OVER_KILL_POINTS": "('after the release intent', 'after the filing intent', 'after the move', 'after the copy', \"after the taking return's row\", 'after the parked copy went')",
         "NEXT_PASSES": "('home with the feed', 'home without the feed', \"the taking return's\")",
         "REAL_ROOT": "'G:\\\\Shared drives\\\\Income Tax Clients'",
-        "MORTGAGE": "'Form 1098 Mortgage Interest Statement 2025'",
-        "A_CLIENT_PATH": "'/Clients/Test Household/Drop files here/W2.pdf'"
+        "MORTGAGE": "'Form 1098 Mortgage Interest Statement 2025'"
       }
     },
     {
@@ -13431,6 +13455,30 @@
       "source": "derived"
     },
     {
+      "from": "tests/filer_helpers.py",
+      "to": "tracker/errors.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/filer_helpers.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/filer_helpers.py",
+      "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/filer_helpers.py",
+      "to": "tracker/templates.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
       "from": "tests/node_harness.py",
       "to": "pkg:pytest",
       "type": "depends_on",
@@ -15015,6 +15063,84 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_copies.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_copies.py",
+      "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_copies.py",
+      "to": "tracker/fsio.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_copies.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_copies.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_copies.py",
+      "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_copies.py",
+      "to": "tracker/scanner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_copies.py",
+      "to": "tracker/templates.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_copies.py",
+      "to": "tracker/validators.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_copies.py",
+      "to": "tests/builders.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_copies.py",
+      "to": "tests/filer_helpers.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_copies.py",
+      "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_copies.py",
+      "to": "tracker/copies.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_corpus.py",
       "to": "pkg:pytest",
       "type": "depends_on",
@@ -15479,6 +15605,12 @@
     {
       "from": "tests/test_filer.py",
       "to": "tests/builders.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
+      "to": "tests/filer_helpers.py",
       "type": "imports",
       "source": "derived"
     },
