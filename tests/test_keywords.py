@@ -46,7 +46,7 @@ def test_a_form_quoted_in_a_sentence_is_a_reference(text):
 
 
 def test_the_dominant_form_is_the_heaviest_then_the_first_mentioned():
-    from tracker.content_check import dominant_forms
+    from tracker.keywords import dominant_forms
 
     # A W-2's instructions name Form 1040 many times; the W-2 names itself with its year.
     assert dominant_forms("Form W-2 (2025) " + "see Form 1040 line 1. " * 30) == {"w2"}
@@ -223,7 +223,7 @@ def test_the_any_keywords_are_read_apart_from_every_other_rule():
     # The year a Period implies is a check on a document a keyword already
     # matched, so the router can ask which rows a document's words fit
     # without reading a verdict's sentence back.
-    from tracker.content_check import any_keyword_matched
+    from tracker.keywords import any_keyword_matched
 
     childcare = item(any_keywords=("child care statement",), date_pattern=r"(?i)\b2025\b")
     assert any_keyword_matched("2024 Child Care Statement", childcare)
@@ -414,7 +414,7 @@ def test_a_1099b_section_is_read_as_a_form_label_not_as_the_word_consolidated(li
     read - named in its own right in the title, or the page's own number -
     so a notice that mentions it and a checklist that lists it carry none,
     and "consolidated" decides nothing either way."""
-    from tracker.content_check import carries_a_1099b_section
+    from tracker.keywords import carries_a_1099b_section
 
     assert carries_a_1099b_section("\n".join(lines)) is carries
 
