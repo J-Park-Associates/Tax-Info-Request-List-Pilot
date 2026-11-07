@@ -11,15 +11,18 @@ own tests. A part that changes fails
 says which of two things to do.
 
 And the tests that ask the admission directly, with no store: a moving line
-in a household's record, the accepted key's one value, and a related list
-that is not folder names. The tests that drive the admission through the
-store's door - ``record``, ``catch_up``, ``check`` - or take the store's
-fixtures stay in ``tests/test_store.py``: they test the door's wiring as much
-as the rule.
+in a household's record, the accepted key's one value, a related list that
+is not folder names, and an event an intent carries (P292). The tests that
+drive the admission through the store's door - ``record``, ``catch_up`` -
+or take the store's fixtures stay in ``tests/test_store.py``, and the one
+through ``check`` is ``tests/test_store_check.py``'s: they test the door's
+wiring as much as the rule.
 
 All of it came from ``tests/test_store.py`` with P323 (SPEC-architecture-p3
-P3.2), cut and pasted. The bodies still read the admission's names through
-the store, which holds them by import, until P3.9 reads them here.
+P3.2), cut and pasted, but for the carried event's test, which came with
+P324 (P3.4) once its one helper, ``_a_rule``, was ``tests/store_helpers.py``'s.
+The bodies still read the admission's names through the store, which holds
+them by import, until P3.9 reads them here.
 """
 
 from __future__ import annotations
@@ -28,6 +31,7 @@ import ast
 
 import pytest
 
+from tests.store_helpers import _a_rule
 from tracker import ledger, store
 
 
@@ -1485,3 +1489,21 @@ def test_a_related_list_that_is_not_folder_names_is_refused_at_admission():
     assert f"'related' that is not one folder name ({NAME_ILLEGAL})" in str(refused.value)
     store._refuse_a_malformed_line(ledger.new(ledger.HOUSEHOLD_CHANGED, household={"related": ["Lee Family"]}),
                                    2, household, kind=store.KIND_HOUSEHOLD)
+
+
+def test_an_event_carried_in_also_is_refused_in_the_wording_of_the_line_that_carries_it():
+    """P292: the event an intent carries is admitted by the same rule, in
+    the same wording - a change about to be written is refused as a change,
+    "nothing was written", whatever it carries; a line read back is refused
+    as line N."""
+    carried = ledger.new(ledger.RULES_CHANGED, rules=[_a_rule(expected_count="x")])
+    intent = ledger.new(ledger.MOVING, **{ledger.KEY_KEY: "k", ledger.OPS_KEY: [],
+                                         ledger.ALSO_KEY: [carried]})
+    with pytest.raises(store.StoreError) as unwritten:
+        store._refuse_a_malformed_line(intent, 2, "where", written=False)
+    said = str(unwritten.value)
+    assert said.startswith("This change carries") and said.endswith("; nothing was written")
+    assert "line " not in said and "malformed" not in said
+    with pytest.raises(store.StoreError, match="line 2 of the record is malformed"):
+        store._refuse_a_malformed_line(intent, 2, "where")
+

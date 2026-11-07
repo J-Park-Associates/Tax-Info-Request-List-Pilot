@@ -45,7 +45,7 @@ else - not a line in the runbook, not a button.
    asking ``tmutil isexcluded`` first so a second run changes and says
    nothing. Both are derived from clients, which is decision 186's reason
    they are never synced, and a backup is a sync of its own.
-2. **The record check** - decision 187's ``store.check`` for every folder
+2. **The record check** - decision 187's ``store_check.check`` for every folder
    with a record, and ``store.gone_journals``, as the store's command line
    runs them. It changes no record (opening the store may set an older one
    aside, as every opener does). It runs only when a root is set **and**
@@ -156,7 +156,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
-from tracker import door, errors, fsio, ledger, registry, runner, scheduling, settings, store
+from tracker import door, errors, fsio, ledger, registry, runner, scheduling, settings, store, store_check
 from tracker.content_check import RETIRED_CACHE_FILENAME
 from tracker.fsio import TEMP_SUFFIX, write_json_atomically
 from tracker.locking import EngagementLockedError, acquire_lock, is_this_host, release_lock, this_host
@@ -681,7 +681,7 @@ def _check(root: Path | None) -> _Step:
             try:
                 if store.holds(conn, root, folder):
                     judged += 1
-                    findings += store.check(conn, root, folder)
+                    findings += store_check.check(conn, root, folder)
             except (ledger.LedgerError, OSError) as exc:
                 # A record the reader refuses is that household's to wait
                 # on, as the pass makes it: named, and the rest go on.

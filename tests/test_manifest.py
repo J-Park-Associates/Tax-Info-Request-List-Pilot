@@ -15,7 +15,7 @@ from tests.conftest import (
     TEST_YEAR,
     make_engagement,
 )
-from tracker import ledger, store
+from tracker import ledger, store, store_check
 from tracker.bounds import (
     COUNT_BOUNDS,
     DATE_PATTERN_ALTERNATES,
@@ -348,7 +348,7 @@ def test_a_waived_row_in_an_old_journal_reads_as_not_applicable_and_saving_the_l
     assert save_rules(folder, items, load_engagement_info(folder)).recorded is False
     assert ledger.path_for(folder).read_bytes() == before        # the bytes are the bytes
     conn = store.connect()
-    assert store.check(conn, store.root_for(folder), folder) == []
+    assert store_check.check(conn, store.root_for(folder), folder) == []
     assert store.rules(conn, folder)[2]["manual_override"] == "Waived"   # the store keeps them too
 
 
@@ -501,7 +501,7 @@ def test_an_identifier_respelled_by_case_or_removed_leaves_the_record_holding_on
     conn = store.connect()          # the live store, as the save left it - not a rebuild
     assert [row["identifier"] for row in store.rules(conn, engagement)] == ["a01", "A02", "B01"]
     assert list(ledger.replay(ledger.read_events(engagement)).rules) == ["A02", "B01", "a01"]
-    assert store.check(conn, tmp_path, engagement) == []
+    assert store_check.check(conn, tmp_path, engagement) == []
     assert [i.identifier for i in load_manifest(engagement)] == ["a01", "A02", "B01"]
 
     before = ledger.path_for(engagement).read_bytes()
@@ -517,7 +517,7 @@ def test_an_identifier_respelled_by_case_or_removed_leaves_the_record_holding_on
     assert gone.removed == ("É01",)
     assert [row["identifier"] for row in store.rules(conn, engagement)] == ["a01", "A02", "B01"]
     assert list(ledger.replay(ledger.read_events(engagement)).rules) == ["A02", "B01", "a01"]
-    assert store.check(conn, tmp_path, engagement) == []
+    assert store_check.check(conn, tmp_path, engagement) == []
 
 
 def test_the_engagement_details_round_trip_through_the_record(tmp_path):

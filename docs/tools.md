@@ -59,7 +59,7 @@ engagement's request — invisible to every other engagement and to the
 catalog the suite tests, and laid over the row's own `Any Keywords` by every
 reader. A word that turns out not to be distinctive is taken back in the
 app's editor, per engagement, as one `keyword_unlearned` event that both
-folds know and `store.check()` compares (decision 113); the firm-wide
+folds know and `store_check.check()` compares (decision 113); the firm-wide
 vocabulary is still `tracker/templates.py` and still changes only by a
 commit. `tools/learned_keywords.py` is the season's list of
 them: it walks every engagement under the clients root, compares each request

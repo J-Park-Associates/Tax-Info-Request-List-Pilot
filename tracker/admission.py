@@ -56,11 +56,13 @@ line was written; every family function and helper takes it as an argument
 function takes ``dict``, not the journal's ``TypedDict`` for its family: a
 line here has not yet been proved to have that shape.
 
-**Who asks it.** The store, and nothing else at load time: ``record`` before
-anything is appended, ``_apply`` on every line read in, the re-judging of
-the lines a row already applied (decision 209, R3b), ``check`` and
-``verify`` over every journal, and the checkpoint's judgment of a writer
-(``_judge``), which asks :func:`_line_keys_problem`. The store imports back
+**Who asks it.** The store and the check, and nothing else at load time:
+the store's ``record`` before anything is appended, ``_apply`` on every
+line read in, the re-judging of the lines a row already applied (decision
+209, R3b), ``verify`` over every journal, and the checkpoint's judgment of
+a writer (``_judge``), which asks :func:`_line_keys_problem`; and
+:func:`tracker.store_check.check` over every journal, at call time, through
+that module's own load-time import of the rule (P324). The store imports back
 the names it uses itself and calls them bare, so a stand-in on
 ``store._refuse_a_malformed_line`` still replaces what ``store.record``
 calls. The store's own errors (``CheckpointNotMade``, ``StoreUnavailable``,
@@ -69,8 +71,9 @@ caller that catches ``store.StoreError`` catches a refusal as before.
 
 The code below came from the store byte for byte, with its comments and
 docstrings, and was then split into the family functions with no rule
-changed: where they name :func:`record`, :func:`_apply`, :func:`check` or
-:func:`_judge`, they mean the store's.
+changed: where they name :func:`record`, :func:`_apply` or :func:`_judge`,
+they mean the store's, and where they name :func:`check`, the check's,
+which P324 moved to :mod:`tracker.store_check`.
 """
 
 from __future__ import annotations

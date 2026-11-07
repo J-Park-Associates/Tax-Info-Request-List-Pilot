@@ -12,7 +12,7 @@ module loads. An import inside a function, a class body or the module's
 ``if __name__ == "__main__":`` block is a call-time import: it runs when
 called, so it can point anywhere, and the map labels it separately. The
 scanner never imports the filer: the filer reaches it at call time, inside
-``_rescan()``. Three two-module cycles remain, each closing at call time,
+``_rescan()``. Four two-module cycles remain, each closing at call time,
 and :data:`CALL_TIME_CYCLES` names them.
 
 **The layers.** In-layer edges are allowed (``ledger`` and ``manifest``
@@ -94,8 +94,8 @@ layer allows: it imports ``admission`` (P323), ``bounds`` (P321),
 ``manifest``.
 Everything it holds comes out of the journal, so the database that answers
 for the readers never depends on the modules that walk folders and move
-files; its command line imports the registry at call time, which is where
-a cycle is allowed to close.
+files; its command line imports the registry, and the check and the export
+(P324), at call time, which is where a cycle is allowed to close.
 
 **The domains** (decision P314). A layer says what a module may import; a
 domain says what the module is for. There are six: ``record`` (the household's
@@ -189,8 +189,12 @@ LAYERS: dict[int, frozenset[str]] = {
     # a line of the record meets, out of ``store``, which imports it back -
     # ``bounds`` (L0), ``ledger`` and ``records`` (L1); ``layout`` and
     # ``reasons`` at call time.
+    # ``store_check`` joins L1 with P324 (SPEC-architecture-p3 P3.4): the gate
+    # and the export out of ``store`` - ``admission``, ``ledger``, ``records``
+    # and ``store`` (L1), ``locking`` (L0); ``fsio`` at call time; the store's
+    # command line asks it at call time.
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
-                  "templates", "validators", "index", "admission"}),
+                  "templates", "validators", "index", "admission", "store_check"}),
     2: frozenset({"containers", "content_check", "names", "ocr", "router"}),
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review"}),
     # ``after_install`` joins L4 with decision 209, beside the scheduler it
@@ -218,7 +222,7 @@ DOMAINS: dict[str, frozenset[str]] = {
     # is the ``door`` domain below.
     "record": frozenset({"__init__", "ledger", "locking", "checkpoint", "fsio", "layout", "door",
                          "settings", "hold", "records", "bounds", "store", "index", "manifest",
-                         "households", "templates", "scaffold", "admission"}),
+                         "households", "templates", "scaffold", "admission", "store_check"}),
     # Opening a client's file, checking it and getting the text out of it.
     "reading": frozenset({"validators", "containers", "content_check", "ocr"}),
     # Deciding where a document belongs, or that it belongs nowhere yet, and
@@ -438,6 +442,17 @@ def test_the_admission_imports_the_bounds_the_journal_and_the_record():
     assert call["admission"] == {"layout", "reasons"}, call["admission"]
 
 
+def test_the_check_imports_the_store_and_the_record_and_writes_through_fsio_alone():
+    """P324: the gate and the export read the store, the admission, the
+    journal and the record (L1) and the lock (L0, whose ``full_sync`` the
+    export's write calls) at load time, and reach ``fsio`` at call time for
+    the one file they write that is not the database. The store does not
+    import the check at load time; its command line asks it at call time."""
+    load, call = import_edges()
+    assert load["store_check"] == {"admission", "ledger", "locking", "records", "store"}, load["store_check"]
+    assert call["store_check"] == {"fsio"}, call["store_check"]
+
+
 def test_the_manifest_imports_the_bounds_and_the_record_and_nothing_else():
     """Narrower since decision 103, and kept so by 104.
 
@@ -531,6 +546,7 @@ def test_the_scanner_never_imports_the_filer_and_the_filer_reaches_it_only_at_ca
 CALL_TIME_CYCLES: frozenset[frozenset[str]] = frozenset({
     frozenset({"index", "store"}),          # ``store.verify`` asks the index at call time
     frozenset({"registry", "store"}),       # the store asks the registry at call time
+    frozenset({"store", "store_check"}),    # the store's ``__main__`` asks the check
     frozenset({"scaffold", "validators"}),  # validators' ``__main__`` block asks scaffold
 })
 

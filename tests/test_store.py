@@ -7,30 +7,44 @@ the store's own behaviour - the schema it refuses to guess at, the
 journal-then-apply guarantee and the replay that repairs a torn one, the
 rebuild that is also the recovery and takes the journal alone, the order a
 row that changed identity keeps, the three words it answers its own state
-in, the export, and the one placement rule: the file is never under the
-clients root, because that folder syncs.
+in, and the one placement rule: the file is never under the clients root,
+because that folder syncs. The check's own behaviour and the export's are
+tests/test_store_check.py's (P324), and the fixtures and helpers both files
+read are tests/store_helpers.py's.
 """
 
 from __future__ import annotations
 
-import csv
-import datetime as dt
 import hashlib
 import json
 import os
 import re
 import sqlite3
-import subprocess
-import sys
 from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
 
-from tests.builders import cache_rows, drop, engagement_fixture
-from tests.conftest import child_env, make_engagement, seed_statuses, sort, written_elsewhere
+from tests import store_helpers
+from tests.builders import cache_rows, drop
+from tests.conftest import make_engagement, seed_statuses, sort, written_elsewhere
 from tests.samples import text_pdf
-from tracker import admission, checkpoint, ledger, store
+from tests.store_helpers import (
+    DAY1,
+    DAY2,
+    ITEMS,
+    _a_rule,
+    a_pass,
+    build,
+    cli,
+    edit_rules,
+    id_of,
+    learned,
+    said,
+    scanned,
+    unlearned,
+)
+from tracker import admission, checkpoint, ledger, store, store_check
 from tracker.index import ensure, read_index
 from tracker.layout import inbox_of
 from tracker.locking import engagement_lock
@@ -42,22 +56,6 @@ from tracker.manifest import (
     save_rules,
 )
 from tracker.records import RULE_FIELDS, StatusUpdate, entry_to_json, rule_from_json, rule_to_json
-
-REPO = Path(__file__).resolve().parents[1]
-DAY1 = dt.date(2026, 7, 1)
-DAY2 = dt.date(2026, 7, 9)
-
-ITEMS = [
-    RequestItem(
-        identifier="A01", document="W-2 Wage Statements", period="TY2025",
-        allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("W-2",),
-        date_pattern=r"(?i)\b2025\b",
-    ),
-    RequestItem(
-        identifier="C01", document="Mortgage Interest Statement", period="TY2025",
-        allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("1098",),
-    ),
-]
 
 
 def one_value(database: Path, sql: str, *parameters):
@@ -75,41 +73,12 @@ def one_value(database: Path, sql: str, *parameters):
         conn.close()
 
 
-@pytest.fixture
-def root(tmp_path):
-    """The clients root - the folder a cloud client syncs."""
-    folder = tmp_path / "Clients"
-    folder.mkdir()
-    return folder
-
-
-engagement = engagement_fixture(ITEMS, household="Smith Family", root="root")
-
-
-@pytest.fixture
-def by_hand(engagement):
-    """An engagement whose record this test writes itself.
-
-    These tests are about the store's fold, not the filer's, so they append
-    rows no pass ever made - and the suite's own fixture holds every
-    record to its journal. The record is removed when the test ends, the
-    way the journal's own tests put back what they tore, so the folder the
-    fixtures then see holds no record to check.
-    """
-    yield engagement
-    ledger.path_for(engagement).unlink(missing_ok=True)
-
-
-@pytest.fixture
-def conn(tmp_path):
-    """A store beside the app, which is not under the clients root."""
-    connection = store.open(tmp_path / "app" / store.STORE_FILENAME)
-    yield connection
-    connection.close()
-
-
-def build(conn, root, engagement):
-    store.rebuild_engagement(conn, root, engagement)
+#: The store's fixtures, from ``tests/store_helpers.py``: each named once so
+#: that every claim below can ask for it.
+root = store_helpers.root
+engagement = store_helpers.engagement
+by_hand = store_helpers.by_hand
+conn = store_helpers.conn
 
 
 def key_of(folder):
@@ -136,43 +105,8 @@ def unlinked(events):
     return [{k: v for k, v in event.items() if k not in ledger.LINE_KEYS} for event in events]
 
 
-def edit_rules(engagement, **fields_by_identifier):
-    """A person's edit of one or more rows, saved in the app as one event."""
-    from dataclasses import replace
-
-    rows = [RequestItem(**rule_from_json(row)) for row in store.rules(store.connect(), engagement)]
-    edited = [replace(row, **fields_by_identifier.get(row.identifier, {})) for row in rows]
-    return save_rules(engagement, edited, load_engagement_info(engagement))
-
-
-def said(conn, root, engagement):
-    return store.check(conn, root, engagement)
-
-
 def rows(conn, table):
     return [tuple(row) for row in conn.execute(f"SELECT * FROM {table} ORDER BY rowid")]
-
-
-def id_of(conn, folder):
-    """The store's id for one folder.
-
-    Since decision 125 a household is a row of ``engagements`` too - the
-    same table, keyed by path, with ``kind`` saying which - so a question
-    about one return's rows names that return rather than reading the
-    first row of a table."""
-    return store._engagement_row(conn, folder)["id"]
-
-
-def learned(identifier: str, keyword: str) -> dict:
-    """A person's filing teaching one request one word."""
-    return ledger.new(ledger.KEYWORD_LEARNED, **{ledger.IDENTIFIER_KEY: identifier,
-                                                 ledger.KEYWORD_KEY: keyword})
-
-
-def unlearned(identifier: str, keyword: str) -> dict:
-    """A person taking one of those words back, in the editor (decision 113)."""
-    return ledger.new(ledger.KEYWORD_UNLEARNED, **{ledger.IDENTIFIER_KEY: identifier,
-                                                   ledger.KEYWORD_KEY: keyword})
 
 
 #: How the store keys the one return these tests make: its path below the
@@ -566,58 +500,6 @@ def test_the_state_is_current_behind_or_unknown(conn, root, by_hand):
     assert now() == store.BEHIND                       # the record moved without it
 
 
-# ---------------------------------------------------------------- the export ----
-
-
-def test_the_export_writes_every_cell_as_text_and_a_formula_shaped_name_stays_a_name(
-        conn, root, engagement, tmp_path):
-    drop(engagement, "=SUM scan.pdf", "Form W-2 Wage and Tax Statement 2025")
-    sort(engagement, today=DAY1)
-    build(conn, root, engagement)
-
-    written = store.export(conn, tmp_path / "out")
-
-    assert [path.name for path in written] == [
-        store.DOCUMENTS_CSV, store.REQUESTS_CSV, store.ENGAGEMENTS_CSV]
-    for path in written:
-        raw = path.read_bytes()
-        assert raw.startswith(b"\xef\xbb\xbf")         # Excel opens it as UTF-8
-        assert b"\r\n" not in raw
-    documents = list(csv.DictReader(
-        (tmp_path / "out" / store.DOCUMENTS_CSV).read_text(encoding="utf-8-sig").splitlines()))
-    assert len(documents) == 1
-    # Behind an apostrophe: a spreadsheet shows the name and never runs it.
-    assert documents[0]["original_name"] == "'=SUM scan.pdf"
-    assert all(isinstance(value, str) for value in documents[0].values())
-
-
-def test_the_export_disarms_a_request_named_like_a_command(conn, root, engagement, tmp_path):
-    """A document name typed into the request list as a DDE formula reaches
-    requests.csv behind an apostrophe, whatever the quoting: a spreadsheet
-    evaluates a cell that begins with = + - @ or a tab on the way in."""
-    edit_rules(engagement, A01={"document": "=cmd|' /C calc'!A0"})
-    build(conn, root, engagement)
-    store.export(conn, tmp_path / "out")
-    text = (tmp_path / "out" / store.REQUESTS_CSV).read_text(encoding="utf-8-sig")
-    assert "'=cmd|' /C calc'!A0" in text.replace('""', "'")
-    assert not any(line.split(",")[2].startswith(('"=', "=")) for line in text.splitlines()[1:])
-
-
-def test_the_export_carries_nothing_the_index_and_the_request_list_do_not(
-        conn, root, engagement, tmp_path):
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025 Jane Q Client")
-    sort(engagement, today=DAY1)
-    build(conn, root, engagement)
-
-    store.export(conn, tmp_path / "out")
-
-    for path in (tmp_path / "out").iterdir():
-        text = path.read_text(encoding="utf-8-sig")
-        # A word out of the document itself, which no reading of the index
-        # or the request list ever carries.
-        assert "Jane Q Client" not in text
-
-
 def test_a_rebuild_from_the_journal_alone_equals_the_store(root, engagement):
     """Create, edit twice, file a drop, scan; delete the database; rebuild
     from the journal; the check says nothing and every table is what it was."""
@@ -640,7 +522,7 @@ def test_a_rebuild_from_the_journal_alone_equals_the_store(root, engagement):
     fresh = store.open(db)
     try:
         store.rebuild_engagement(fresh, root, engagement)
-        assert store.check(fresh, root, engagement) == []
+        assert store_check.check(fresh, root, engagement) == []
         assert (store.rules(fresh, engagement), store.statuses(fresh, engagement),
                 store.documents(fresh, engagement), store.engagement_info(fresh, engagement)) == before
     finally:
@@ -648,13 +530,6 @@ def test_a_rebuild_from_the_journal_alone_equals_the_store(root, engagement):
 
 
 # ----------------------------------------------------------- the verdict cache ----
-
-
-def a_pass(engagement):
-    from tracker.scanner import scan_engagement
-
-    sort(engagement, today=DAY1)
-    return scan_engagement(engagement, today=DAY1)
 
 
 def test_a_rebuild_forgets_the_engagements_verdicts_and_the_next_pass_reads_again(
@@ -674,7 +549,7 @@ def test_a_rebuild_forgets_the_engagements_verdicts_and_the_next_pass_reads_agai
     store.rebuild_engagement(live, root, engagement)
 
     assert cache_rows(engagement) == ({}, {})
-    assert store.check(live, root, engagement) == []
+    assert store_check.check(live, root, engagement) == []
     # The create, the one intent the filing wrote before it copied
     # (decision 119 - the move out of the inbox writes none since 125),
     # the filing itself and the scan.
@@ -694,36 +569,6 @@ def test_a_rebuild_forgets_the_engagements_verdicts_and_the_next_pass_reads_agai
     assert all(verdicts[digest][fingerprint] == verdict
                for digest, by_fingerprint in refilled_verdicts.items()
                for fingerprint, verdict in by_fingerprint.items())
-
-
-def test_the_verdict_tables_are_not_in_the_check_and_not_in_the_export(root, engagement, tmp_path):
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025 Jane Q Client")
-    a_pass(engagement)
-    live = store.connect()
-    engagement_id = store._engagement_row(live, engagement)["id"]
-    stored = list(live.execute(f"SELECT digest, fingerprint, verdict FROM {store.VERDICTS_TABLE} "
-                               "WHERE engagement_id = ?", (engagement_id,)))
-    assert stored
-    # No client text: a verdict row carries the firm's words - the keyword,
-    # the Period - and never a word of the document that is not a keyword.
-    for row in stored:
-        assert "Jane" not in row["verdict"] and "Client" not in row["verdict"]
-
-    assert store.check(live, root, engagement) == []
-    live.execute(f"DELETE FROM {store.VERDICTS_TABLE} WHERE engagement_id = ?", (engagement_id,))
-    live.execute(f"DELETE FROM {store.FILE_MEMOS_TABLE} WHERE engagement_id = ?", (engagement_id,))
-    assert store.check(live, root, engagement) == []          # the check never looked
-    live.execute(f"INSERT INTO {store.VERDICTS_TABLE} VALUES (?, ?, ?, ?, ?)",
-                 (engagement_id, "feedface", "0123456789abcdef", 1, '{"ok": false}'))
-    assert store.check(live, root, engagement) == []          # nor at a row nothing wrote
-
-    written = store.export(live, tmp_path / "out")
-    assert [path.name for path in written] == [store.DOCUMENTS_CSV, store.REQUESTS_CSV,
-                                               store.ENGAGEMENTS_CSV]
-    for path in written:
-        text = path.read_text(encoding="utf-8-sig")
-        assert "feedface" not in text and "0123456789abcdef" not in text
-        assert stored[0]["fingerprint"] not in text
 
 
 def test_remembering_verdicts_refuses_outside_the_lock_and_for_an_unknown_engagement(
@@ -800,16 +645,10 @@ def test_a_failed_create_is_forgotten_and_a_retired_event_is_refused(conn, root,
     with engagement_lock(engagement):
         with pytest.raises(store.StoreError, match="retired"):
             store.record(conn, engagement, {ledger.EVENT_KEY: ledger.RULES_IMPORTED, ledger.AT_KEY: "now"})
-    assert store.check(conn, root, engagement) == []
+    assert store_check.check(conn, root, engagement) == []
 
 
 # ------------------------------------------------------------------- the CLI ----
-
-
-def cli(*argv):
-    return subprocess.run([sys.executable, "-m", "tracker.store", *[str(a) for a in argv]],
-                          cwd=REPO, capture_output=True, text=True, encoding="utf-8",
-                          env=child_env(PYTHONIOENCODING="utf-8"))
 
 
 def test_the_command_line_builds_every_engagement_under_a_root(root, tmp_path):
@@ -1078,7 +917,7 @@ def test_a_store_left_behind_is_rebuilt_from_the_record_in_its_new_home(root, en
     try:
         assert store.store_path() == tmp_path / "account-data" / store.STORE_FILENAME
         assert store.catch_up(fresh, root, engagement) >= 1
-        assert store.check(fresh, root, engagement) == []
+        assert store_check.check(fresh, root, engagement) == []
     finally:
         store.close()
     assert old.read_bytes() == before
@@ -1122,24 +961,6 @@ def test_the_store_names_no_reader_at_load_time():
 # ------------------------------------------------------- the readers, checked ----
 
 
-def test_the_check_names_the_engagement_the_row_and_the_field(conn, root, engagement):
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    sort(engagement, today=DAY1)
-    build(conn, root, engagement)
-    assert said(conn, root, engagement) == []
-
-    conn.execute("UPDATE documents SET reason = 'something else'")
-    sentence = said(conn, root, engagement)[0]
-    assert engagement.name in sentence and "reason" in sentence and "something else" in sentence
-
-
-def test_an_engagement_the_store_has_never_seen_is_said_so_rather_than_passed(
-        conn, root, engagement):
-    store.forget(conn, engagement)                # the create's row, gone
-    sentence = said(conn, root, engagement)
-    assert len(sentence) == 1 and "does not hold this engagement" in sentence[0]
-
-
 def test_an_unlearn_deletes_the_row_and_a_rebuild_from_the_journal_agrees(conn, root, by_hand):
     """Decision 113: a word taught by an event is taken back by an event.
 
@@ -1163,34 +984,6 @@ def test_an_unlearn_deletes_the_row_and_a_rebuild_from_the_journal_agrees(conn, 
 
     build(conn, root, by_hand)                    # from the journal and nothing else
     assert store.learned_keywords(conn, by_hand) == {"a01": ("escrow", "lender")}
-    assert said(conn, root, by_hand) == []
-
-
-def test_check_reports_a_learned_keyword_in_the_store_and_not_in_the_record_and_the_other_way_round(
-        conn, root, by_hand):
-    """The gate reaches the learned table at last (decision 113).
-
-    Until now it compared the documents, the statuses and the rules, and
-    this table was the one thing in the store the record could not vouch
-    for: a row planted or dropped behind the journal's back said nothing.
-    """
-    build(conn, root, by_hand)
-    with engagement_lock(by_hand):
-        store.record(conn, by_hand, learned("A01", "lender"))
-    assert said(conn, root, by_hand) == []
-
-    held = conn.execute("SELECT engagement_id, seq FROM learned_keywords").fetchone()
-    conn.execute('INSERT INTO learned_keywords (engagement_id, "identifier", keyword, seq) '
-                 "VALUES (?, ?, ?, ?)", (held["engagement_id"], "a01", "escrow", held["seq"] + 1))
-    (sentence,) = said(conn, root, by_hand)
-    assert by_hand.name in sentence and "a01" in sentence
-    assert "'lender', 'escrow'" in sentence and "['lender']" in sentence
-
-    conn.execute("DELETE FROM learned_keywords")
-    (sentence,) = said(conn, root, by_hand)
-    assert "a01" in sentence and "[]" in sentence and "['lender']" in sentence
-
-    store.rebuild_engagement(conn, root, by_hand)
     assert said(conn, root, by_hand) == []
 
 
@@ -1220,128 +1013,6 @@ def test_a_malformed_unlearn_line_is_refused_by_name(conn, root, by_hand):
         store._refuse_a_malformed_line(
             {ledger.EVENT_KEY: ledger.KEYWORD_LEARNED, ledger.IDENTIFIER_KEY: "",
              ledger.KEYWORD_KEY: "lender"}, 3, by_hand.name)
-
-
-# ------------------------------------------- a request respelled by case (136) ----
-
-
-def scanned(**statuses) -> dict:
-    """One scan's line, the statuses it changed by the spelling it met."""
-    return ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {
-        identifier: {"status": status, "file_count": 0} for identifier, status in statuses.items()}})
-
-
-def test_a_status_scanned_under_a_case_respelled_identifier_is_one_request_to_the_check(
-        conn, root, by_hand):
-    """Decision 136: ``A01`` and ``a01`` are one request, so the later scan
-    is its status. The store keys it that way; the check used to fold the
-    two spellings apart and name the earlier one as the record's word."""
-    build(conn, root, by_hand)
-    with engagement_lock(by_hand):
-        store.record(conn, by_hand, scanned(A01=Status.RECEIVED))
-        store.record(conn, by_hand, scanned(a01=Status.MISSING))
-
-    held = conn.execute('SELECT status FROM statuses WHERE "identifier" = ?', ("a01",)).fetchone()
-    assert held["status"] == Status.MISSING
-    assert said(conn, root, by_hand) == []
-
-
-def test_keywords_taught_under_two_spellings_of_one_request_are_checked_in_the_order_they_were_taught(
-        conn, root, by_hand):
-    build(conn, root, by_hand)
-    with engagement_lock(by_hand):
-        store.record(conn, by_hand, learned("A01", "alpha"), learned("a01", "beta"),
-                     learned("A01", "gamma"))
-
-    assert store.learned_keywords(conn, by_hand) == {"a01": ("alpha", "beta", "gamma")}
-    assert said(conn, root, by_hand) == []
-
-
-def test_a_word_retaught_under_the_other_spelling_is_checked_last_once(conn, root, by_hand):
-    build(conn, root, by_hand)
-    with engagement_lock(by_hand):
-        store.record(conn, by_hand, learned("A01", "alpha"), learned("a01", "beta"),
-                     learned("A01", "gamma"), learned("a01", "alpha"))
-
-    assert store.learned_keywords(conn, by_hand) == {"a01": ("beta", "gamma", "alpha")}
-    assert said(conn, root, by_hand) == []
-
-
-def test_a_word_taken_back_under_the_other_spelling_is_gone_from_both_sides(conn, root, by_hand):
-    build(conn, root, by_hand)
-    with engagement_lock(by_hand):
-        store.record(conn, by_hand, learned("A01", "alpha"), learned("A01", "beta"),
-                     unlearned("a01", "alpha"))
-
-    assert store.learned_keywords(conn, by_hand) == {"a01": ("beta",)}
-    assert said(conn, root, by_hand) == []
-    build(conn, root, by_hand)                    # and a store built from nothing agrees
-    assert said(conn, root, by_hand) == []
-
-
-def test_the_check_still_names_a_status_planted_in_the_store_behind_the_journals_back(
-        conn, root, by_hand):
-    """The gate keeps its teeth: keying the record's side without case
-    joins two spellings of one request, and nothing else."""
-    build(conn, root, by_hand)
-    with engagement_lock(by_hand):
-        store.record(conn, by_hand, scanned(A01=Status.RECEIVED), learned("A01", "lender"))
-    assert said(conn, root, by_hand) == []
-    engagement_id = id_of(conn, by_hand)
-
-    conn.execute('INSERT INTO statuses (engagement_id, "identifier", status, file_count, seq) '
-                 "VALUES (?, ?, ?, ?, ?)", (engagement_id, "c01", Status.RECEIVED, 1, 99))
-    (sentence,) = said(conn, root, by_hand)
-    assert "c01" in sentence and "in the store and none in the record" in sentence
-    conn.execute('DELETE FROM statuses WHERE "identifier" = ?', ("c01",))
-
-    conn.execute('UPDATE statuses SET status = ? WHERE "identifier" = ?', (Status.MISSING, "a01"))
-    (sentence,) = said(conn, root, by_hand)
-    assert "A01" in sentence and repr(Status.MISSING) in sentence and repr(Status.RECEIVED) in sentence
-
-    conn.execute("DELETE FROM statuses")
-    (sentence,) = said(conn, root, by_hand)
-    assert "A01" in sentence and "in the record and none in the store" in sentence
-
-    conn.execute("DELETE FROM learned_keywords")
-    problems = said(conn, root, by_hand)
-    assert any("a01" in p and "[]" in p and "['lender']" in p for p in problems)
-
-    store.rebuild_engagement(conn, root, by_hand)
-    assert said(conn, root, by_hand) == []
-
-
-def test_an_end_to_end_respelling_leaves_the_check_empty(conn, root, engagement):
-    """The way it happens in the app: a scan and a filing that taught a
-    word under ``A01``, the person retypes it ``a01``, then a scan, a
-    filing that teaches, and the first word taken back in the editor."""
-    from dataclasses import replace
-
-    from tracker.filer import assign_review_file
-    from tracker.manifest import unlearn_keyword
-
-    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
-    parked = sort(engagement, today=DAY1).review[0]
-    assign_review_file(engagement, parked.pbc_location, "A01", keyword="lender", today=DAY1)
-    seed_statuses(engagement, {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1,
-                                                   received_date=DAY1)})
-
-    rules = load_manifest(engagement)
-    respelled = [replace(row, identifier="a01") if row.identifier == "A01" else row for row in rules]
-    assert save_rules(engagement, respelled, load_engagement_info(engagement)).removed == ("A01",)
-
-    seed_statuses(engagement, {"a01": StatusUpdate(status=Status.PARTIAL, file_count=1,
-                                                   received_date=DAY2)})
-    drop(engagement, "scan0013.pdf", "nothing the rules recognise either")
-    parked = sort(engagement, today=DAY2).review[0]
-    assign_review_file(engagement, parked.pbc_location, "a01", keyword="escrow", today=DAY2)
-    unlearn_keyword(engagement, "a01", "lender")
-
-    build(conn, root, engagement)
-    assert store.learned_keywords(conn, engagement) == {"a01": ("escrow",)}
-    assert store.check(conn, root, engagement) == []
-    live = store.connect()                        # the store as the app left it, not a rebuild
-    assert store.check(live, root, engagement) == []
 
 
 # ------------------------------- a batch of lines across two spellings (138) ----
@@ -1510,7 +1181,7 @@ def test_a_pass_and_the_command_line_key_one_engagement_the_same_way(root, engag
     conn = store.connect()
     # One row for the return, and one for the household record above it.
     assert conn.execute("SELECT COUNT(*) FROM engagements").fetchone()[0] == 2
-    assert store.check(conn, root.parent, engagement) == []
+    assert store_check.check(conn, root.parent, engagement) == []
     assert next(i.status for i in load_manifest(engagement) if i.identifier == "A01") == Status.RECEIVED
 
 
@@ -1559,8 +1230,8 @@ def test_a_folder_nested_under_the_clients_root_is_never_another_engagement(reco
     ]
     assert read_index(nested) == []
     assert [e.original_name for e in read_index(engagement)] == ["w2.pdf"]
-    assert store.check(conn, recorded_root, engagement) == []
-    assert store.check(conn, recorded_root, nested) == []
+    assert store_check.check(conn, recorded_root, engagement) == []
+    assert store_check.check(conn, recorded_root, nested) == []
     assert {i.identifier for i in load_manifest(nested)} == {i.identifier for i in ITEMS}
 
 
@@ -1578,9 +1249,9 @@ def test_a_pass_keys_one_return_the_same_way_whichever_root_is_named(recorded_ro
     conn = store.connect()
     assert [r["path"] for r in conn.execute(
         "SELECT path FROM engagements WHERE kind = ?", (store.KIND_RETURN,))] == [KEY]
-    assert store.check(conn, engagement, engagement) == []                # the narrowest root
-    assert store.check(conn, recorded_root.parent, engagement) == []      # a wider one
-    assert store.check(conn, recorded_root, engagement) == []             # the recorded one
+    assert store_check.check(conn, engagement, engagement) == []                # the narrowest root
+    assert store_check.check(conn, recorded_root.parent, engagement) == []      # a wider one
+    assert store_check.check(conn, recorded_root, engagement) == []             # the recorded one
     assert [e.original_name for e in read_index(engagement)] == ["w2.pdf"]
     # Two rows: this return, and the household record above it.
     assert conn.execute("SELECT COUNT(*) FROM engagements").fetchone()[0] == 2
@@ -1639,7 +1310,7 @@ def test_two_years_of_one_return_are_two_rows_when_the_settings_name_no_root(roo
         "SELECT path FROM engagements WHERE kind = ? ORDER BY path", (store.KIND_RETURN,))] == [
         "J Park & Associates/Smith/2025/1040 - Smith", "J Park & Associates/Smith/2026/1040 - Smith",
     ]
-    assert store.check(conn, root, earlier) == [] and store.check(conn, root, later) == []
+    assert store_check.check(conn, root, earlier) == [] and store_check.check(conn, root, later) == []
     assert store.key_root(earlier) == root and store.key_root(later) == root
     assert [r.getMessage() for r in caplog.records
             if r.name == "tracker.scaffold" and r.levelno >= logging.WARNING] == []
@@ -1765,7 +1436,7 @@ def test_a_store_of_the_previous_version_is_set_aside_and_rebuilt(root, engageme
             KEY, KEY.replace("/2025/", "/2026/"),
         ]
         assert store._engagement_row(conn, engagement)["path"] == KEY     # the exact key, no tail
-        assert store.check(conn, root, engagement) == [] and store.check(conn, root, next_year) == []
+        assert store_check.check(conn, root, engagement) == [] and store_check.check(conn, root, next_year) == []
     finally:
         conn.close()
 
@@ -1814,32 +1485,6 @@ def test_document_seqs_names_the_line_that_last_wrote_each_row_and_agrees_after_
     assert store.document_seqs(conn, engagement) == {}
 
 
-def test_the_check_names_a_move_the_two_sides_do_not_agree_is_open(conn, root, engagement,
-                                                                   monkeypatch):
-    """Decision 119: a recovery finishes what this table says is open, so a
-    table that kept an intent the journal has closed would move a file the
-    record has already recorded. The check compares the two folds and says
-    which key they disagree about."""
-    from tests.builders import killed_at_the_record
-
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    killed_at_the_record(monkeypatch)
-    with pytest.raises(KeyboardInterrupt):
-        sort(engagement, today=DAY1)
-    build(conn, root, engagement)
-    assert said(conn, root, engagement) == []
-    [open_move] = store.open_intents(conn, engagement)
-
-    conn.execute("DELETE FROM intents")
-    sentence = said(conn, root, engagement)[0]
-    assert engagement.name in sentence and open_move[ledger.KEY_KEY] in sentence
-    assert "not in the store" in sentence
-
-    build(conn, root, engagement)                    # and a rebuild puts it back
-    assert said(conn, root, engagement) == []
-    assert store.open_intents(conn, engagement) == [open_move]
-
-
 def test_the_two_retired_names_read_once_and_are_never_written(conn, root, by_hand):
     """Decision 132 retired two things decision 129 wrote. A journal from
     before it may carry a ``handed_over_by_person`` line: it is read, folded
@@ -1860,7 +1505,7 @@ def test_the_two_retired_names_read_once_and_are_never_written(conn, root, by_ha
 
     assert ledger.replay(ledger.read_events(by_hand)).rows == {}
     assert store.documents(conn, by_hand) == []
-    assert store.check(conn, root, by_hand) == []
+    assert store_check.check(conn, root, by_hand) == []
 
     # Never written: not by the journal, not by the store.
     with pytest.raises(ledger.LedgerError, match="retired"):
@@ -1902,7 +1547,7 @@ def test_a_released_line_takes_the_row_out_and_closes_its_intent_in_both_folds(
     folded = ledger.replay(ledger.read_events(by_hand))
     assert folded.rows == {} and folded.intents == {}
     assert store.documents(conn, by_hand) == [] and store.open_intents(conn, by_hand) == []
-    assert store.check(conn, root, by_hand) == []
+    assert store_check.check(conn, root, by_hand) == []
     with engagement_lock(by_hand):
         with pytest.raises(store.StoreError, match="carries no row"):
             store.record(conn, by_hand, ledger.new(ledger.RELEASED, **{
@@ -1946,7 +1591,7 @@ def the_store_is_the_journal(conn, root, engagement):
     stored = store._engagement_row(conn, engagement)
     assert stored["applied_seq"] == len(ledger.read_events(engagement))
     assert stored["ledger_head"] == ledger.head(engagement)
-    assert store.check(conn, root, engagement) == []
+    assert store_check.check(conn, root, engagement) == []
     assert store.state(conn, engagement, ledger_head_now=ledger.head(engagement)) == store.CURRENT
 
 
@@ -2392,7 +2037,7 @@ def test_a_row_written_without_asked_reads_as_asked(conn, root, by_hand):
     assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 20
     assert all(row["asked"] is True for row in store.rules(conn, by_hand))
     assert all(item.asked for item in load_manifest(by_hand))
-    assert store.check(conn, root, by_hand) == []
+    assert store_check.check(conn, root, by_hand) == []
 
     before = ledger.path_for(by_hand).read_bytes()
     assert save_rules(by_hand, load_manifest(by_hand), load_engagement_info(by_hand)).recorded is False
@@ -2422,7 +2067,7 @@ def test_a_row_written_without_a_short_title_reads_as_blank(conn, root, by_hand)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 20
     assert all(item.short_title == "" for item in load_manifest(by_hand))
     assert all(item.short_name for item in load_manifest(by_hand))
-    assert store.check(conn, root, by_hand) == []
+    assert store_check.check(conn, root, by_hand) == []
 
     before = ledger.path_for(by_hand).read_bytes()
     assert save_rules(by_hand, load_manifest(by_hand), load_engagement_info(by_hand)).recorded is False
@@ -2494,10 +2139,6 @@ def _tables(conn, engagement) -> list:
             f"SELECT * FROM {table} WHERE engagement_id = ? ORDER BY rowid", mine)]
         for table in ("documents", "requests")
     ] + [tuple(conn.execute("SELECT * FROM engagements WHERE id = ?", mine).fetchone())]
-
-
-def _a_rule(**fields) -> dict:
-    return {**rule_to_json(ITEMS[0]), **fields}
 
 
 IMPOSSIBLE = [
@@ -2654,23 +2295,6 @@ def test_a_refusal_never_quotes_the_value_it_refused(by_hand):
         assert marker not in str(refused.value), str(refused.value)
 
 
-def test_the_store_check_names_a_line_the_gate_now_refuses(conn, root, by_hand, monkeypatch):
-    """A line an earlier version applied that today's rule refuses is named
-    by ``check`` on the day of the upgrade (decision 187), without the store
-    being deleted to find it: every line of every journal is judged again."""
-    build(conn, root, by_hand)
-    runaway = ledger.new(ledger.RULES_CHANGED, rules=[_a_rule(date_pattern=r"(\d+)+x")])
-    monkeypatch.setattr(store, "_refuse_a_malformed_line", lambda *args, **kwargs: None)
-    with engagement_lock(by_hand):
-        store.record(conn, by_hand, runaway)
-    monkeypatch.undo()
-
-    problems = store.check(conn, root, by_hand)
-
-    assert len(problems) == 1
-    assert "line 2 of the record is malformed" in problems[0] and "'date_pattern'" in problems[0]
-
-
 def _applied_before_the_rule(conn, root, by_hand, monkeypatch):
     """A return with a line an earlier version applied that today's
     admission refuses - a Date Pattern that could run away, at line 2 - as
@@ -2816,24 +2440,6 @@ def _two_lines_then_one(conn, root, engagement):
     return applied
 
 
-def test_store_check_reports_a_journal_that_is_gone(conn, root, by_hand, tmp_path):
-    """T11 (ruling 5): a journal that is gone is one sentence naming the
-    engagement and what the store still holds, saying where to restore it
-    from - from the check of the folder, and from the command line's check
-    of the whole root, which no walk would otherwise reach."""
-    build(conn, root, by_hand)
-    applied = store._engagement_row(conn, by_hand, root)["applied_seq"]
-    ledger.path_for(by_hand).unlink()
-    rel = store.engagement_path(root, by_hand)
-    said = store.JOURNAL_GONE.format(n=applied, engagement=rel)
-
-    assert store.check(conn, root, by_hand) == [said]
-    assert said in store.gone_journals(conn, root)
-    conn.commit()
-    result = cli(tmp_path / "app" / store.STORE_FILENAME, "check", root)
-    assert result.returncode == 1 and said in result.stdout, result.stdout + result.stderr
-
-
 def test_the_truncation_error_says_restore_first(conn, root, by_hand):
     """T11 (ruling 5): a journal shorter than what the store applied is
     refused with the sentence that says to restore it first, and what a
@@ -2895,7 +2501,7 @@ def test_an_index_of_the_previous_version_reads_with_waits_for_empty(conn, root,
     assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 20
     [row] = [entry_from_json(one) for one in store.documents(conn, by_hand)]
     assert row.waits_for == "" and row.waiting_for is None
-    assert store.check(conn, root, by_hand) == []
+    assert store_check.check(conn, root, by_hand) == []
 
 
 
@@ -3070,16 +2676,16 @@ def test_a_store_that_204s_old_step_upgraded_with_empty_cells_passes_check_after
         assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION
         conn.execute("""UPDATE statuses SET "note_codes" = ''""")
         conn.commit()
-        assert store.check(conn, root, engagement) == []
+        assert store_check.check(conn, root, engagement) == []
 
         conn.execute("""UPDATE documents SET "waits_for" = 'A01' WHERE "position" = 0""")
         conn.commit()
-        named = store.check(conn, root, engagement)
+        named = store_check.check(conn, root, engagement)
         assert len(named) == 1 and "waits_for: the store says 'A01'" in named[0], named
         conn.execute("""UPDATE documents SET "waits_for" = ''""")
         conn.execute("""UPDATE documents SET "candidates" = NULL WHERE "candidates" = ''""")
         conn.commit()
-        named = store.check(conn, root, engagement)
+        named = store_check.check(conn, root, engagement)
         assert len(named) == 1 and all("candidates: the store says None, the record says ''" in one
                              for one in named), named
     finally:
@@ -4030,7 +3636,7 @@ def test_a_store_at_version_19_gains_the_related_column_in_place_as_a_rebuild_wr
         assert upgraded.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 20
         assert not list(path.parent.glob(f"{store.STORE_FILENAME}.v*.old*"))
         assert {row[0] for row in upgraded.execute("SELECT household_related FROM engagements")} == {"[]"}
-        assert store.check(upgraded, root, by_hand) == []
+        assert store_check.check(upgraded, root, by_hand) == []
     finally:
         upgraded.close()
 
@@ -4342,23 +3948,6 @@ def test_a_malformed_line_read_from_disk_keeps_its_line_number_sentence(conn, ro
     with pytest.raises(store.StoreError) as unwritten:
         store._refuse_a_malformed_line(ledger.new(ledger.RULES_CHANGED, rules=["x"]), 2, "where")
     assert "line 2 of the record is malformed" in str(unwritten.value)
-
-
-def test_an_event_carried_in_also_is_refused_in_the_wording_of_the_line_that_carries_it():
-    """P292: the event an intent carries is admitted by the same rule, in
-    the same wording - a change about to be written is refused as a change,
-    "nothing was written", whatever it carries; a line read back is refused
-    as line N."""
-    carried = ledger.new(ledger.RULES_CHANGED, rules=[_a_rule(expected_count="x")])
-    intent = ledger.new(ledger.MOVING, **{ledger.KEY_KEY: "k", ledger.OPS_KEY: [],
-                                         ledger.ALSO_KEY: [carried]})
-    with pytest.raises(store.StoreError) as unwritten:
-        store._refuse_a_malformed_line(intent, 2, "where", written=False)
-    said = str(unwritten.value)
-    assert said.startswith("This change carries") and said.endswith("; nothing was written")
-    assert "line " not in said and "malformed" not in said
-    with pytest.raises(store.StoreError, match="line 2 of the record is malformed"):
-        store._refuse_a_malformed_line(intent, 2, "where")
 
 
 def test_a_person_with_an_overlong_name_is_a_line_the_store_refuses(conn, root, by_hand):

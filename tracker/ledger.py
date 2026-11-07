@@ -145,7 +145,7 @@ architecture audit's B-8). A line is untrusted input until the store has
 admitted it, so what meets a line before the gate takes and returns a
 plain ``dict``: :func:`new`, :func:`append`, :func:`read_events`,
 :func:`replay` and :func:`apply`. :func:`replay` folds lines no gate has
-read - ``store.check`` folds the journal before it judges a line, and
+read - ``store_check.check`` folds the journal before it judges a line, and
 ``python -m tracker.ledger`` prints a fold with no store at all - so a type
 there would claim a shape nothing had checked. The ``TypedDict`` types
 below, :class:`Event` and one per family, describe a line *after* the
@@ -1257,7 +1257,7 @@ class Folded:
     #: ``python -m tracker.ledger`` prints; the store's check does not
     #: compare against it but folds the same lines again by
     #: ``records.identifier_key``, as the store keys them
-    #: (``tracker.store._recorded_learned``, decision 136).
+    #: (``tracker.store_check._recorded_learned``, decision 136).
     learned: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
@@ -1410,7 +1410,7 @@ def _apply_keyword_event(state: Folded, event: dict) -> Folded:
     The keyword is matched exactly, as the store keys it; the identifier is
     the event's own spelling, for the reason :class:`Folded` gives - so
     this fold keys a request by the exact spelling each line carries, and
-    ``tracker.store.check()`` applies this same rule per
+    ``tracker.store_check.check()`` applies this same rule per
     ``records.identifier_key`` instead (``_recorded_learned``, decision
     136), which is how the store keys it. An
     unlearn of a word nothing taught folds to nothing: the writer

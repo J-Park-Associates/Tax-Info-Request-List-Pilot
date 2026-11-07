@@ -31,6 +31,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - checkpoint    : what this machine last saw of each record, beside the store; a record shorter, rewritten or claiming this machine is refused
 - admission     : the one rule every line of a record meets before the store writes or applies it - its version, and the two sentences a refusal is told in
 - store         : the database on this machine, rebuilt from the record; one file per clients root, and the index is read from it
+- store_check   : the gate and the export - every store held to the record it was built from, each disagreement named, and the three spreadsheets a person keeps
 - index         : the index as the record holds it - the words its rows carry, their readers from the store, and the one proof of a row's bytes
 - fsio          : the one way a file is replaced whole or not at all: the temp name beside it, and the swap
 - page          : the markup both of the firm's pages are drawn with: escaping, tables, the bytes a page is written as

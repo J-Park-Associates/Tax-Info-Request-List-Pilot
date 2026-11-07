@@ -122,6 +122,7 @@ from tracker import (
     scheduling,
     settings,
     store,
+    store_check,
     view,
 )
 from tracker.filer import file_household_drops, refresh_household_readme
@@ -895,7 +896,7 @@ def _store_check(root, engagement_dir, conn) -> None:
         store.rebuild_engagement(conn, root, engagement_dir)
     except LedgerError:
         return          # a journal the reader refuses is what that test is about
-    said = store.check(conn, root, engagement_dir)
+    said = store_check.check(conn, root, engagement_dir)
     assert said == [], "; ".join(said)
 
 

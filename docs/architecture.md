@@ -26,11 +26,11 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of forty-four modules in six layers.
+`tracker/` is one Python package of forty-five modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The scanner never imports the filer; the filer reaches
-it at call time through a rescan. The three call-time cycles that remain are
+it at call time through a rescan. The four call-time cycles that remain are
 named in `tests/test_layers.py`.
 
 **Layer 0: words, files and locks.** The standard library and nothing of
@@ -86,6 +86,10 @@ the package but each other.
   sentences a refused line or change is told in; the store imports it back.
 - `store.py`: one SQLite store per account in the data folder, a rebuildable
   view of every record; the record is the truth and the store is the index.
+- `store_check.py`: the gate (decision 101) and the export: the check holds
+  every store to the record it was built from and names each disagreement,
+  and the export writes the three spreadsheets a person keeps; it reads the
+  store and the journal side by side and writes neither (P324).
 - `index.py`: the index as the record holds it: the words its rows carry,
   their readers (`read_index`, `ensure`, the moved and interrupted sentences
   read back) and the one proof of a row's bytes; `filer.py` imports what it

@@ -30,7 +30,7 @@ import pytest
 from tests.builders import BUSINESS, DAY1, DAY2, FATHER, ITEMS, LLC_PEOPLE, engagement_fixture, feeding, original_at
 from tests.conftest import TEST_CLIENT, make_engagement, named_page, sort, sort_all
 from tests.samples import msg_bytes, text_pdf
-from tracker import containers, filer, ledger, reasons, store
+from tracker import containers, filer, ledger, reasons, store, store_check
 from tracker.containers import (
     LIMIT_COUNT,
     LIMIT_DEPTH,
@@ -718,7 +718,7 @@ def test_the_store_rebuilds_with_container_and_opened(engagement, tmp_path):
         conn = store.open(Path(scratch) / store.STORE_FILENAME)
         try:
             store.rebuild_engagement(conn, root, engagement)
-            assert store.check(conn, root, engagement) == []
+            assert store_check.check(conn, root, engagement) == []
             held = {row["original_name"]: (row["decision"], row["container"])
                     for row in store.documents(conn, engagement)}
         finally:

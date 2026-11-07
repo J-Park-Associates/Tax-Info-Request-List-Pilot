@@ -50,7 +50,7 @@ from tests.builders import (
 )
 from tests.conftest import TEST_CLIENT, TEST_YEAR, make_engagement, named_page, sort, sort_all
 from tests.samples import text_pdf
-from tracker import checkpoint, ledger, reasons, store
+from tracker import checkpoint, ledger, reasons, store, store_check
 from tracker.filer import (
     FilingError,
     prepared_name_for,
@@ -3939,7 +3939,7 @@ def conserved(engagement, before, moves, *, added=(), gone=()):
         assert after.get(path, digest) == digest, f"{path}: the bytes changed"
     assert Counter(after.values()) == Counter(before.values()) + Counter(added) - Counter(gone)
     assert len(moves) == len(set(moves)), moves
-    assert store.check(store.connect(), engagement.parent, engagement) == []
+    assert store_check.check(store.connect(), engagement.parent, engagement) == []
     assert open_intents(engagement) == []
 
 
@@ -7624,7 +7624,7 @@ def test_the_statement_answers_the_int_div_row_and_the_letter_does_not_ask_for_i
 
     root = root_of(engagement)
     live = store.connect()
-    assert store.check(live, root, engagement) == []
+    assert store_check.check(live, root, engagement) == []
     db = os.environ[store.ENV_STORE]
     store.close()
     os.unlink(db)
@@ -7632,7 +7632,7 @@ def test_the_statement_answers_the_int_div_row_and_the_letter_does_not_ask_for_i
     store.rebuild_engagement(fresh, root, engagement)
     assert [r.answers for r in read_index(engagement) if r.decision == FILED] == [row.answers]
     assert _status(engagement, "A02").status == Status.RECEIVED
-    assert store.check(fresh, root, engagement) == []
+    assert store_check.check(fresh, root, engagement) == []
 
 
 def test_a_statement_counts_as_the_statements_inside_it_and_no_more(tmp_path):
@@ -7697,7 +7697,7 @@ def test_a_person_can_still_mark_that_row_missing(tmp_path):
     fresh = store.connect()
     store.rebuild_engagement(fresh, root, engagement)
     assert [r.answers for r in read_index(engagement) if r.decision == FILED] == ["A04 (1099-misc)"]
-    assert store.check(fresh, root, engagement) == []
+    assert store_check.check(fresh, root, engagement) == []
 
 
 def test_unfiling_the_statement_takes_its_answers_with_it(tmp_path):
@@ -7846,7 +7846,7 @@ def test_a_filed_copy_sits_in_prepared_itself(engagement):
     fresh = store.connect()
     store.rebuild_engagement(fresh, root, engagement)
     assert [r.prepared_location for r in read_index(engagement)] == [filed.prepared_location]
-    assert store.check(fresh, root, engagement) == []
+    assert store_check.check(fresh, root, engagement) == []
 
 
 def test_two_w2s_for_one_request_number_side_by_side(engagement):
@@ -8279,7 +8279,7 @@ def test_a_deleted_working_copy_is_remade_and_the_client_is_not_asked(engagement
     assert item.status == Status.RECEIVED and item.received_date == DAY1
     assert "was Received" not in item.validation_notes
     assert open_intents(engagement) == []
-    assert store.check(store.connect(), root_of(engagement), engagement) == []
+    assert store_check.check(store.connect(), root_of(engagement), engagement) == []
 
     lines = len(ledger.read_events(engagement))
     quiet, _ = _a_pass(engagement, DAY3)
@@ -8546,7 +8546,7 @@ def test_marking_a_both_gone_row_missing_asks_the_client_and_the_readme_agrees(e
     assert "C01" not in {line.identifier for line in received_for([engagement]).lines}
     with pytest.raises(FilingError):
         mark_missing_again(engagement, filed.pbc_location, "C01", today=DAY3)   # once is enough
-    assert store.check(store.connect(), root_of(engagement), engagement) == []
+    assert store_check.check(store.connect(), root_of(engagement), engagement) == []
 
     lines = len(ledger.read_events(engagement))
     quiet, _ = _a_pass(engagement, DAY3)
@@ -8691,7 +8691,7 @@ def test_a_store_rebuilt_from_the_journal_agrees_after_a_remake_and_a_return(eng
     assert store.SCHEMA_VERSION == 20
     live = read_index(engagement)
     root = root_of(engagement)
-    assert store.check(store.connect(), root, engagement) == []
+    assert store_check.check(store.connect(), root, engagement) == []
     db = os.environ[store.ENV_STORE]
     store.close()
     os.unlink(db)
@@ -8699,7 +8699,7 @@ def test_a_store_rebuilt_from_the_journal_agrees_after_a_remake_and_a_return(eng
     store.rebuild_engagement(fresh, root, engagement)
     assert read_index(engagement) == live
     assert [ledger_key(r) for r in live] == [ledger_key(filed), ledger_key(w2)]
-    assert store.check(fresh, root, engagement) == []
+    assert store_check.check(fresh, root, engagement) == []
 
 
 def test_a_remake_killed_after_the_copy_is_finished_from_the_record(engagement, monkeypatch):
@@ -9016,7 +9016,7 @@ def test_a_legitimate_filing_into_a_fed_return_still_completes(fed):
     assert ledger.replay(ledger.read_events(llc)).intents == {}
     assert ledger.replay(ledger.read_events(father)).intents == {}
     for folder in (father, llc):
-        assert store.check(store.connect(), root_of(folder), folder) == []
+        assert store_check.check(store.connect(), root_of(folder), folder) == []
 
 
 def test_a_copy_through_a_link_copies_nothing(engagement, tmp_path):

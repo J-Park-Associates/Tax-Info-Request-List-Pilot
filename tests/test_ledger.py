@@ -23,7 +23,7 @@ import pytest
 
 from tests.builders import drop, engagement_fixture
 from tests.conftest import make_engagement, sort
-from tracker import bounds, ledger, store
+from tracker import bounds, ledger, store, store_check
 from tracker.filer import (
     ASSIGNED_BY_PERSON,
     assign_review_file,
@@ -372,7 +372,7 @@ def test_a_learned_keyword_folds_and_an_unlearned_one_is_removed_and_learned_aga
     Learn appends, unlearn removes, and a word taught again lands at the
     end - which is what the store's own ``ORDER BY seq`` says, because the
     insert carries the new line's number. The two folds have to give the
-    same tuple or ``store.check()`` would report a disagreement that is
+    same tuple or ``store_check.check()`` would report a disagreement that is
     nobody's fault but the fold's.
     """
     folded = ledger.replay([
@@ -418,7 +418,7 @@ def test_a_word_taught_twice_folds_last_on_both_sides(tmp_path, engagement):
     store.rebuild_engagement(conn, tmp_path, engagement)
     assert store.learned_keywords(conn, engagement) == {"a01": ("escrow", "lender")}
     assert ledger.replay(ledger.read_events(engagement)).learned == {"A01": ("escrow", "lender")}
-    assert store.check(conn, tmp_path, engagement) == []
+    assert store_check.check(conn, tmp_path, engagement) == []
 
 
 # ------------------------------------------------------------------- head ----
@@ -670,7 +670,7 @@ def test_a_copy_moved_event_folds_as_a_row_event_in_both_folds_and_check_agrees(
     # The fold from the first line, and the store's line-at-a-time replay.
     assert ledger.replay(events).rows == {ledger_key(e): asdict(e) for e in read_index(engagement)}
     conn = store.connect()
-    assert store.check(conn, tmp_path, engagement) == []
+    assert store_check.check(conn, tmp_path, engagement) == []
     assert conn.execute(
         "SELECT seq FROM documents WHERE key = ?", (ledger_key(row),)
     ).fetchone()[0] == len(events)                  # the row's seq is this very line's
@@ -678,7 +678,7 @@ def test_a_copy_moved_event_folds_as_a_row_event_in_both_folds_and_check_agrees(
     fresh = store.open(tmp_path / "rebuilt.db")
     try:
         store.rebuild_engagement(fresh, tmp_path, engagement)
-        assert store.check(fresh, tmp_path, engagement) == []
+        assert store_check.check(fresh, tmp_path, engagement) == []
         assert [e["decision"] for e in store.documents(fresh, engagement)] == [FILE_MOVED]
     finally:
         fresh.close()
@@ -710,13 +710,13 @@ def test_a_moving_event_folds_to_an_open_intent_and_the_row_event_that_names_its
 
     conn = store.connect()
     assert store.open_intents(conn, engagement) == list(open_now.values())
-    assert store.check(conn, tmp_path, engagement) == []
+    assert store_check.check(conn, tmp_path, engagement) == []
 
     fresh = store.open(tmp_path / "rebuilt.db")
     try:
         store.rebuild_engagement(fresh, tmp_path, engagement)
         assert store.open_intents(fresh, engagement) == list(open_now.values())
-        assert store.check(fresh, tmp_path, engagement) == []
+        assert store_check.check(fresh, tmp_path, engagement) == []
     finally:
         fresh.close()
 
@@ -726,7 +726,7 @@ def test_a_moving_event_folds_to_an_open_intent_and_the_row_event_that_names_its
     assert ledger.replay(closed).intents == {}
     assert store.open_intents(store.connect(), engagement) == []
     assert list(ledger.replay(closed).rows) == [A_ROW_ORIGINAL]
-    assert store.check(store.connect(), tmp_path, engagement) == []
+    assert store_check.check(store.connect(), tmp_path, engagement) == []
 
 
 def test_a_line_whose_number_the_interpreter_will_not_read_is_a_record_that_does_not_read(bare):

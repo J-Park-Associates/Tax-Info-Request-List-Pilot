@@ -65,10 +65,11 @@ is refused by name. A version is instead **upgraded in
 place** only where the change is new columns, each of which is additive
 and that no journal line written before the new version can carry - so
 every existing row's true value is empty, which the column holds as NULL
-exactly as a rebuild would, and :func:`check` holds the columns to the
-journal from then on (decision 204's one column; decision 190's three;
-decision 209's ``admitted_by``, bookkeeping with its own default 0, which
-no journal line carries and :func:`check` does not compare). Each such step
+exactly as a rebuild would, and :func:`tracker.store_check.check` holds
+the columns to the journal from then on (decision 204's one column;
+decision 190's three; decision 209's ``admitted_by``, bookkeeping with its
+own default 0, which no journal line carries and
+:func:`tracker.store_check.check` does not compare). Each such step
 is written out by name in :data:`_IN_PLACE` (from-version -> statements),
 never inferred; every other older version is set aside, and a newer one
 refused.
@@ -96,9 +97,9 @@ admission reaches, and every constant they read, to the version and
 fails, naming what moved and saying which to do, when one moves without
 the other.
 
-**The check is the gate.** :func:`check` compares these tables with
-:func:`tracker.ledger.replay` over the journal and names every place they
-disagree, in sentences. Each stage was built on a store that had been
+**The check is the gate.** :func:`tracker.store_check.check` compares these
+tables with :func:`tracker.ledger.replay` over the journal and names every
+place they disagree, in sentences. Each stage was built on a store that had been
 silent there across the whole suite - which is what the agreement fixture
 in ``tests/conftest.py`` does after every test: rebuild, check, and fail
 on a sentence.
@@ -110,8 +111,9 @@ answers from the ``documents`` table, and every writer calls
 **And so are the statuses and the person's rules** (decisions 103 and
 104). ``statuses`` is what the scans recorded, ``learned_keywords`` what
 people's filings taught and nobody has taken back (decision 113: a
-``keyword_unlearned`` deletes the row, and :func:`check` compares the
-table with the journal's own fold of the two events), and ``requests`` is
+``keyword_unlearned`` deletes the row, and
+:func:`tracker.store_check.check` compares the table with the journal's
+own fold of the two events), and ``requests`` is
 the fold of every
 ``rules_changed`` event (and of the ``rules_imported`` lines older
 journals carry, which fold the same way and are never written again):
@@ -127,8 +129,8 @@ the fold of the journal's ``moving`` lines: what a pass or a person was
 about to do to the disk, written before the first file operation and
 deleted by the row event that completes it. It is a derivation of the
 journal like the rest - :func:`rebuild_engagement` gives the same open
-set and :func:`check` compares the two folds - and it is what the next
-pass finishes a half-made move from.
+set and :func:`tracker.store_check.check` compares the two folds - and it
+is what the next pass finishes a half-made move from.
 
 **And the verdict cache, which is not the record's** (decision 107). The
 tier-3 verdict cache - the per-path memo of size, mtime and digest that
@@ -141,9 +143,10 @@ derivation of the journal**: a verdict is a derivation of the bytes in
 the folder and the rules in ``requests``, not a fact about the
 engagement, so nothing is journalled, :func:`rebuild_engagement` leaves
 the two tables empty (the next pass reads each document once - slower,
-never wrong), and :func:`check`, :func:`state` and :func:`export` neither
-read nor compare them. Their write, :func:`remember_verdicts`, is one
-immediate transaction of its own and never :func:`record` - there is no
+never wrong), and :func:`tracker.store_check.check`, :func:`state` and
+:func:`tracker.store_check.export` neither read nor compare them. Their
+write, :func:`remember_verdicts`, is one immediate transaction of its own
+and never :func:`record` - there is no
 journal line and no ``seq`` - but it still refuses outside the engagement
 lock, because the memo ties a path to bytes and every writer already
 holds it. The version each verdict was written under is carried per row
@@ -171,8 +174,9 @@ so the store asks it at every write and every read. Everything it holds
 comes out of the journal, so the store never depends on the modules that
 walk folders and move files; :func:`connect` reads :mod:`tracker.settings`
 at call time and the command line at the bottom imports the registry at
-call time to find the folders, which is where an edge is allowed to point
-the other way. ``RequestItem`` is the manifest's own schema and
+call time to find the folders, and the check and the export
+(:mod:`tracker.store_check`, P324) to run them, which is where an edge is
+allowed to point the other way. ``RequestItem`` is the manifest's own schema and
 deliberately stays there (:mod:`tracker.records` says why), so the rule
 columns are the one field list written out here - ``tests/test_store.py``
 holds that list to the record's fields, so the table cannot drift away
@@ -193,7 +197,6 @@ without anyone remembering to.
 
 from __future__ import annotations
 
-import csv
 import datetime as dt
 import json
 import logging
@@ -331,7 +334,8 @@ _ADDED_IN_PLACE: frozenset[tuple[str, str]] = frozenset(
 
 def _agree(table: str, field: str, held: object, theirs: object) -> bool:
     """Whether a store cell and the record's value are the same, for
-    :func:`check` - NULL and ``''`` as one in :data:`_ADDED_IN_PLACE`."""
+    :func:`tracker.store_check.check` - NULL and ``''`` as one in
+    :data:`_ADDED_IN_PLACE`."""
     if held == theirs:
         return True
     return (table, field) in _ADDED_IN_PLACE and held in (None, "") and theirs in (None, "")
@@ -1098,7 +1102,7 @@ def _to_sql(value: object) -> object:
         # Sorted keys, exactly as the journal writes a line
         # (``ledger.append``), so a list of small objects - the return's
         # people (decision 128) - has one text form whichever side wrote
-        # it, and ``check()`` compares the column with the fold rather
+        # it, and ``store_check.check()`` compares the column with the fold rather
         # than two orderings of the same fact. A list of words is
         # unaffected: there are no keys to sort.
         return json.dumps(list(value), ensure_ascii=False, sort_keys=True)
@@ -1182,24 +1186,6 @@ def _rule_from_sql(stored: sqlite3.Row) -> dict:
         else:
             row[name] = value
     return row
-
-
-#: A cell beginning with one of these is a formula to a spreadsheet opening
-#: the CSV, whatever the quoting - so the export prefixes it with an
-#: apostrophe, which Excel shows as text and drops.
-FORMULA_LEADS = ("=", "+", "-", "@", "\t", "\r")
-
-
-def _as_text(value: object) -> str:
-    """One stored value as a CSV cell: text, always, and an empty one for
-    nothing at all. A file name a client chose may begin with anything -
-    a name typed like a formula is a name - and quoting does not protect
-    it: a spreadsheet evaluates a cell that begins like a formula on the
-    way in. So a cell that begins with one of ``FORMULA_LEADS`` is written
-    behind an apostrophe, the mark a spreadsheet reads as "text follows"
-    and shows without; the name is one character away and never runs."""
-    text = "" if value is None else str(value)
-    return f"'{text}" if text.startswith(FORMULA_LEADS) else text
 
 
 # -------------------------------------------------------------- reading ----
@@ -1565,7 +1551,7 @@ def _write_intent(conn: sqlite3.Connection, engagement_id: int, event: ledger.In
     - a key is one row and a row is one decision at a time - and deleted on
     the abandonment, as it is on the row event that completes it. The same
     fold as :func:`tracker.ledger._apply_intent_event`, which is what
-    :func:`check` holds this table to.
+    :func:`tracker.store_check.check` holds this table to.
     """
     key = event.get(ledger.KEY_KEY)
     if event.get(ledger.EVENT_KEY) != ledger.MOVING:
@@ -1649,7 +1635,7 @@ def _household_cell(name: str, info: dict) -> object:
     the related households (pilot P170) - are stored as JSON arrays, and a line that wrote one name as a
     string is read as one member on both sides
     (``records.household_from_json``) - so the column holds a list either
-    way and :func:`check` compares like with like.
+    way and :func:`tracker.store_check.check` compares like with like.
     """
     value = info[name]
     if name not in _LIST_COLUMNS:
@@ -1686,17 +1672,19 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
     case, so a batch scanning ``A01``, ``a01`` and ``A01`` again would hold
     two entries and write the second scan's status last. What these events
     changed is taken instead from :func:`_recorded_statuses` - the rule
-    :func:`check` holds the table to, one entry per ``identifier_key`` with
-    the last scan's spelling and status - and upserted onto what the table
-    already said, so the writer and the check cannot disagree.
+    :func:`tracker.store_check.check` holds the table to, one entry per
+    ``identifier_key`` with the last scan's spelling and status - and
+    upserted onto what the table already said, so the writer and the check
+    cannot disagree.
 
     A keyword a person's filing taught is inserted as it is met and deleted
     again when a person takes it back (decision 113): the insert carries the
     line's own sequence number, so a word taught again comes back last -
     whether or not it was taken back first - which is the order
-    ``tracker.ledger.apply`` folds it in for one spelling. :func:`check`
-    holds the two to its own fold of the same lines, keyed by
-    ``records.identifier_key`` as this table is (decision 136).
+    ``tracker.ledger.apply`` folds it in for one spelling.
+    :func:`tracker.store_check.check` holds the two to its own fold of the
+    same lines, keyed by ``records.identifier_key`` as this table is
+    (decision 136).
 
     An edit of the person's rules is written as it is met too: the rows it
     carries replace those identifiers, the ones it names as removed go,
@@ -2813,76 +2801,6 @@ def rebuild_engagement(
     return lost
 
 
-# --------------------------------------------------------------- the check ----
-
-
-def check(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str) -> list[str]:
-    """Every place the store and the journal disagree, as sentences.
-
-    The gate. An empty list is the claim that these tables say exactly
-    what the engagement's own record says - the same index rows in the
-    same order, field for field; the same status for every identifier; the
-    same rule, where the record carries one; and, since decision 113, the
-    same keywords taught to each request, in the same order. Anything else
-    is named in a sentence a person can act on: which engagement, which row
-    or identifier, which field, what each side says.
-
-    **The other copy is the journal, and it is the only one.** The
-    readers answer from these very tables, so asking them would be the
-    store compared with itself. This replays the lines and compares the
-    fold, which is what a rebuild is made of and what a rebuild must come
-    back to - the rules included, always: an engagement with no rules
-    event has none on either side.
-
-    **A request is one request whatever its case** (decision 136). The
-    journal's own fold keys a status and a taught word by the spelling
-    each line carries, because :mod:`tracker.ledger` sits below
-    :mod:`tracker.records` and has no case rule; the store keys both by
-    ``records.identifier_key``. So those two are folded again here, from
-    the same lines, by the store's rule (:func:`_recorded_statuses`,
-    :func:`_recorded_learned`) - otherwise a request the person retyped by
-    case is two requests to the check and one to the store, and the gate
-    names a disagreement no rebuild can clear. The lines are read once
-    (:func:`tracker.ledger.read_with_head`, decision 135) and the same list
-    is handed to the replay and to both folds, so no two of them can be
-    looking at two different moments of the journal.
-    """
-    name = Path(engagement_dir).name
-    rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
-    engagement = _engagement_row(conn, engagement_dir, root)
-    # A journal that is gone is one sentence, not a list of every row the
-    # store holds and the record does not (SPEC-162 ruling 5).
-    if engagement is not None and not ledger.path_for(engagement_dir).exists():
-        return [JOURNAL_GONE.format(n=engagement["applied_seq"], engagement=rel)]
-    events, _head, chain = ledger.read_with_chain(engagement_dir)
-    folded = ledger.replay(events)
-    if engagement is None:
-        return [f"{rel}: the store does not hold this engagement, and its record carries "
-                f"{len(folded.rows)} index row(s) and {len(folded.rules)} request row(s)"]
-    problems: list[str] = []
-    applied = engagement["applied_seq"]
-    if applied <= len(events) and ledger.chain_at(chain, applied) != engagement["applied_digest"]:
-        # The applied chain (decision 137, A3): the lines the store applied
-        # are not the lines the journal holds now.
-        problems.append(REWRITTEN.format(
-            rel=rel, line=_rewritten_from(conn, engagement["id"], events, applied)))
-    problems += _check_documents(conn, engagement["id"], name, folded.rows)
-    problems += _check_statuses(conn, engagement["id"], name, _recorded_statuses(events))
-    problems += _check_rules(conn, engagement["id"], name, folded)
-    problems += _check_intents(conn, engagement["id"], name, folded.intents)
-    problems += _check_learned(conn, engagement["id"], name, _recorded_learned(events))
-    problems += _check_household(conn, engagement["id"], name, folded.household)
-    # Every line judged again by today's admission (decision 187), so a line
-    # an earlier version applied that the rule now refuses is named on the
-    # day of the upgrade, without deleting the store to find it.
-    for seq, event in enumerate(events, start=1):
-        try:
-            _refuse_a_malformed_line(event, seq, engagement["path"], kind=engagement["kind"])
-        except StoreError as exc:
-            problems.append(str(exc))
-    return problems
-
-
 def holds(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str) -> bool:
     """Whether the store has met this engagement at all - by the one key
     rule every caller is answered by. The after-install record check
@@ -2890,94 +2808,6 @@ def holds(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str
     no line applied, so there is nothing an earlier version let through, and
     its first catch-up judges every line as it builds it."""
     return _engagement_row(conn, engagement_dir, root) is not None
-
-
-def _check_household(
-    conn: sqlite3.Connection, engagement_id: int, name: str, recorded: dict[str, object]
-) -> list[str]:
-    """The household's details, table against journal (decision 125).
-
-    A folder whose journal carries a ``household_changed`` line is a
-    household, and the row must say so as well as holding what the line
-    said: a row the store still calls a return would be a household
-    discovery walks straight past. A folder with no such line is compared
-    about nothing, which is every return in the practice.
-    """
-    if not recorded:
-        return []
-    row = conn.execute("SELECT * FROM engagements WHERE id = ?", (engagement_id,)).fetchone()
-    problems = []
-    if row["kind"] != KIND_HOUSEHOLD:
-        problems.append(
-            f"{name}: the record carries the household's details and the store holds the "
-            f"folder as {row['kind']!r}")
-    for field in recorded:
-        column = f"{HOUSEHOLD_PREFIX}{field}"
-        if column not in HOUSEHOLD_COLUMNS:
-            continue
-        theirs = _household_cell(field, recorded)
-        if row[column] != theirs:
-            problems.append(
-                f"{name}: household {field}: the store says {row[column]!r}, "
-                f"the record says {theirs!r}")
-    return problems
-
-
-def _check_documents(
-    conn: sqlite3.Connection, engagement_id: int, name: str, recorded: dict[str, dict]
-) -> list[str]:
-    stored = list(conn.execute(
-        'SELECT * FROM documents WHERE engagement_id = ? ORDER BY "position"', (engagement_id,)))
-    rows = list(recorded.items())
-    problems = []
-    if len(stored) != len(rows):
-        problems.append(
-            f"{name}: the store holds {len(stored)} index row(s), the record carries {len(rows)}")
-    for position, (key, row) in enumerate(rows[:len(stored)]):
-        held = stored[position]
-        if held["key"] != key:
-            problems.append(
-                f"{name}: index row {position + 1}: the store holds {held['key']!r}, "
-                f"the record carries {key!r}")
-            continue
-        for field in DOCUMENT_COLUMNS:
-            theirs = _to_sql(row.get(field))
-            if not _agree("documents", field, held[field], theirs):
-                problems.append(
-                    f"{name}: index row {key!r}, {field}: the store says {held[field]!r}, "
-                    f"the record says {theirs!r}")
-    for held in stored[len(rows):]:
-        problems.append(
-            f"{name}: index row {held['key']!r} is in the store and not in the record")
-    return problems
-
-
-def _check_intents(
-    conn: sqlite3.Connection, engagement_id: int, name: str, recorded: dict[str, dict]
-) -> list[str]:
-    """The moves this engagement has open, both ways round (decision 119).
-
-    The two folds have to agree about exactly this: a recovery finishes
-    what the table says is open, and a table that had kept an intent the
-    journal closed would move a file the record has already recorded - the
-    one thing this whole decision exists to stop. So the line is compared
-    whole, as the documents' fields are.
-    """
-    stored = {row["key"]: row["payload"] for row in conn.execute(
-        'SELECT "key", payload FROM intents WHERE engagement_id = ?', (engagement_id,))}
-    problems = []
-    for key, event in recorded.items():
-        held = stored.get(key)
-        theirs = json.dumps(event, ensure_ascii=False, sort_keys=True)
-        if held is None:
-            problems.append(f"{name}: the move open on {key!r} is in the record and not in the store")
-        elif held != theirs:
-            problems.append(
-                f"{name}: the move open on {key!r}: the store holds {held!r:.120}, "
-                f"the record carries {theirs!r:.120}")
-    for key in sorted(set(stored) - set(recorded)):
-        problems.append(f"{name}: the move open on {key!r} is in the store and not in the record")
-    return problems
 
 
 def _recorded_statuses(events: list[dict]) -> dict[str, tuple[str, dict]]:
@@ -2997,120 +2827,6 @@ def _recorded_statuses(events: list[dict]) -> dict[str, tuple[str, dict]]:
             for identifier, status in (event.get(ledger.STATUSES_KEY) or {}).items():
                 statuses[identifier_key(identifier)] = (identifier, status)
     return statuses
-
-
-def _recorded_learned(events: list[dict]) -> dict[str, tuple[str, ...]]:
-    """The words filings taught each request, keyed as the store keys it
-    (decision 136), in the order they were taught.
-
-    ``ledger._apply_keyword_event``'s rule applied per ``identifier_key``:
-    a word taught is moved last, a word taken back is removed and a
-    request left with none is dropped - which is the store's
-    ``INSERT OR REPLACE ... seq`` read back ``ORDER BY seq``.
-    """
-    learned: dict[str, tuple[str, ...]] = {}
-    for event in events:
-        name = event.get(ledger.EVENT_KEY)
-        if name not in (ledger.KEYWORD_LEARNED, ledger.KEYWORD_UNLEARNED):
-            continue
-        key = identifier_key(str(event.get(ledger.IDENTIFIER_KEY, "")))
-        keyword = str(event.get(ledger.KEYWORD_KEY, ""))
-        left = tuple(word for word in learned.get(key, ()) if word != keyword)
-        if name == ledger.KEYWORD_LEARNED:
-            learned[key] = left + (keyword,)
-        elif left:
-            learned[key] = left
-        else:
-            learned.pop(key, None)
-    return learned
-
-
-def _check_statuses(
-    conn: sqlite3.Connection, engagement_id: int, name: str,
-    recorded: dict[str, tuple[str, dict]],
-) -> list[str]:
-    stored = {row["identifier"]: row for row in conn.execute(
-        "SELECT * FROM statuses WHERE engagement_id = ?", (engagement_id,))}
-    problems = []
-    for key, (identifier, status) in recorded.items():
-        held = stored.get(key)
-        if held is None:
-            problems.append(f"{name}: request {identifier} has a status in the record and none in the store")
-            continue
-        for field in STATUS_COLUMNS:
-            theirs = _to_sql(status.get(field))
-            if not _agree("statuses", field, held[field], theirs):
-                problems.append(
-                    f"{name}: request {identifier}, {field}: the store says {held[field]!r}, "
-                    f"the record says {theirs!r}")
-    for key in sorted(set(stored) - set(recorded)):
-        problems.append(f"{name}: request {key} has a status in the store and none in the record")
-    return problems
-
-
-def _check_rules(
-    conn: sqlite3.Connection, engagement_id: int, name: str, folded: ledger.Folded
-) -> list[str]:
-    stored = {identifier_key(row["identifier"]): row for row in conn.execute(
-        "SELECT * FROM requests WHERE engagement_id = ?", (engagement_id,))}
-    problems = []
-    if len(stored) != len(folded.rules):
-        problems.append(
-            f"{name}: the store holds {len(stored)} request row(s), "
-            f"the record's edits fold to {len(folded.rules)}")
-    seen = set()
-    for identifier, rule in folded.rules.items():
-        key = identifier_key(identifier)
-        seen.add(key)
-        held = stored.get(key)
-        if held is None:
-            problems.append(f"{name}: request {identifier} is in the record and not in the store")
-            continue
-        for field in RULE_COLUMNS:
-            theirs = _to_sql(rule.get(field))
-            if held[field] != theirs:
-                problems.append(
-                    f"{name}: request {identifier}, {field}: the store says {held[field]!r}, "
-                    f"the record says {theirs!r}")
-    for key in sorted(set(stored) - seen):
-        problems.append(
-            f"{name}: request {stored[key]['identifier']} is in the store and not in the record")
-    row = conn.execute("SELECT * FROM engagements WHERE id = ?", (engagement_id,)).fetchone()
-    for field, value in folded.info.items():
-        if field in ENGAGEMENT_COLUMNS and row[field] != _to_sql(value):
-            problems.append(
-                f"{name}: engagement {field}: the store says {row[field]!r}, "
-                f"the record says {_to_sql(value)!r}")
-    return problems
-
-
-def _check_learned(
-    conn: sqlite3.Connection, engagement_id: int, name: str, recorded: dict[str, tuple[str, ...]]
-) -> list[str]:
-    """The keywords filings taught, table against journal (decision 113).
-
-    The one thing in this database the record could not vouch for until
-    now: the table only ever grew, the journal's fold did not know the
-    event, and this function did not exist - so a row planted or dropped
-    behind the journal's back was invisible to the gate. One sentence per
-    request whose words differ, naming both sides in the order each holds
-    them, because the order is part of the answer: a word taught, taken
-    back and taught again belongs last on both sides.
-
-    The table keys a request without case and the journal's fold keys it
-    exactly as each line spells it (:class:`tracker.ledger.Folded`), so the
-    record's side is folded from the lines by the table's own rule
-    (:func:`_recorded_learned`, decision 136): two spellings of one request
-    are one list, in the order the words were taught, and a word taken
-    back under either spelling is gone from it.
-    """
-    stored = _stored_learned(conn, engagement_id)
-    return [
-        f"{name}: request {key}, the keywords filings taught: the store says "
-        f"{list(stored.get(key, ()))!r}, the record says {list(recorded.get(key, ()))!r}"
-        for key in sorted(set(stored) | set(recorded))
-        if stored.get(key, ()) != recorded.get(key, ())
-    ]
 
 
 def state(
@@ -3135,78 +2851,6 @@ def state(
     if row["ledger_head"] == ledger_head_now:
         return CURRENT
     return BEHIND
-
-
-# -------------------------------------------------------------- the export ----
-
-#: What :func:`export` writes, in the order it writes them.
-DOCUMENTS_CSV = "documents.csv"
-REQUESTS_CSV = "requests.csv"
-ENGAGEMENTS_CSV = "engagements.csv"
-
-
-def export(conn: sqlite3.Connection, out_dir: Path | str) -> list[Path]:
-    """Write the store out as three spreadsheets. Returns the files written.
-
-    **On demand only, and never by a pass.** Decision 91 settled that staff
-    read everything as a page, and decision 104 that they edit the one
-    list in the app; a pass that wrote spreadsheets nobody asked for would
-    be inventing a second thing to keep in step. This is for the moment
-    somebody wants the season's filings in a pivot table.
-
-    Every cell is written as text, with a byte-order mark so that Excel
-    opens the file as UTF-8 without being asked, and LF line endings like
-    every other file this repository writes. Nothing is in these files that
-    is not already in the index and the request list.
-    """
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    paths = [out_dir / DOCUMENTS_CSV, out_dir / REQUESTS_CSV, out_dir / ENGAGEMENTS_CSV]
-    folders = {row["id"]: row["path"] for row in conn.execute("SELECT id, path FROM engagements")}
-
-    _write_csv(paths[0], ["engagement", "key", *DOCUMENT_COLUMNS, "position", "seq"], (
-        [folders[row["engagement_id"]], row["key"],
-         *[row[name] for name in DOCUMENT_COLUMNS], row["position"], row["seq"]]
-        for row in conn.execute('SELECT * FROM documents ORDER BY engagement_id, "position"')
-    ))
-
-    statuses = {(row["engagement_id"], row["identifier"]): row
-                for row in conn.execute("SELECT * FROM statuses")}
-    _write_csv(paths[1], ["engagement", *RULE_COLUMNS, *STATUS_COLUMNS, "status_seq"], (
-        [folders[row["engagement_id"]], *[row[name] for name in RULE_COLUMNS],
-         *[(status[name] if status else None) for name in STATUS_COLUMNS],
-         (status["seq"] if status else None)]
-        for row, status in (
-            (row, statuses.get((row["engagement_id"], identifier_key(row["identifier"]))))
-            for row in conn.execute('SELECT * FROM requests ORDER BY engagement_id, "row"')
-        )
-    ))
-
-    engagement_columns = ["path", *ENGAGEMENT_COLUMNS, "ledger_head", "applied_seq", "built_at"]
-    _write_csv(paths[2], engagement_columns, (
-        [row[name] for name in engagement_columns]
-        for row in conn.execute('SELECT * FROM engagements ORDER BY "path"')
-    ))
-    return paths
-
-
-def _write_csv(path: Path, header: list[str], rows) -> None:
-    """One spreadsheet, whole or not written (decision 155): through the
-    one atomic replacement, flushed before it takes the name. Reached at
-    call time - the store imports the admission, the bounds, the record,
-    the journal, the lock and the checkpoint and nothing else at load time
-    (decision 101, P321, P323), and this is the one file it writes that is
-    not the database."""
-    from tracker.fsio import atomic_replacement
-
-    with atomic_replacement(path) as temp:
-        with temp.open("w", encoding="utf-8-sig", newline="") as handle:
-            writer = csv.writer(handle, lineterminator="\n")
-            writer.writerow(header)
-            for row in rows:
-                writer.writerow([_as_text(value) for value in row])
-            handle.flush()
-            full_sync(handle.fileno())
 
 
 # ------------------------------------------------------------ recover ----
@@ -3567,9 +3211,12 @@ if __name__ == "__main__":
     # Imported here and nowhere else in the file. This module sits at the
     # bottom of the package beside the journal and the lock; a command line
     # nobody imports is the one place that may look upwards, and finding
-    # the engagement folders under a root is what it looks up for.
+    # the engagement folders under a root is what it looks up for, and the
+    # check and the export, which read the store from one module up the
+    # file list (P324).
     from tracker import registry
     from tracker.page import tolerant_console
+    from tracker.store_check import check, export
 
     tolerant_console()   # a client's name the console cannot encode is no traceback
 

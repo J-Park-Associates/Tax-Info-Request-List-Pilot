@@ -501,7 +501,7 @@ Rules that came with the later rows and hold now:
 
 ## The check is the gate
 
-`store.check()` asks what else holds the same facts and returns every
+`store_check.check()` asks what else holds the same facts and returns every
 disagreement as a sentence naming the engagement, the row or identifier, the
 field and both values. An empty list is the claim that the store says what
 the other copy says.

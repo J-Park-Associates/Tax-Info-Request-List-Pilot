@@ -12,7 +12,7 @@ import datetime as dt
 import pytest
 
 from tests.conftest import make_engagement, written_elsewhere
-from tracker import ledger, store
+from tracker import ledger, store, store_check
 from tracker.households import (
     create_household,
     household_returns,
@@ -52,7 +52,7 @@ def test_a_household_record_is_one_event_and_reads_back(household):
     conn = store.connect()
     assert store.kind(conn, household) == store.KIND_HOUSEHOLD
     assert store.household_info(conn, household) == SMITHS
-    assert store.check(conn, household.parent.parent, household) == []
+    assert store_check.check(conn, household.parent.parent, household) == []
     # A household holds no documents and no requests: it is a fact about a
     # folder, not about any paper in it.
     assert store.documents(conn, household) == [] and store.rules(conn, household) == []
@@ -88,7 +88,7 @@ def test_saving_a_household_records_only_the_fields_that_moved_or_nothing(househ
     assert len(events) == 2
     assert events[-1][ledger.HOUSEHOLD_KEY] == {"members": ["John Smith"], "contact": "John"}
     assert load_household_info(household).link == SMITHS.link      # untouched
-    assert store.check(store.connect(), household.parent.parent, household) == []
+    assert store_check.check(store.connect(), household.parent.parent, household) == []
 
 
 def test_a_household_journal_folds_the_same_in_the_ledger_and_the_store(household, tmp_path):
@@ -104,7 +104,7 @@ def test_a_household_journal_folds_the_same_in_the_ledger_and_the_store(househol
 
     conn = store.connect()
     store.rebuild_engagement(conn, tmp_path, household)
-    assert store.check(conn, tmp_path, household) == []
+    assert store_check.check(conn, tmp_path, household) == []
     assert load_household_info(household).link == "https://drive.example/moved"
     assert store.kind(conn, household) == store.KIND_HOUSEHOLD
 
@@ -214,7 +214,7 @@ def test_sharing_confirmed_is_an_event_folded_by_nothing_and_read_back_by_day(ho
     assert load_household_info(household) == SMITHS
     assert shared_on(household) == ledger.day_of(events[-1][ledger.AT_KEY])
     assert shared_on(household) == dt.date.today()
-    assert store.check(store.connect(), tmp_path, household) == []
+    assert store_check.check(store.connect(), tmp_path, household) == []
 
     # A line carrying anything at all is not this version's, and is
     # refused by name rather than kept where a reader would trust it.
@@ -248,7 +248,7 @@ def test_a_household_journal_with_a_sharing_event_still_folds_the_same_in_both_r
 
     conn = store.connect()
     store.rebuild_engagement(conn, tmp_path, household)
-    assert store.check(conn, tmp_path, household) == []
+    assert store_check.check(conn, tmp_path, household) == []
     assert store.household_info(conn, household) == replace(
         SMITHS, contact="John", link="https://drive.example/new")
 
