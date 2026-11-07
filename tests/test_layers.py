@@ -209,8 +209,12 @@ LAYERS: dict[int, frozenset[str]] = {
     # ``content_check``, which imports them back - ``keywords`` (L2, the rules'
     # verdict), ``store``, ``validators``, ``records`` and ``manifest`` (L1)
     # and ``hold`` (L0).
+    # ``reader_child`` joins L2 with P338 (SPEC-architecture-p4 P4.12): the
+    # reading's child, its supervisor and the pass's session out of ``ocr``,
+    # which it imports (in-layer); ``content_check`` imports it, and
+    # ``errors``, ``locking`` and ``settings`` are below it.
     2: frozenset({"containers", "content_check", "copies", "keywords", "names", "ocr", "router",
-                  "verdicts"}),
+                  "verdicts", "reader_child"}),
     # ``verify`` joins L3 with P325 (SPEC-architecture-p3 P3.5): decision 159's
     # read-only firm-wide proof out of ``store`` - ``admission``, ``ledger``,
     # ``records`` and ``store`` (L1) and ``checkpoint`` (L0) at load time, and
@@ -245,8 +249,8 @@ LAYERS: dict[int, frozenset[str]] = {
     # (L3) and L0; the API imports it, and nothing lower may.
     4: frozenset({"runner", "scheduling", "after_install"}),
     # ``resident`` joins L5 with P276: the engine's loop over ``api.main``; it
-    # imports ``api``, ``errlog``, ``locking``, ``ocr`` and the standard library;
-    # nothing imports it but ``api_entry.py``, at call time.
+    # imports ``api``, ``errlog``, ``locking``, ``reader_child`` and the
+    # standard library; nothing imports it but ``api_entry.py``, at call time.
     5: frozenset({"api", "resident"}),
 }
 LAYER_OF: dict[str, int] = {module: layer for layer, modules in LAYERS.items() for module in modules}
@@ -268,7 +272,8 @@ DOMAINS: dict[str, frozenset[str]] = {
                          "households", "templates", "scaffold", "admission", "store_check",
                          "verify"}),
     # Opening a client's file, checking it and getting the text out of it.
-    "reading": frozenset({"validators", "containers", "content_check", "ocr", "verdicts"}),
+    "reading": frozenset({"validators", "containers", "content_check", "ocr", "verdicts",
+                          "reader_child"}),
     # Deciding where a document belongs, or that it belongs nowhere yet, and
     # the shortlist a person gets for the ones that do not.
     "sorting": frozenset({"reasons", "router", "names", "filer", "copies", "intents", "inbox",
@@ -343,7 +348,7 @@ READER_IMPORTS_ALLOWED: frozenset[str] = frozenset(
 #: Named when 190 landed on main 63aef39: ``types`` is decision 192's
 #: ``SimpleNamespace`` in ``api`` (a registry of the stored households),
 #: ``typing`` the ``TYPE_CHECKING`` guard in ``containers``, ``tempfile`` decision 186's
-#: reading child pointing its temp folder at its own scratch in ``ocr``,
+#: reading child pointing its temp folder at its own scratch in ``reader_child``,
 #: and ``fnmatch`` the checkpoint set-asides ``runner`` finds left behind
 #: beside the program (decision 186). ``fcntl`` is POSIX's ``flock`` in
 #: ``locking`` and a Mac's ``F_FULLFSYNC`` in the two copies of ``full_sync``
@@ -1211,7 +1216,7 @@ def test_the_engine_imports_the_api_the_error_log_the_lock_and_the_reader_and_no
     reaches only those four, and nothing in the package reaches it - the
     entry point (``api_entry.py``, outside the package) starts it."""
     load, call = import_edges()
-    assert load["resident"] == {"api", "errlog", "locking", "ocr"}, load["resident"]
+    assert load["resident"] == {"api", "errlog", "locking", "reader_child"}, load["resident"]
     assert call["resident"] == set(), call["resident"]
     assert [m for m in load if "resident" in load[m] | call[m]] == []
     assert LAYER_OF["resident"] == LAYER_OF["api"] == 5

@@ -10,7 +10,8 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - manifest      : the request list: its schema, validation, and its reading from and writing to the record
 - scaffold      : folder scaffolding from the request list
 - validators    : tier 1-2 file checks + dry-run preview CLI
-- ocr           : the reader (RapidOCR, on the graphics card when it works and the processor when it does not) and the one child process a pass reads in
+- ocr           : the reader (RapidOCR, on the graphics card when it works and the processor when it does not)
+- reader_child  : the one child process a pass reads in, its stop, its memory cap and its scratch
 - content_check : tier 3: the one reading of a document, and its judgment
 - keywords      : the matcher and the rules a reading is judged by (pure functions of the text)
 - verdicts      : the judgment's shapes and the verdict cache (in the store, decision 107)

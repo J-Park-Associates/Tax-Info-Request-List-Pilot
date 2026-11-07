@@ -1158,10 +1158,10 @@ import sys
 from pathlib import Path
 sys.path[:0] = [sys.argv[3]]
 from tests import child_readers
-from tracker import content_check, ocr
+from tracker import content_check, reader_child
 content_check._CHILD_READER = child_readers.a_reader_that_starts_a_reader_of_its_own
 if sys.argv[2] == "lifeline":
-    ocr._kill_on_close_job = lambda pid, **_limits: None
+    reader_child._kill_on_close_job = lambda pid, **_limits: None
 content_check.judge_bounded(Path(sys.argv[1]), content_check.Questions())
 """
 
@@ -1989,7 +1989,7 @@ def test_a_file_in_flight_when_the_child_is_retired_or_killed_is_read_again_next
     import tracker.content_check as content_check
     from tests import child_readers
     from tests.builders import named_page, sort
-    from tracker import ocr
+    from tracker import reader_child
     from tracker.index import read_index
     from tracker.layout import inbox_of
 
@@ -2022,10 +2022,10 @@ def test_a_file_in_flight_when_the_child_is_retired_or_killed_is_read_again_next
 
     # Retired after every document: between files, never in one.
     in_a_child.setattr(content_check, "_CHILD_READER", content_check.open_and_read)
-    in_a_child.setattr(ocr, "DOCUMENTS_PER_CHILD", 1)
+    in_a_child.setattr(reader_child, "DOCUMENTS_PER_CHILD", 1)
     for n in range(3):
         text_pdf(inbox / f"w2 {n}.pdf", named_page(f"Form W-2 Wage and Tax Statement 2025 copy {n}"))
-    with ocr.reading_session():
+    with reader_child.reading_session():
         retired = sort(engagement, today=dt.date(2026, 7, 4))
     assert sorted(e.original_name for e in retired.filed) == ["w2 0.pdf", "w2 1.pdf", "w2 2.pdf"]
     assert no_child_left()

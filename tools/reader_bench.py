@@ -22,10 +22,10 @@ the backtest's reading.** A reading child imports :mod:`tracker.ocr` afresh,
 at the shipped settings, so a setting changed in this process would never
 reach it. For the whole run the bench therefore turns
 ``content_check.READ_IN_A_CHILD`` off (the switch the suite throws) and opens
-``ocr.reading_session(in_a_child=False)`` around each variant, and puts both
-back, and the settings, in a ``finally``. What that costs, said plainly:
-the safety stop is still armed (no page starts after the one before it
-overran 60 seconds or after the document's 600), but a page already under
+``reader_child.reading_session(in_a_child=False)`` around each variant, and
+puts both back, and the settings, in a ``finally``. What that costs, said
+plainly: the safety stop is still armed (no page starts after the one before
+it overran 60 seconds or after the document's 600), but a page already under
 way is unbounded, so a slow variant can park a multi-page scan through the
 stop, and that counts as a park (a person is watching a measurement, not a
 pass). The bench reads on the processor only
@@ -148,7 +148,7 @@ from tools.corpus import (  # noqa: E402
     temp_pointed_at,
     unknown_catalog,
 )
-from tracker import content_check, errors, ocr, reasons  # noqa: E402
+from tracker import content_check, errors, ocr, reader_child, reasons  # noqa: E402
 from tracker.router import route_file  # noqa: E402
 from tracker.settings import process_scratch  # noqa: E402
 
@@ -491,7 +491,7 @@ def _one_variant(variant: Variant, documents: list[Document], models: str) -> di
     if variant.settings.model_tier == "medium" and not medium_models_in(models):
         return _unmeasured(variant, MEDIUM_NOT_MEASURED)
     ocr.use_settings(variant.settings)
-    with ocr.reading_session(in_a_child=False):
+    with reader_child.reading_session(in_a_child=False):
         started = time.perf_counter()
         try:
             ocr.warm_up()

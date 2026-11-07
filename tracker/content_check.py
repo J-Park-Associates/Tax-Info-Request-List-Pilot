@@ -46,9 +46,10 @@ verdicts in the store (:class:`ContentCache`, decision 107) live in
 
 :class:`Evidence` itself, the rule and place vocabularies and the cell format
 it is written into live in :mod:`tracker.records` since decision 100 - they
-are the shape of a verdict, not the reading of a document. This module
-imports the ones it writes into a verdict, and a reader imports them from
-there (P322).
+are the shape of a verdict, not the reading of a document. The matcher
+(:mod:`tracker.keywords`) imports the rules and places a verdict rests on,
+and the verdict cache (:mod:`tracker.verdicts`) the record a kept verdict is
+rebuilt as; a reader imports them from there (P322).
 
 The matcher and the rules a reading is judged by - a keyword said whole, a
 form's number and its variants, which forms a page counts as its own, and
@@ -65,7 +66,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
-from tracker import errors, ocr, reasons
+from tracker import errors, ocr, reader_child, reasons
 
 # The matcher and the rules live in tracker/keywords.py (P336). This module
 # imports back what its own code reads - the rules' verdict, the questions a
@@ -200,7 +201,7 @@ class UnknownPacking(ValueError):
 #: stop reads (decision 189), so a machine that slept does not end a
 #: reading it never gave any time to. A name of its own so the suite can
 #: move it rather than wait ten minutes.
-_clock = ocr.awake_clock
+_clock = reader_child.awake_clock
 
 
 
@@ -694,14 +695,14 @@ def abandoned(seconds: float) -> Extraction:
 # reading's own process can interrupt a page being read, the PDF text layer,
 # a render or a workbook (a few megabytes of PDF can hold hours of drawing
 # commands). So the pass reads and judges in a child process, one per pass
-# (tracker.ocr, which also says how it is replaced and how it never outlives
-# its pass: a lifeline pipe and, on Windows, a job object), and waits for each
-# document at most its stop. Over time the child is ended with everything it
-# started and the reading is abandoned, the kept verdict above; a child that
-# ends after "started" without answering is a reading that failed, kept the
-# same way. A child that never says "started" is the machine's fault and not
-# the file's: reasons.READER_UNAVAILABLE, transient, nothing kept, the drop
-# left for the next pass and the pass warned once.
+# (tracker.reader_child, which also says how it is replaced and how it never
+# outlives its pass: a lifeline pipe and, on Windows, a job object), and waits
+# for each document at most its stop. Over time the child is ended with
+# everything it started and the reading is abandoned, the kept verdict above;
+# a child that ends after "started" without answering is a reading that
+# failed, kept the same way. A child that never says "started" is the
+# machine's fault and not the file's: reasons.READER_UNAVAILABLE, transient,
+# nothing kept, the drop left for the next pass and the pass warned once.
 #
 # The open test (a PDF parsed, decision 150) and the opening of an email or a
 # zip (decision 154, in_a_child) are parsing a client's file too, so they run
@@ -790,9 +791,9 @@ class OutOfTime(Exception):
 
 def before_a_judgment(cache: ContentCache | None) -> None:
     """Raise :class:`OutOfTime` if ``cache``'s household is past its
-    deadline (:attr:`ContentCache.deadline`, on ``ocr.awake_clock``):
+    deadline (:attr:`ContentCache.deadline`, on ``reader_child.awake_clock``):
     called just before a judgment job would start, and nowhere else."""
-    if cache is not None and cache.deadline is not None and ocr.awake_clock() >= cache.deadline:
+    if cache is not None and cache.deadline is not None and reader_child.awake_clock() >= cache.deadline:
         raise OutOfTime
 
 
@@ -868,10 +869,10 @@ def _read_in_a_child(path: Path, questions: Questions) -> Judgment:
 
 def in_a_child(path: Path, job, *, stop: float | None = None, **kwargs) -> tuple[object, Extraction | None]:
     """Run ``job(path, **kwargs)`` in the pass's reading child
-    (:func:`tracker.ocr.run_in_child`), waiting at most ``stop`` seconds (by
-    default the file's own, :func:`reading_stop_seconds`). The one mechanism
-    for every parse of a client's file (decision 150): the reading, and the
-    opening of an email or a zip (decision 154,
+    (:func:`tracker.reader_child.run_in_child`), waiting at most ``stop``
+    seconds (by default the file's own, :func:`reading_stop_seconds`). The one
+    mechanism for every parse of a client's file (decision 150): the reading,
+    and the opening of an email or a zip (decision 154,
     :func:`tracker.containers.open_bounded`).
 
     Gives ``(answer, None)`` on time, ``answer`` being what the job
@@ -884,7 +885,7 @@ def in_a_child(path: Path, job, *, stop: float | None = None, **kwargs) -> tuple
     """
     path = Path(path)
     stop = reading_stop_seconds(path) if stop is None else stop
-    outcome = ocr.run_in_child(job, (path,), kwargs, stop)
+    outcome = reader_child.run_in_child(job, (path,), kwargs, stop)
     if outcome.kind == "read":
         return outcome.answer, None
     if outcome.kind == "not_started":

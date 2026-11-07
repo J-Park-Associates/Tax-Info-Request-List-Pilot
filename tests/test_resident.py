@@ -418,34 +418,34 @@ def test_the_engine_reads_documents_only_in_a_child(tmp_path):
     ``content_check.judge_bounded``, the one door every reading of a pass or a
     command goes through, which reads in this process when the switch is off -
     is read by exactly one reading child, which answers it; the engine's own
-    ``ocr`` is left with no reader of its own and no session open, and a real
-    reading child does not retire the engine."""
+    ``ocr`` is left with no reader of its own and ``reader_child`` with no
+    session open, and a real reading child does not retire the engine."""
     script = (
         "import io, json, sys\n"
         "from pathlib import Path\n"
         "from tests.samples import text_pdf\n"
-        "from tracker import api, content_check, ocr, resident\n"
+        "from tracker import api, content_check, ocr, reader_child, resident\n"
         "assert content_check.READ_IN_A_CHILD is True\n"
         "pdf = text_pdf(Path(sys.argv[1]) / 'doc.pdf', ['Form W-2 Wage and Tax Statement 2025'], style='padded')\n"
         "made, kinds = [], []\n"
-        "making = ocr.ReadingChild.__init__\n"
+        "making = reader_child.ReadingChild.__init__\n"
         "def counted(self, *args, **kwargs):\n"
         "    made.append(1)\n"
         "    making(self, *args, **kwargs)\n"
-        "ocr.ReadingChild.__init__ = counted\n"
-        "running = ocr.run_in_child\n"
+        "reader_child.ReadingChild.__init__ = counted\n"
+        "running = reader_child.run_in_child\n"
         "def heard(*args, **kwargs):\n"
         "    outcome = running(*args, **kwargs)\n"
         "    kinds.append(outcome.kind)\n"
         "    return outcome\n"
-        "ocr.run_in_child = heard\n"
+        "reader_child.run_in_child = heard\n"
         "def reading(argv):\n"
         "    judgment = content_check.judge_bounded(pdf, content_check.Questions())\n"
         "    return {'kinds': kinds, 'has_words': judgment.has_words}\n"
         "api.COMMANDS['templates'] = reading\n"
         "frame = json.dumps({'id': 1, 'argv': ['templates'], 'bytes': 0}).encode() + b'\\n'\n"
         "resident.serve(io.BytesIO(frame))\n"
-        "print(ocr._ENGINE is None, ocr._PROCESSOR_ONLY, ocr._SESSION is None, len(made))\n"
+        "print(ocr._ENGINE is None, ocr._PROCESSOR_ONLY, reader_child._SESSION is None, len(made))\n"
     )
     done = subprocess.run([sys.executable, "-c", script, str(tmp_path)], cwd=REPO, env=child_env(),
                           capture_output=True, text=True, timeout=180)
@@ -501,12 +501,13 @@ def test_a_real_engine_process_answers_as_a_process_of_its_own_does():
 
 
 def test_the_readers_once_per_process_warnings_are_said_once_per_command_as_a_process_of_its_own_would(capsys, monkeypatch):
-    """``ocr._say_once`` keeps what this process has said; a process per command
-    said each warning once per command, so the engine forgets it between two."""
-    from tracker import ocr
+    """``reader_child._say_once`` keeps what this process has said; a process per
+    command said each warning once per command, so the engine forgets it between
+    two."""
+    from tracker import reader_child
 
-    monkeypatch.setattr(ocr, "_SAID", set())
-    monkeypatch.setitem(api.COMMANDS, "templates", lambda argv: ocr._say_once("a memory-limit sentence") or {})
+    monkeypatch.setattr(reader_child, "_SAID", set())
+    monkeypatch.setitem(api.COMMANDS, "templates", lambda argv: reader_child._say_once("a memory-limit sentence") or {})
     serve(capsys, frame(1, ["templates"]), frame(2, ["templates"]))
     assert error_log_text().count("a memory-limit sentence") == 2
 
@@ -660,7 +661,7 @@ def test_a_second_command_finds_nothing_the_first_left(capsys, monkeypatch):
     through the same engine, finds every one as a process of its own would,
     replies byte for byte as one would, and after it every per-command name
     is its fresh value again, in the same object where it is a container."""
-    from tracker import content_check, fsio, keywords, ocr
+    from tracker import content_check, fsio, keywords, reader_child
 
     # Each per-command name as its module is imported, and put back after.
     monkeypatch.setattr(api, "_ASKED", {})
@@ -670,7 +671,7 @@ def test_a_second_command_finds_nothing_the_first_left(capsys, monkeypatch):
     monkeypatch.setattr(keywords, "_last_line", None)
     monkeypatch.setattr(fsio, "_full_sync_said", False)
     monkeypatch.setattr(locking, "_full_sync_said", False)
-    monkeypatch.setattr(ocr, "_SAID", set())
+    monkeypatch.setattr(reader_child, "_SAID", set())
     containers = {key: getattr(sys.modules[f"tracker.{key[0]}"], key[1]) for key, value in resident.PER_COMMAND.items()
                   if isinstance(value, (list, dict, set))}
     left: list[set] = []
@@ -683,7 +684,7 @@ def test_a_second_command_finds_nothing_the_first_left(capsys, monkeypatch):
         keywords._last_line = ("a line of the first command", 0, 1)
         fsio._full_sync_said = True
         locking._full_sync_said = True
-        ocr._SAID.add("a memory-limit sentence")
+        reader_child._SAID.add("a memory-limit sentence")
         left.append({key for key, value in resident.PER_COMMAND.items()   # api.main set _RUNNING's
                      if getattr(sys.modules[f"tracker.{key[0]}"], key[1]) != value})
         return {"could_not_start": list(content_check._COULD_NOT_START)}
@@ -692,7 +693,7 @@ def test_a_second_command_finds_nothing_the_first_left(capsys, monkeypatch):
         found.append({"could_not_start": list(content_check._COULD_NOT_START),
                       "last_line": keywords._last_line,
                       "full_sync_said": (fsio._full_sync_said, locking._full_sync_said),
-                      "said": set(ocr._SAID), "asked": dict(api._ASKED), "warnings": list(api._WARNINGS)})
+                      "said": set(reader_child._SAID), "asked": dict(api._ASKED), "warnings": list(api._WARNINGS)})
         return {"could_not_start": content_check.readers_that_could_not_start()}
 
     monkeypatch.setitem(api.COMMANDS, "templates", finds)

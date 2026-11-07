@@ -89,11 +89,11 @@ app command does (``content_check.READ_IN_A_CHILD``, decision 169): the
 reader's process-wide switches change only in that child and end with it.
 It makes no network call and imports none (``tests/test_layers.py``); it
 imports ``api`` (which owns the commands), ``errlog`` (the error log every
-command's lines go to), ``locking``, ``ocr`` (to forget the reader's
-warnings between commands) and the standard library, and nothing imports it
-but ``api_entry.py``, at call time. The register's other modules are restored
-through ``sys.modules`` without importing them: a module not yet imported holds
-its fresh values.
+command's lines go to), ``locking``, ``reader_child`` (to forget the
+reader's warnings between commands) and the standard library, and nothing
+imports it but ``api_entry.py``, at call time. The register's other modules
+are restored through ``sys.modules`` without importing them: a module not
+yet imported holds its fresh values.
 """
 
 from __future__ import annotations
@@ -107,7 +107,7 @@ import tempfile
 import threading
 from typing import BinaryIO
 
-from tracker import api, errlog, locking, ocr
+from tracker import api, errlog, locking, reader_child
 
 #: How the app starts the engine: this flag, alone. ``main.js`` names the
 #: same word (``tests/test_single_source.py`` pins it).
@@ -156,8 +156,8 @@ PER_COMMAND: dict[tuple[str, str], object] = {
     ("fsio", "_full_sync_said"): False,
     ("locking", "_full_sync_said"): False,
     # The reader's memory-limit warnings, said once per command (P276);
-    # ocr.forget_said empties it before each command too.
-    ("ocr", "_SAID"): set(),
+    # reader_child.forget_said empties it before each command too.
+    ("reader_child", "_SAID"): set(),
 }
 
 #: The state register's names kept for the engine's life: ``(module, name)``
@@ -184,8 +184,8 @@ PER_PROCESS: dict[tuple[str, str], str] = {
                        "engine (decision 169)",
     ("ocr", "_PROCESSOR_ONLY"): "set after a fault on the card, for the rest of the process "
                                 "(decision 169)",
-    ("ocr", "_SESSION"): "the reading session, for the life of reading_session's with block "
-                         "(decision 169)",
+    ("reader_child", "_SESSION"): "the reading session, for the life of reading_session's with block "
+                                  "(decision 169)",
     ("settings", "_redirect_answer"): "a fact about the machine, asked once",
     ("store", "_CHECKPOINT"): "the store's connection, closed by store.close in api.main's finally "
                               "after every command (decision 101, P214)",
@@ -306,12 +306,13 @@ def _run_one_command(argv: list[str], payload: bytes) -> tuple[int, bool]:
     failure envelope, exit code 1).
 
     The reader's memory-limit warnings are said "once by this process"
-    (``ocr.forget_said``); a process of its own said them once per command, so the
-    engine forgets them before each command and its error log reads the same.
+    (``reader_child.forget_said``); a process of its own said them once per
+    command, so the engine forgets them before each command and its error log
+    reads the same.
     After the command, its reply said, every :data:`PER_COMMAND` name is
     restored (:func:`_restore_per_command`), so the next command finds the
     modules as a process of its own would."""
-    ocr.forget_said()
+    reader_child.forget_said()
     stdin = sys.stdin
     sys.stdin = io.TextIOWrapper(io.BytesIO(payload), encoding="utf-8")
     try:

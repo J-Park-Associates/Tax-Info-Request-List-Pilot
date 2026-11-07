@@ -181,7 +181,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import cast
 
-from tracker import containers, door, errors, ledger, ocr, reasons, store
+from tracker import containers, door, errors, ledger, reader_child, reasons, store
 from tracker.content_check import OutOfTime, before_a_judgment
 
 # Naming, room, the byte-proved copy, the rename-only move, the client
@@ -1064,7 +1064,7 @@ def file_household_drops(
     next file (:func:`_sort_all`).
 
     **Bounded, and kept as it goes** (decision 189). ``deadline`` is a
-    moment on ``ocr.awake_clock``: past it the sort takes no file that
+    moment on ``reader_child.awake_clock``: past it the sort takes no file that
     would need a new judgment (ruling 2.2; one whose bytes are on record
     is still decided from the record) - what it did is recorded as always,
     and the files it did not reach wait for the next pass (``unreached`` on
@@ -1514,7 +1514,7 @@ def _sort_all(
     transaction, and none when nothing changed - so a pass killed mid-sort
     reads again only the file it was killed on. **And the household's time
     stops only a new judgment** (ruling 2.2): past ``deadline``
-    (``ocr.awake_clock``) a file whose bytes a return's record already
+    (``reader_child.awake_clock``) a file whose bytes a return's record already
     holds is still decided from that record, which reads nothing, and the
     first file that would need a judgment stops the sort before it is
     moved - it and the rest stay where they are, in the inbox or the
@@ -1590,7 +1590,7 @@ def _sort_all(
             # taken only when its bytes are on some return's record, so the
             # record decides it and nothing is read. Anything else would need a
             # new judgment: it and the rest wait where they are.
-            if deadline is not None and ocr.awake_clock() >= deadline:
+            if deadline is not None and reader_child.awake_clock() >= deadline:
                 held = _digest_or_none(drop)
                 if not held or not any(held in run.known for run in runs):
                     _out_of_time(first, len(pending) - taken)

@@ -88,8 +88,9 @@ process, with the same functions.
 architecture audit's A-5). This code sat in content_check, between the
 reading and the judgment, and reads nothing of either: content_check's own
 code calls ten of its names, and nothing here calls content_check. Out of
-it, content_check is the reading, the judgment and the verdict cache, and
-a change to how a keyword is read lands in a module about nothing else.
+it, content_check is the reading and the judgment (the verdict cache left
+for :mod:`tracker.verdicts` with P337), and a change to how a keyword is
+read lands in a module about nothing else.
 
 **Why it sits at layer 2.** It imports only ``manifest`` and ``records``
 (layer 1) and ``reasons`` (layer 0), and could sit lower. It sits beside

@@ -369,10 +369,11 @@ class ContentCache:
         #: 189 a judgment, which holds no word of the document: the
         #: scanner held up to eight whole texts here before.
         self._readings: OrderedDict[str, Judgment] = OrderedDict()
-        #: The household's deadline for this pass, on ``ocr.awake_clock``,
-        #: while the sort or the scan is taking files (decision 189): a
-        #: miss past it starts no judgment (:func:`before_a_judgment`);
-        #: a hit is answered whatever the time. None is no limit.
+        #: The household's deadline for this pass, on
+        #: ``reader_child.awake_clock``, while the sort or the scan is
+        #: taking files (decision 189): a miss past it starts no judgment
+        #: (:func:`before_a_judgment`); a hit is answered whatever the time.
+        #: None is no limit.
         self.deadline: float | None = None
         if self._engagement is not None:
             self._files, self._verdicts = store.cached_verdicts(

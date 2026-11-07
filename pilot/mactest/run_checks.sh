@@ -459,7 +459,7 @@ fi
 grep -q "reader=processor" "$SMOKE/runs.log" 2>/dev/null || note_smoke "the run log names no processor"
 # R31: a footprint that cannot be read is no cap, and is said once on the
 # error log. On a Mac that sentence must not be there.
-unreadable=$("$VPY" -c "from tracker import ocr; print(ocr.MEMORY_UNREADABLE.split('(')[0].strip())" 2>>"$LOG")
+unreadable=$("$VPY" -c "from tracker import reader_child; print(reader_child.MEMORY_UNREADABLE.split('(')[0].strip())" 2>>"$LOG")
 if [ -n "$unreadable" ] && grep -qF "$unreadable" "$SMOKE/data/tracker-errors.log" 2>/dev/null; then
   note_smoke "the error log says the reading's memory could not be read (proc_pid_rusage failed)"
 fi

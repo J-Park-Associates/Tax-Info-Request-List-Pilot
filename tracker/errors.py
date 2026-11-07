@@ -61,7 +61,7 @@ is made by :func:`console`, which keeps kept words off it.
 (decision 169) that never opens a log: :func:`keep_for_the_parent` makes
 its keeps collect instead, :func:`take_kept` hands them over with each
 answer, and the pass keeps each one on its own debug log
-(``ocr.Session``), so a child's words land where a pass's do.
+(``reader_child.Session``), so a child's words land where a pass's do.
 
 **The record's own errors keep their text.** A ``ManifestError`` or a
 ``StoreError`` is a sentence the firm wrote about the firm's own files; it

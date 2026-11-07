@@ -46,7 +46,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from tracker.manifest import RequestItem, validated
-from tracker.ocr import SCRATCH_ENV
+from tracker.reader_child import SCRATCH_ENV
 from tracker.settings import (
     COLUMN_CATALOG,
     COLUMN_EXPECTED,
@@ -195,9 +195,9 @@ def linked_under_a_neutral_name(source: Path, scratch: Path, row: int) -> Path:
 @contextmanager
 def temp_pointed_at(folder: Path):
     """Point every way a library finds the temp folder - ``TMP``, ``TEMP``,
-    ``TMPDIR`` (``ocr.SCRATCH_ENV``) and :data:`tempfile.tempdir` - at
-    ``folder`` for the block, and put each back as it was afterwards, unset
-    ones unset."""
+    ``TMPDIR`` (``reader_child.SCRATCH_ENV``) and :data:`tempfile.tempdir` -
+    at ``folder`` for the block, and put each back as it was afterwards,
+    unset ones unset."""
     saved = {name: os.environ.get(name) for name in SCRATCH_ENV}
     saved_tempdir = tempfile.tempdir
     try:

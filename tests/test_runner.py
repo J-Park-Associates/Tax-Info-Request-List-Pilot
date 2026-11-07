@@ -2870,10 +2870,10 @@ def test_a_pass_killed_mid_sort_keeps_every_reading_it_finished(tmp_path, monkey
 @pytest.fixture
 def a_clock(monkeypatch):
     """The awake clock, held still unless a test moves it (decision 189)."""
-    from tracker import ocr
+    from tracker import reader_child
 
     now = [1000.0]
-    monkeypatch.setattr(ocr, "awake_clock", lambda: now[0])
+    monkeypatch.setattr(reader_child, "awake_clock", lambda: now[0])
     return now
 
 

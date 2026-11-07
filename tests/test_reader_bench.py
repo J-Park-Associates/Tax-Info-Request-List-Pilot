@@ -32,7 +32,7 @@ from types import SimpleNamespace
 import pytest
 
 from tests.samples import lines_1099_int, scanned_pdf, text_pdf, w2_lines
-from tracker import content_check, ocr, reasons
+from tracker import content_check, ocr, reader_child, reasons
 from tracker.records import Routing
 from tracker.settings import EXPECTATIONS_COLUMNS, EXPECTATIONS_FILENAME, process_scratch
 
@@ -132,7 +132,8 @@ def stand_in(monkeypatch):
 
     monkeypatch.setattr(content_check, "_ocr_pdf", read)
     monkeypatch.setattr(content_check, "_ocr_image", read)
-    monkeypatch.setattr(ocr, "warm_up", lambda: (ocr.DEVICE_PROCESSOR, ""))
+    for module in (ocr, reader_child):
+        monkeypatch.setattr(module, "warm_up", lambda: (ocr.DEVICE_PROCESSOR, ""))
     return reader
 
 
@@ -364,7 +365,8 @@ def test_the_bench_never_downloads_a_model(tmp_path, stand_in, monkeypatch):
 
     monkeypatch.setattr(download_file.DownloadFile, "run", classmethod(reached))
     monkeypatch.setattr(ocr, "_refuse_downloads", lambda: None)              # keep this guard in place
-    monkeypatch.setattr(ocr, "warm_up", REAL_WARM_UP)
+    for module in (ocr, reader_child):
+        monkeypatch.setattr(module, "warm_up", REAL_WARM_UP)
     stand_in.pages = {1: GOOD_1099}
     folder = a_corpus(tmp_path, [("scan", "one.pdf", "A02")])
 
@@ -485,7 +487,8 @@ def test_the_seconds_are_counted_per_page_and_against_the_ceiling(tmp_path, monk
                        code=reasons.UNMATCHED_CODE)
 
     monkeypatch.setattr(reader_bench, "route_file", routed)
-    monkeypatch.setattr(ocr, "warm_up", lambda: (ocr.DEVICE_PROCESSOR, ""))
+    for module in (ocr, reader_child):
+        monkeypatch.setattr(module, "warm_up", lambda: (ocr.DEVICE_PROCESSOR, ""))
     folder = a_corpus(tmp_path, [("scan2", "ten.pdf", ""), ("scan", "one.pdf", ""), ("photo", "pic.jpg", "")])
 
     code, report = run(tmp_path, folder, *SHIPPED_ONLY)

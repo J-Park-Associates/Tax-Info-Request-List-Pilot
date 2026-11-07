@@ -111,6 +111,7 @@ from tracker import (
     names,
     ocr,
     progress,
+    reader_child,
     reasons,
     records,
     reminder,
@@ -6759,7 +6760,7 @@ def main(argv: list[str]) -> int:
             with ExitStack() as held:
                 if argv[0] in HELD_READING_COMMANDS:
                     held.enter_context(one_reading())
-                held.enter_context(ocr.reading_session(in_a_child=content_check.READ_IN_A_CHILD))
+                held.enter_context(reader_child.reading_session(in_a_child=content_check.READ_IN_A_CHILD))
                 payload = COMMANDS[argv[0]](argv[1:])
         except Exception as exc:  # said as JSON, never a traceback on screen
             return say_failure(argv[0], exc)

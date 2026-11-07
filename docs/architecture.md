@@ -26,7 +26,7 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of fifty-three modules in six layers.
+`tracker/` is one Python package of fifty-four modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The scanner never imports the filer; a person's actions
@@ -123,6 +123,11 @@ the package but each other.
   and the processor otherwise; the preparation of a page in memory before it
   is read (drawn at 300 dots per inch, levelled, thresholded, cleared of
   specks and box lines); the download path refused outright.
+- `reader_child.py`: the reading's child process: one spawned child per pass
+  that every parse of a client's file runs in, with a lifeline to the pass, a
+  stop on the awake clock, a memory cap (the job object on Windows, a watch
+  elsewhere) and its own scratch folder; replaced after a stop, a crash or
+  every hundred documents (decisions 150, 169, 186, 189).
 - `containers.py`: an email or a zip opened in memory, each attachment handed
   back under a safe name, nothing inside ever run (decision 143).
 - `names.py`: whose document this is: the matcher for the names a return's

@@ -596,7 +596,7 @@ def test_a_sort_past_its_deadline_takes_no_file_and_leaves_each_where_it_was(eng
     would need a new judgment. Past it the sort takes no such file: every
     new drop stays in the inbox, unrecorded, and the first own return's
     report says how many."""
-    from tracker import ocr
+    from tracker import reader_child
     from tracker.filer import file_household_drops
     from tracker.locking import engagement_lock
 
@@ -605,7 +605,7 @@ def test_a_sort_past_its_deadline_takes_no_file_and_leaves_each_where_it_was(eng
     with engagement_lock(engagement):
         reports = file_household_drops(inbox_of(engagement), originals_of(engagement),
                                        own=[engagement], today=DAY1,
-                                       deadline=ocr.awake_clock() - 1)
+                                       deadline=reader_child.awake_clock() - 1)
     report = reports[engagement]
     assert report.unreached == 2 and report.handled == 0
     assert (inbox_of(engagement) / "a.pdf").is_file() and (inbox_of(engagement) / "b.pdf").is_file()

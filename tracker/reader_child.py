@@ -1,0 +1,1016 @@
+"""The process a pass reads in: the reading's child, the supervisor that
+stops, caps and replaces it, and the pass's session that owns it.
+
+**The reading's child** (decision 150, decision 169 R-4). The pass reads in
+a child process it can stop - the safety stop bounds the whole reading,
+and a reader that crashes parks the file rather than ending the pass. Since
+this decision there is **one** child per pass (:class:`ReadingChild`),
+serving documents one at a time: a fresh child per document would pay the
+engine's load (about a second on either device) every time. It is replaced
+after a stop, a crash, a fault on the graphics card, and every
+:data:`DOCUMENTS_PER_CHILD` documents. What made decision 150's promises
+still holds, for this child:
+
+- the document's stop ends the child, and the next document gets a fresh
+  one;
+- a crash parks only the document being read - and only a crash on a
+  fresh processor child is the file's own. A child on the graphics card
+  that ends without an answer is a fault on the card (the pass moves to
+  the processor), and a child that had already served a document may
+  have died of what the earlier ones left behind; either way the document
+  is read once more on a fresh child before it is blamed;
+- it never outlives the pass. It watches a lifeline pipe the pass never
+  writes to, and on Windows it sits in a job object that kills everything
+  in it when the pass's only handle closes. The same job caps its memory
+  (:data:`PROCESSOR_CHILD_MEMORY`, :data:`GRAPHICS_CARD_CHILD_MEMORY`): a
+  child past it fails its reading, ends and is replaced, as a crash. Off
+  Windows there is no job object, so the pass waits in slices of
+  :data:`MEMORY_WATCH_SECONDS` and reads the child's memory between them
+  (R31 of SPEC-mac): ``ri_phys_footprint`` from libproc on a Mac, the
+  resident pages of ``/proc/<pid>/statm`` on Linux. Past the same limit the
+  child is ended and the reading is a crash with the same words.
+  ``setrlimit(RLIMIT_AS)`` was the rejected alternative - macOS does not
+  honour it reliably, and it would cap address space, not memory. A
+  footprint that cannot be read is no cap, and the error log says so once.
+
+**Nothing a reading does may outlive it in the child.** The child serves
+many documents, so a reader must never change module state (a global, a
+patched function) for one document and leave it for the next.
+
+**Nor may anything it writes.** The child points the temp folder - ``TMP``,
+``TEMP``, ``TMPDIR`` and :data:`tempfile.tempdir` - at a folder of its own,
+``scratch_root() / <its pid>`` in the data home, before it serves anything
+(decision 186). The reader writes no temporary file today (SPEC-169 section
+6); that was a measurement, and this makes it a place: whatever a library
+writes *through the temp folder* (``tempfile``, ``GetTempPath``, ``TMPDIR``)
+lands in the child's folder, which is removed when the child ends, and never
+in the machine's temp folder. One folder per process, and only a folder
+whose process is gone is ever swept, so a preview's child can never empty the
+folder under a running pass (D-14).
+
+What this does not cover (SPEC-186 section 10, the review's S2): a library
+that writes to a path of its own choosing is not caught. A reading made in
+this process (``reading_session(in_a_child=False)``) redirects nothing - the
+backtest, which reads in its own process, points the temp folder at its own
+scratch for the run instead. A killed child's folder lives until the next
+child starts and sweeps it; a folder whose process number Windows has reused
+for a live process lives until that process ends.
+
+The pass opens its child with :func:`reading_session` (the runner for a
+pass, the app for one command); a reading made with none open gets a
+session of its own for that one reading. The pass and the child talk over
+``multiprocessing``'s ``Pipe`` - a named pipe on Windows - never a socket.
+
+**Where it came from** (SPEC-architecture-p4 P4.12, P338; the
+architecture audit's A-6). This was the second half of
+:mod:`tracker.ocr`, after the engine. It reads the engine only through
+ocr's own functions - :func:`tracker.ocr.warm_up`,
+:func:`tracker.ocr.take_notes`, :func:`tracker.ocr.processor_only`,
+:func:`tracker.ocr.reset` and :func:`tracker.ocr.gpu_pack` - and its
+constants and sentences, and ocr reads nothing of it: the reader is one
+module, and the process a pass reads in is another.
+
+**Why** :func:`tracker.content_check.in_a_child` **stays in
+content_check.** It words each :class:`Outcome` as content_check's own
+Extractions (``abandoned``, ``reading_failed``, ``could_not_start``), and
+``could_not_start`` appends to ``content_check._COULD_NOT_START``, the
+command's list of readers that could not start (the audit's A-7, a later
+phase's state). Moved here without that state, this module would import
+content_check while content_check imports it: a load-time cycle.
+
+**Why it sits at layer 2.** It imports :mod:`tracker.ocr` (layer 2, in
+its own layer: the functions, constants and sentences named above), and
+``errors``, ``locking`` (:func:`tracker.locking.pid_alive`, for the
+sweep) and ``settings`` (:func:`tracker.settings.scratch_root`) at layer
+0, and nothing above. content_check, the filer, the runner, the API and
+the engine (``resident``) read it.
+
+**Why it logs as ``tracker.ocr``** (SPEC-architecture-p4 section 2.1).
+The run log and the error log print each line's logger name, so a name of
+this module's own would change the lines a person and the office read. It
+is the same logger object as ocr's, so no handler and no test sees a
+difference. For the same reason its ``errors.keep`` places keep their
+words - ``"ocr: the scratch sweep"``, ``"ocr: the reading's scratch"``,
+``"ocr: the reading child could not be made"``, ``"ocr: the reading
+child"`` and ``"ocr"`` in :func:`_end`: they are the error log's words,
+which a person reads (decision 193), and ``tests/test_errors.py`` pins
+one of them.
+
+**Found by its new name, loading the same code.** :class:`ReadingChild`
+hands the spawn context ``_the_child``, which is pickled by its qualified
+name, ``tracker.reader_child._the_child`` since P338. The spawned process
+imports this module, which imports :mod:`tracker.ocr`, so the child loads
+the code it loaded before and this one module more; the jobs it runs
+(:func:`tracker.content_check.judge`, the containers' openers) are
+pickled by their own names, which did not change.
+
+The comments and docstrings below came with the code, word for word.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import logging
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import traceback
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, cast
+
+from tracker import errors
+from tracker.locking import pid_alive
+
+# The engine stays in tracker/ocr.py (P338). The child builds and warms it,
+# takes its notes and keeps it off the card through ocr's own functions, and
+# says ocr's sentences; none of ocr's process-wide names is read here, so a
+# name imported here holds what ocr holds. A stand-in for one of these
+# functions is set here as well as on ocr wherever both read it (A-4).
+from tracker.ocr import (
+    DEVICE_PROCESSOR,
+    GPU_FAULT_WARNING,
+    PACK_UNUSABLE,
+    READER_CANNOT_RUN,
+    ReaderUnavailable,
+    gpu_pack,
+    processor_only,
+    reset,
+    take_notes,
+    warm_up,
+)
+from tracker.settings import SettingsError, scratch_root
+
+# The reader's logger, by its name (SPEC-architecture-p4 section 2.1): the run
+# log and the error log print each line's logger name, so a name of this
+# module's own would change the lines a person and the office read. It is the
+# same logger object, so no handler and no test sees a difference.
+log = logging.getLogger("tracker.ocr")
+
+
+# ------------------------------------------------------ the reading's child ----
+
+#: A child serves this many documents and is then replaced (R-4's hygiene).
+DOCUMENTS_PER_CHILD = 100
+#: The most memory a reading child may commit (SPEC-169 section 9), set on
+#: its job object on Windows and watched by the pass elsewhere: a processor
+#: child, and a child on the graphics card. Past it the child ends and is
+#: replaced. Decision 169's 2 GB was a reader at 144 dpi and a 2000 px long
+#: side; P285's 300 dpi page needs about 2.3 GB on a Mac and more where
+#: Windows counts committed memory, and 4 GB is the first power of two with
+#: room above that. Assumed (P285, 9.4), pending Jason's ruling.
+PROCESSOR_CHILD_MEMORY = 4 * 1024**3
+GRAPHICS_CARD_CHILD_MEMORY = 6 * 1024**3
+#: Off Windows no job object caps a child, so the pass reads the child's
+#: memory itself, between the slices it waits for an answer in (R31). Half a
+#: second: a reading that runs away is ended within the second, while the
+#: cost is one small read of /proc (or one call into libproc) per slice.
+MEMORY_WATCH_SECONDS = 0.5
+#: What the error log says, once, when the child's memory cannot be read: the
+#: cap is then off, and the log says so rather than guessing a figure.
+MEMORY_UNREADABLE = ("the reading's memory could not be read ({reason}); "
+                     "its memory limit is not enforced")
+#: How long the pass gives its child to build the engine and read the
+#: self-test at the start of a pass with a graphics card pack.
+WARM_UP_STOP_SECONDS = 120.0
+#: How long an ended child is waited for, and how long one told to finish
+#: is given to exit on its own, before the pass goes on.
+CHILD_EXIT_SECONDS = 30.0
+#: The exit code of a child that ended itself because its pass was gone.
+ORPHANED_EXIT_CODE = 86
+#: The exit code of a child handed a job it could not even unpack - a
+#: reader whose module it cannot import: the machine's, before "started".
+UNREADABLE_JOB_EXIT_CODE = 87
+#: The exit code of a child that ran out of memory and ended itself after
+#: saying so: its heap is not to be trusted with another document.
+OUT_OF_MEMORY_EXIT_CODE = 88
+
+
+def _awake_clock_source():
+    """The clock :func:`awake_clock` reads: on Windows
+    ``QueryUnbiasedInterruptTime`` (100 ns units), which stands still while
+    the machine sleeps; elsewhere ``time.monotonic``, which on Linux
+    already does. A Windows that will not answer the call falls back to
+    ``time.monotonic`` rather than to no stop at all."""
+    if os.name != "nt":
+        return time.monotonic
+    try:
+        import ctypes
+
+        query = ctypes.WinDLL("kernel32").QueryUnbiasedInterruptTime
+        query.argtypes = (ctypes.POINTER(ctypes.c_ulonglong),)
+        ticks = ctypes.c_ulonglong()
+        if not query(ctypes.byref(ticks)):
+            return time.monotonic
+    except (OSError, AttributeError):
+        return time.monotonic
+
+    def unbiased() -> float:
+        query(ctypes.byref(ticks))
+        return ticks.value / 10_000_000
+    return unbiased
+
+
+_AWAKE = _awake_clock_source()
+
+
+def awake_clock() -> float:
+    """Seconds on a clock that counts only time the machine is awake
+    (decision 189, SPEC-161 A-F9).
+
+    **Every stop that bounds a reading reads this**, and the household's
+    time budget with them: :meth:`ReadingChild.run` and
+    :meth:`Session._run_once`, the child's own safety stop
+    (``content_check._clock``) and ``runner.HOUSEHOLD_BUDGET_SECONDS``.
+    ``time.monotonic`` on Windows counts sleep, so a laptop that slept
+    through the night would wake to every reading in flight parked as a file
+    that stalled the reader - a verdict about the machine's lid, kept as one
+    about the client's file. Task Scheduler's own limit stays wall-clock.
+    """
+    return _AWAKE()
+
+
+@dataclass(slots=True)
+class Outcome:
+    """What became of one job sent to the child.
+
+    ``kind`` is ``"read"`` (``answer`` is what the job returned),
+    ``"failed"`` (the job raised: ``error`` is its class, ``message`` and
+    ``trace`` its words, which only the debug log may hold - decision 190), ``"stopped"``
+    (ended at the stop), ``"died"`` (ended without an answer after it
+    started) or ``"not_started"`` (never started the job: the machine's)."""
+
+    kind: str
+    answer: object = None
+    error: str = ""
+    #: A failed job's own message: never shown, only kept (decision 190).
+    message: str = ""
+    trace: str = ""
+    seconds: float = 0.0
+    #: What the reader said with its answer (:func:`take_notes`).
+    notes: list = field(default_factory=list)
+    #: What the child kept while it served this job (:func:`tracker.errors.take_kept`):
+    #: words for the pass's debug log, which the pass keeps (decision 190, Part 4).
+    kept: list = field(default_factory=list)
+
+
+#: Every way a library finds the temp folder, pointed by a reading child at
+#: its own folder in the data home (decision 186), with :data:`tempfile.tempdir`.
+SCRATCH_ENV = ("TMP", "TEMP", "TMPDIR")
+
+
+def sweep_scratch(root: Path) -> list[Path]:
+    """Remove the folders under ``root`` whose process is gone, and say which.
+
+    Only a folder named by a process number, and only when
+    :func:`tracker.locking.pid_alive` answers that the process is gone:
+    a live process's folder, or one whose process cannot be known, is
+    kept, so a preview's child never empties a running pass's (D-14). A
+    name that is not a number is not the tracker's and is never touched. A
+    folder that cannot be removed now - a dying process still holds it - is
+    logged and left for the next sweep; nothing here raises."""
+    removed: list[Path] = []
+    try:
+        folders = sorted(root.iterdir())
+    except OSError:
+        return removed                          # no scratch yet: nothing to sweep
+    for folder in folders:
+        name = folder.name
+        if not (name.isascii() and name.isdigit()) or not folder.is_dir():
+            continue
+        if pid_alive(name) is not False:
+            continue
+        try:
+            shutil.rmtree(folder)
+        except OSError as exc:
+            errors.keep("ocr: the scratch sweep", exc, name=folder.name)
+            log.warning("Could not remove the scratch folder %s (%s); the next reading sweeps it",
+                        folder, errors.error_class(exc))
+            continue
+        removed.append(folder)
+    return removed
+
+
+def _take_scratch(root: Path) -> Path:
+    """Make this process's own temp folder under ``root`` and point every way
+    a library finds the temp folder at it. Sweeps first (:func:`sweep_scratch`)."""
+    sweep_scratch(root)
+    own = root / str(os.getpid())
+    own.mkdir(parents=True, exist_ok=True)
+    for name in SCRATCH_ENV:
+        os.environ[name] = str(own)
+    tempfile.tempdir = str(own)
+    return own
+
+
+def _remove_scratch(folder: Path) -> None:
+    """Remove an ended child's own folder; a warning, never a raise, when it cannot be."""
+    try:
+        shutil.rmtree(folder)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        errors.keep("ocr: the reading's scratch", exc, name=folder.name)
+        log.warning("Could not remove the reading's scratch folder %s (%s); the next reading sweeps it",
+                    folder, errors.error_class(exc))
+
+
+class ReadingChild:
+    """One reading child process and the pass's ends of its three pipes:
+    jobs in, answers out, and the lifeline the pass never writes to."""
+
+    def __init__(self, *, processor_only: bool) -> None:
+        import multiprocessing
+
+        # Where the child keeps whatever a library writes (decision 186),
+        # asked before any process or pipe exists: no data home is a child
+        # that cannot start - the machine's fault, and the file waits.
+        self._scratch_root = scratch_root()
+        self._pid: int | None = None
+        context = multiprocessing.get_context("spawn")          # Windows has no fork
+        self._answers, sender = context.Pipe(duplex=False)
+        jobs, self._jobs = context.Pipe(duplex=False)
+        lifeline, self._held = context.Pipe(duplex=False)
+        self.served = 0
+        self._done = False
+        #: A child that may build the graphics card's engine (a pack is
+        #: here and the card has not failed this pass).
+        self.on_the_card = not processor_only and gpu_pack() is not None
+        self.memory_limit = GRAPHICS_CARD_CHILD_MEMORY if self.on_the_card else PROCESSOR_CHILD_MEMORY
+        self._process = context.Process(
+            target=_the_child, args=(jobs, sender, lifeline, processor_only, str(self._scratch_root)),
+            name="tracker-reading", daemon=True)
+        try:
+            self._process.start()
+        except Exception:
+            for end in (self._answers, self._jobs, self._held):
+                end.close()
+            raise
+        finally:
+            # The child holds its own ends: end-of-file means it is gone.
+            for end in (sender, jobs, lifeline):
+                end.close()
+        self._pid = self._process.pid
+        self._job_object = _kill_on_close_job(cast(int, self._process.pid),   # started above
+                                              memory_limit=self.memory_limit)
+        #: Windows caps the child in its job object; everywhere else the
+        #: pass watches (R31).
+        self._watches_memory = sys.platform != "win32"
+
+    @property
+    def pid(self) -> int | None:
+        return self._process.pid
+
+    def run(self, job, args: tuple, kwargs: dict, stop: float, *, since: float | None = None) -> Outcome:
+        """Send ``job(*args, **kwargs)`` and wait for it at most ``stop``
+        seconds from ``since`` (by default now). A stop ends the child."""
+        started = awake_clock() if since is None else since
+        try:
+            self._jobs.send((job, args, kwargs))
+        except OSError as exc:
+            return Outcome("not_started", error=f"the reading's process was gone ({errors.error_class(exc)})",
+                           seconds=awake_clock() - started)
+        answer: tuple[Any, ...]                 # what the pipe carries after the kind
+        kind, answer, begun, over, capped = "died", (), False, False, False
+        while True:
+            # Measured again after every message and every wake, on the
+            # awake clock (decision 189): a wait the machine slept through
+            # is not the file's time. Off Windows the wait is in slices of
+            # MEMORY_WATCH_SECONDS, never longer than what is left, so the
+            # watch cannot stretch the stop.
+            left = started + stop - awake_clock()
+            if left <= 0:
+                over = True
+                self.end()
+                break
+            if not self._answers.poll(min(left, MEMORY_WATCH_SECONDS) if self._watches_memory else left):
+                if self._watches_memory and self._past_its_memory():
+                    # Ended here, joined below with today's words: the
+                    # whole tree, as a stop ends it.
+                    capped = True
+                    _end(self._process)
+                    break
+                continue
+            try:
+                kind, *answer = self._answers.recv()
+            except (EOFError, OSError):
+                kind, answer = "died", ()
+                break
+            if kind != "started":
+                break
+            begun = True            # from here on, what happens is the file's
+        seconds = awake_clock() - started
+        if not begun:
+            exit_code = None if over else self._exit_code()
+            error = ("the reader did not start within the safety stop" if over else
+                     f"the reading's process ended with exit code {exit_code} before it started")
+            if capped:
+                error += self._memory_words()
+            if not over:
+                self.end()
+            return Outcome("not_started", error=error, seconds=seconds)
+        if over:
+            return Outcome("stopped", seconds=seconds)
+        self.served += 1
+        if kind == "read":
+            return Outcome("read", answer=answer[0], notes=answer[1], kept=answer[2],
+                           seconds=seconds)
+        if kind == "failed":
+            return Outcome("failed", error=answer[0], message=answer[1], trace=answer[2],
+                           notes=answer[3], kept=answer[4], seconds=seconds)
+        error = f"the reading's process ended with exit code {self._exit_code()}"
+        if capped or _job_memory(self._job_object)[1] >= self.memory_limit * 0.9:
+            error += self._memory_words()
+        self.end()
+        return Outcome("died", error=error, seconds=seconds)
+
+    def _memory_words(self) -> str:
+        """The words a crash at the memory limit carries, on Windows and off."""
+        return f"; it had reached its memory limit ({self.memory_limit / 1024**3:.0f} GB)"
+
+    def _past_its_memory(self) -> bool:
+        """Whether the child's memory is past ``memory_limit`` (R31). A
+        footprint that cannot be read is no cap: said once on the error log
+        (:data:`MEMORY_UNREADABLE`), never replaced by a guess - unless the
+        child is simply gone, which is no news."""
+        try:
+            return _footprint(cast(int, self._process.pid)) > self.memory_limit   # started above
+        except (OSError, ValueError, AttributeError) as exc:
+            if self._process.is_alive():
+                _say_once(MEMORY_UNREADABLE.format(reason=errors.error_class(exc)))
+            return False
+
+    def _exit_code(self) -> int | None:
+        self._process.join(CHILD_EXIT_SECONDS)
+        return self._process.exitcode
+
+    def finish(self) -> None:
+        """Tell the child it is done and let it exit; end it if it will not."""
+        if self._done:
+            return
+        with contextlib.suppress(OSError, ValueError):
+            self._jobs.send(None)
+        self._process.join(CHILD_EXIT_SECONDS)
+        self.end()
+
+    def end(self) -> None:
+        """End the child and everything it started, and close every end.
+        Once: a child is ended at a stop and then let go by its session."""
+        if self._done:
+            return
+        self._done = True
+        if self._process.is_alive():
+            _end(self._process)
+        for end in (self._jobs, self._answers, self._held):
+            with contextlib.suppress(OSError):
+                end.close()
+        _close_job(self._job_object)
+        self._job_object = None
+        if self._pid is not None and not self._process.is_alive():
+            _remove_scratch(self._scratch_root / str(self._pid))
+        if self._process.exitcode is not None:
+            with contextlib.suppress(ValueError):
+                self._process.close()
+
+
+def _the_child(jobs, sender, lifeline, processor_only_: bool, scratch: str) -> None:
+    """The child's whole life: serve jobs one at a time until the pass says
+    it is done, or is gone.
+
+    First it takes a temp folder of its own under ``scratch``
+    (:func:`_take_scratch`, decision 186); a folder it cannot make ends it
+    before "started", as a job it cannot unpack does. On POSIX it leads a process group of its own first, so ending it ends
+    whatever it started. It watches its lifeline from a thread of its own
+    (:func:`_watch_the_pass`). For each job it says "started" before
+    anything touches the file - an end before it is the machine's, after it
+    the file's - and hands back the answer, or what the job raised as
+    words, never left to end the process in silence. Every answer carries
+    what the reader has to tell the pass (:func:`take_notes`)."""
+    # Every keep in this process travels back with an answer, and none is
+    # logged here: the child never opens a log (decision 190, Part 4).
+    errors.keep_for_the_parent()
+    try:
+        _take_scratch(Path(scratch))
+    except OSError:
+        os._exit(UNREADABLE_JOB_EXIT_CODE)      # the machine's, never the file's
+    if hasattr(os, "setsid"):
+        os.setsid()
+    threading.Thread(target=_watch_the_pass, args=(lifeline,), name="tracker-lifeline",
+                     daemon=True).start()
+    if processor_only_:
+        processor_only()
+    try:
+        while True:
+            try:
+                message = jobs.recv()
+            except (EOFError, OSError):
+                break                           # the pass closed its end: done
+            except Exception:
+                # A job it cannot unpack names a reader this process cannot
+                # import: the machine's fault, before "started".
+                os._exit(UNREADABLE_JOB_EXIT_CODE)
+            if message is None:
+                break
+            job, args, kwargs = message
+            _answer(sender, ("started",))
+            try:
+                answer = job(*args, **kwargs)
+            except BaseException as exc:
+                # The class, and apart from it the words and the trace: the
+                # pass shows the first and keeps the rest on its debug log.
+                # This process never opens a log of its own (decision 190).
+                _answer(sender, ("failed", errors.error_class(exc), _message_of(exc),
+                                 traceback.format_exc(), take_notes(), errors.take_kept()))
+                if isinstance(exc, MemoryError):
+                    # Past its memory limit: said, and done - the pass
+                    # replaces it (SPEC-169 section 9).
+                    os._exit(OUT_OF_MEMORY_EXIT_CODE)
+            else:
+                _answer(sender, ("read", answer, take_notes(), errors.take_kept()))
+    finally:
+        sender.close()
+
+
+def _message_of(exc: BaseException) -> str:
+    """An exception's own words, for the pass's debug log; an exception
+    whose ``__str__`` itself fails is said by its class."""
+    try:
+        return str(exc)
+    except Exception:
+        return errors.error_class(exc)
+
+
+def _answer(sender, message) -> None:
+    """Hand the pass an answer - or, when the pass is gone and the pipe
+    broken, end: there is nobody left to read it for."""
+    try:
+        sender.send(message)
+    except OSError:
+        _orphaned()
+
+
+def _watch_the_pass(lifeline) -> None:
+    """The child's lifeline thread. The pass never writes to it, so the
+    wait ends only when the pass's end closes - the pass finished with the
+    child, or the pass is gone. Either way the child has nothing left to do."""
+    try:
+        lifeline.recv()
+    except (EOFError, OSError):
+        pass
+    _orphaned()
+
+
+def _orphaned() -> None:
+    """End this child now, and on POSIX the process group it leads, so
+    whatever it started ends with it (on Windows its job does that)."""
+    if hasattr(os, "killpg"):
+        try:
+            os.killpg(os.getpgrp(), signal.SIGKILL)
+        except OSError:
+            pass
+    os._exit(ORPHANED_EXIT_CODE)
+
+
+def _extended_limits():
+    """``kernel32``'s JOBOBJECT_EXTENDED_LIMIT_INFORMATION, as ``ctypes``
+    lays it out (Windows only)."""
+    import ctypes
+    from ctypes import wintypes
+
+    class BasicLimits(ctypes.Structure):
+        _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64),
+                    ("PerJobUserTimeLimit", ctypes.c_int64),
+                    ("LimitFlags", wintypes.DWORD),
+                    ("MinimumWorkingSetSize", ctypes.c_size_t),
+                    ("MaximumWorkingSetSize", ctypes.c_size_t),
+                    ("ActiveProcessLimit", wintypes.DWORD),
+                    ("Affinity", ctypes.c_size_t),
+                    ("PriorityClass", wintypes.DWORD),
+                    ("SchedulingClass", wintypes.DWORD)]
+
+    class IoCounters(ctypes.Structure):
+        _fields_ = [(name, ctypes.c_uint64) for name in (
+            "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
+            "ReadTransferCount", "WriteTransferCount", "OtherTransferCount")]
+
+    class ExtendedLimits(ctypes.Structure):
+        _fields_ = [("BasicLimitInformation", BasicLimits),
+                    ("IoInfo", IoCounters),
+                    ("ProcessMemoryLimit", ctypes.c_size_t),
+                    ("JobMemoryLimit", ctypes.c_size_t),
+                    ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                    ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+    return ExtendedLimits
+
+
+def _kill_on_close_job(pid: int, *, memory_limit: int = 0):
+    """On Windows, a job object holding the child ``pid`` that kills every
+    process in it when its last handle closes - the handle returned here,
+    which only the pass holds (it is not inheritable) - and, given
+    ``memory_limit``, lets no process in it commit more than that many
+    bytes. None elsewhere, or where Windows refuses; the lifeline still
+    stands then, and it is said.
+
+    The standard library's ``ctypes`` and nothing else: ``kernel32``'s
+    CreateJobObject, SetInformationJobObject with
+    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE (and JOB_OBJECT_LIMIT_PROCESS_MEMORY),
+    and AssignProcessToJobObject."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    ExtendedLimits = _extended_limits()
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    kernel32.CreateJobObjectW.argtypes = (wintypes.LPVOID, wintypes.LPCWSTR)
+    kernel32.SetInformationJobObject.argtypes = (wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID,
+                                                 wintypes.DWORD)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+
+    job = kernel32.CreateJobObjectW(None, None)
+    if not job:
+        log.warning("No job object for the reading (Windows error %d); its lifeline stands",
+                    ctypes.get_last_error())
+        return None
+    limits = ExtendedLimits()
+    limits.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    if memory_limit:
+        limits.BasicLimitInformation.LimitFlags |= _JOB_OBJECT_LIMIT_PROCESS_MEMORY
+        limits.ProcessMemoryLimit = memory_limit
+    process = kernel32.OpenProcess(_PROCESS_SET_QUOTA | _PROCESS_TERMINATE, False, pid)
+    placed = bool(process) and bool(
+        kernel32.SetInformationJobObject(job, _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                                         ctypes.byref(limits), ctypes.sizeof(limits))
+        and kernel32.AssignProcessToJobObject(job, process))
+    error = ctypes.get_last_error()
+    if process:
+        kernel32.CloseHandle(process)
+    if not placed:
+        kernel32.CloseHandle(job)
+        log.warning("The reading could not be put in a job object (Windows error %d); "
+                    "its lifeline stands", error)
+        return None
+    return job
+
+
+#: kernel32's numbers for :func:`_kill_on_close_job`.
+_JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+_JOB_OBJECT_LIMIT_PROCESS_MEMORY = 0x0100
+_PROCESS_SET_QUOTA = 0x0100
+_PROCESS_TERMINATE = 0x0001
+
+
+def _job_memory(job) -> tuple[int, int]:
+    """A reading's job's (memory limit per process, the most any process in
+    it has committed), in bytes; (0, 0) with no job or where Windows will
+    not say. Read before the job is closed."""
+    if job is None:
+        return 0, 0
+    import ctypes
+    from ctypes import wintypes
+
+    ExtendedLimits = _extended_limits()
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]  # Windows only (mypy checks as Linux)
+    kernel32.QueryInformationJobObject.argtypes = (wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID,
+                                                   wintypes.DWORD, wintypes.LPVOID)
+    limits = ExtendedLimits()
+    if not kernel32.QueryInformationJobObject(job, _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                                              ctypes.byref(limits), ctypes.sizeof(limits), None):
+        return 0, 0
+    return limits.ProcessMemoryLimit, limits.PeakProcessMemoryUsed
+
+
+def _close_job(job) -> None:
+    """Close the pass's handle on a reading's job: anything still in it ends."""
+    if job is None:
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]  # Windows only (mypy checks as Linux)
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel32.CloseHandle(job)
+
+
+#: The memory limit's warnings already said by this process (R31's "once").
+_SAID: set[str] = set()
+
+
+def forget_said() -> None:
+    """Forget the memory-limit warnings this process has said (P276), so the
+    next ``_say_once`` says them again. The app's engine answers many commands
+    in one process; a process per command said each of the reader's warnings
+    once per command, and the engine calls this before each command to keep
+    its error log reading the same."""
+    _SAID.clear()
+
+
+def _say_once(words: str) -> None:
+    """Put ``words`` on the error log the first time this process has them."""
+    if words not in _SAID:
+        _SAID.add(words)
+        log.warning("%s", words)
+
+
+#: libproc's number for the rusage record carrying ``ri_phys_footprint``.
+_RUSAGE_INFO_V2 = 2
+
+
+def _libproc():
+    """The library holding ``proc_pid_rusage``: a macOS system library,
+    named apart so a test can hand the watch one of its own."""
+    import ctypes
+
+    return ctypes.CDLL("libSystem.dylib", use_errno=True)
+
+
+def _rusage_info_v2():
+    """libproc's ``rusage_info_v2``, whose field after ``ri_resident_size``
+    is ``ri_phys_footprint`` - what Activity Monitor calls Memory."""
+    import ctypes
+
+    class RusageInfoV2(ctypes.Structure):
+        _fields_ = [("ri_uuid", ctypes.c_uint8 * 16)] + [
+            (name, ctypes.c_uint64) for name in (
+                "ri_user_time", "ri_system_time", "ri_pkg_idle_wkups", "ri_interrupt_wkups",
+                "ri_pageins", "ri_wired_size", "ri_resident_size", "ri_phys_footprint",
+                "ri_proc_start_abstime", "ri_proc_exit_abstime", "ri_child_user_time",
+                "ri_child_system_time", "ri_child_pkg_idle_wkups", "ri_child_interrupt_wkups",
+                "ri_child_pageins", "ri_child_elapsed_abstime", "ri_diskio_bytesread",
+                "ri_diskio_byteswritten")]
+
+    return RusageInfoV2
+
+
+def _darwin_footprint(pid: int) -> int:
+    """A process's physical footprint in bytes on macOS, from
+    ``proc_pid_rusage(pid, RUSAGE_INFO_V2)`` through ``ctypes`` (R31).
+    ``ri_phys_footprint`` rather than the resident size: it is the figure
+    Activity Monitor shows as Memory, and counts compressed pages the
+    resident size forgets. ``setrlimit(RLIMIT_AS)`` was rejected: macOS does
+    not honour it reliably. Raises OSError for a process that cannot be read."""
+    import ctypes
+
+    info = _rusage_info_v2()()
+    libproc = _libproc()
+    libproc.proc_pid_rusage.argtypes = (ctypes.c_int, ctypes.c_int, ctypes.c_void_p)
+    if libproc.proc_pid_rusage(pid, _RUSAGE_INFO_V2, ctypes.byref(info)) != 0:
+        raise OSError(ctypes.get_errno(), f"proc_pid_rusage refused process {pid}")
+    return info.ri_phys_footprint
+
+
+def _linux_footprint(pid: int) -> int:
+    """A process's resident memory in bytes on Linux: the second field of
+    ``/proc/<pid>/statm`` (resident pages) times the page size (R31).
+    Raises OSError for a process that is gone, ValueError for a file that
+    is not a statm."""
+    fields = Path(f"/proc/{pid}/statm").read_text(encoding="ascii").split()
+    return int(fields[1]) * os.sysconf("SC_PAGE_SIZE")
+
+
+def _footprint(pid: int, system: str = sys.platform) -> int:
+    """The memory ``pid`` holds, in bytes (R31). ``system`` is the seam a
+    test hands a platform's name; a platform with no reader raises OSError,
+    which the watch turns into "no cap, said once" rather than a guess."""
+    if system == "darwin":
+        return _darwin_footprint(pid)
+    if system.startswith("linux"):
+        return _linux_footprint(pid)
+    raise OSError(f"no way to read a process's memory on {system}")
+
+
+def _end(process) -> None:
+    """End a reading's child and everything it started, the whole tree."""
+    if sys.platform == "win32":
+        system = Path(os.environ.get("SystemRoot") or r"C:\Windows") / "System32"
+        try:
+            subprocess.run([str(system / "taskkill.exe"), "/F", "/T", "/PID", str(process.pid)],
+                           capture_output=True, timeout=CHILD_EXIT_SECONDS, check=False,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+        except (OSError, subprocess.SubprocessError) as exc:
+            errors.keep("ocr", exc)
+            log.warning("Could not end the reading's process tree (%s)", errors.error_class(exc))
+    else:
+        try:
+            if os.getpgid(process.pid) == process.pid:      # it leads its own group
+                os.killpg(process.pid, signal.SIGKILL)
+        except OSError:
+            pass                                            # already gone
+    process.kill()                                          # the child itself, whatever happened above
+    process.join(CHILD_EXIT_SECONDS)
+
+
+# -------------------------------------------------------- the pass's reader ----
+
+
+@dataclass(slots=True)
+class Session:
+    """The reader for one pass (or one app command): its child, the device,
+    and what the pass says about the reader."""
+
+    in_a_child: bool = True
+    child: ReadingChild | None = None
+    #: The device the run log's first line names.
+    device: str = DEVICE_PROCESSOR
+    #: The run-log line when the pack could not be used, or "".
+    note: str = ""
+    #: The document a fault on the card happened on, or "".
+    gpu_failed_on: str = ""
+    _processor_only: bool = False
+    _said: list[str] = field(default_factory=list)
+
+    def settle(self) -> None:
+        """At a pass's start: with a graphics card pack, start the child
+        and have it build its engine and read the self-test, so the device
+        is known before the run log's first line. Without one, nothing
+        starts: the reader will read on the processor."""
+        if gpu_pack() is None:
+            return
+        cannot_run = ""
+        if self.in_a_child:
+            outcome = self.run(warm_up, (), {}, stop=WARM_UP_STOP_SECONDS, retry=False)
+            if outcome.kind == "read":
+                self.device, why = cast(tuple[str, str], outcome.answer)   # warm_up's (device, why)
+            else:
+                # The warm-up reads the firm's own self-test, never a client's
+                # file, so its words are the machine's and are said in full.
+                said = ": ".join(part for part in (outcome.error, outcome.message) if part)
+                self.device, why = DEVICE_PROCESSOR, said or "the reader did not answer"
+                if outcome.error == ReaderUnavailable.__name__:
+                    cannot_run = outcome.message or outcome.error
+        else:
+            try:
+                self.device, why = warm_up()
+            except ReaderUnavailable as exc:
+                self.device, why = DEVICE_PROCESSOR, str(exc)
+                cannot_run = str(exc)
+            take_notes()
+        if cannot_run:
+            # Not the card's fault: nothing can read here (REVIEW-169, N-1).
+            self.note = READER_CANNOT_RUN.format(reason=cannot_run)
+            self._processor_only = True
+        elif why:
+            self.note = PACK_UNUSABLE.format(reason=why)
+            self._processor_only = True
+
+    def run(self, job, args: tuple, kwargs: dict, stop: float, *, retry: bool = True) -> Outcome:
+        """Run one job in this session's child, starting one if there is none.
+
+        A child that ends without an answer (or runs out of memory) is not
+        always the document's fault (REVIEW-169, M-1 and S-1). On the
+        graphics card it is a fault on the card: the rest of the pass reads
+        on the processor, and the pass says so once. In a child that had
+        already served a document it may be what the earlier ones left
+        behind. Either way the document is read once more, on a fresh child
+        with a fresh stop, and only what that says is kept. ``retry=False``
+        is the warm-up's: its answer settles the device instead."""
+        outcome, child = self._run_once(job, args, kwargs, stop)
+        if not retry or child is None or not _crashed(outcome):
+            return outcome
+        on_the_card, used = child.on_the_card, child.served > 1
+        if not (on_the_card or used):
+            return outcome                  # a fresh processor child: the file's own
+        name = _document_name(args)
+        if on_the_card:
+            self.gpu_failed_on = self.gpu_failed_on or name
+            self._processor_only = True
+            log.warning("The reading's process on the graphics card ended while reading %s (%s); "
+                        "reading it again on the processor", name, outcome.error)
+        else:
+            log.warning("The reading's process ended while reading %s after serving %d document(s) "
+                        "(%s); reading it again in a fresh one", name, child.served - 1, outcome.error)
+        again, _child = self._run_once(job, args, kwargs, stop)
+        again.seconds += outcome.seconds
+        return again
+
+    def _run_once(self, job, args: tuple, kwargs: dict,
+                  stop: float) -> tuple[Outcome, ReadingChild | None]:
+        """:meth:`run`'s one try: the outcome, and the child that ran it."""
+        started = awake_clock()
+        fresh = self.child is None
+        if fresh:
+            try:
+                self.child = ReadingChild(processor_only=self._processor_only)
+            except Exception as exc:
+                # The class travels towards the row; the words are kept apart
+                # (decision 190) - except a data home the firm's own settings
+                # refused (decision 186), whose sentence is the firm's.
+                errors.keep("ocr: the reading child could not be made", exc)
+                return Outcome("not_started", error=errors.said(exc, (SettingsError,)),
+                               seconds=awake_clock() - started), None
+        child = cast(ReadingChild, self.child)   # made above where there was none
+        outcome = child.run(job, args, kwargs, stop, since=started if fresh else None)
+        self.hear(outcome.notes)
+        # The child keeps nothing itself: what it kept crossed with its
+        # answer, and lands on this process's debug log (decision 190, Part 4).
+        for entry in outcome.kept:
+            errors.keep("ocr: the reading child", entry)
+        # Replaced after a stop, a crash, running out of memory or a child
+        # that never started, a fault on the card, and every
+        # DOCUMENTS_PER_CHILD documents (R-4).
+        if (outcome.kind not in ("read", "failed") or _crashed(outcome)
+                or child.served >= DOCUMENTS_PER_CHILD
+                or (self.gpu_failed_on and not self._processor_only)):
+            self._replace()
+        return outcome, child
+
+    def hear(self, notes: list[tuple[str, str]]) -> None:
+        """Take what a reader said: a fault on the card sends the rest of the
+        pass to the processor."""
+        for kind, what in notes:
+            if kind == "gpu-fault" and not self.gpu_failed_on:
+                self.gpu_failed_on = what
+            elif kind == "pack-unusable":
+                # The card cannot be used here: no later child tries it
+                # again inside a document's own stop (REVIEW-169, S-3).
+                self.note = self.note or PACK_UNUSABLE.format(reason=what)
+                self._processor_only = True
+                if self.child is not None:
+                    self.child.on_the_card = False      # it reads on the processor now
+
+    def _replace(self) -> None:
+        """Let the child go; the next document starts a fresh one, on the
+        processor only once the card has failed this pass."""
+        child, self.child = self.child, None
+        if self.gpu_failed_on:
+            self._processor_only = True
+        if child is not None:
+            child.finish()
+
+    def warnings(self) -> list[str]:
+        """What the pass says once about its reader: a fault on the card."""
+        if not self.in_a_child:
+            self.hear(take_notes())
+        if self.gpu_failed_on and GPU_FAULT_WARNING not in self._said:
+            self._said.append(GPU_FAULT_WARNING)
+            return [GPU_FAULT_WARNING.format(file=self.gpu_failed_on)]
+        return []
+
+    def close(self) -> None:
+        """The pass is over: no child outlives it."""
+        if self.child is not None:
+            child, self.child = self.child, None
+            child.finish()
+        if not self.in_a_child:
+            reset()
+
+
+def _crashed(outcome: Outcome) -> bool:
+    """A child that ended without an answer, or ran out of memory (it then
+    says so and ends: SPEC-169 section 9)."""
+    return outcome.kind == "died" or (outcome.kind == "failed"
+                                      and outcome.error.startswith(MemoryError.__name__))
+
+
+def _document_name(args: tuple) -> str:
+    """The name of the file a job was handed, for the pass's words."""
+    if args and isinstance(args[0], (str, os.PathLike)):
+        return Path(args[0]).name
+    return "a document"
+
+
+#: The session open in this process, or None.
+_SESSION: Session | None = None
+
+
+@contextmanager
+def reading_session(*, settle: bool = False, in_a_child: bool = True) -> Iterator[Session]:
+    """The reader for a pass or an app command: one child, started when the
+    first reading needs it (or at once, with a graphics card pack, when
+    ``settle`` asks for the device up front), and ended when the block
+    ends. A session opened inside another is the outer one."""
+    global _SESSION
+    if _SESSION is not None:
+        yield _SESSION
+        return
+    session = Session(in_a_child=in_a_child)
+    _SESSION = session
+    try:
+        if settle:
+            session.settle()
+        yield session
+    finally:
+        _SESSION = None
+        session.close()
+
+
+def run_in_child(job, args: tuple, kwargs: dict, stop: float) -> Outcome:
+    """Run one job in the open session's child - or, with none open, in a
+    session of its own that ends with the job."""
+    if _SESSION is not None:
+        return _SESSION.run(job, args, kwargs, stop)
+    with reading_session() as session:
+        return session.run(job, args, kwargs, stop)

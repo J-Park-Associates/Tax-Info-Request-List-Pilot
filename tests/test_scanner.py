@@ -360,18 +360,18 @@ def test_a_scan_past_its_deadline_reads_nothing_more_and_records_only_what_it_sc
     need a new judgment. Past it, with nothing kept, no request is scanned;
     each keeps the status the record holds, and the report says how many
     were not reached."""
-    from tracker import ocr
+    from tracker import reader_child
 
     text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")
     before = {i: row.status for i, row in statuses(engagement).items()}
 
-    report = scan_engagement(engagement, today=DAY1, deadline=ocr.awake_clock() - 1)
+    report = scan_engagement(engagement, today=DAY1, deadline=reader_child.awake_clock() - 1)
 
     assert report.updates == {} and report.unreached == len(ITEMS)
     assert report.recorded == 0
     assert {i: row.status for i, row in statuses(engagement).items()} == before
 
-    report = scan_engagement(engagement, today=DAY1, deadline=ocr.awake_clock() + 600)
+    report = scan_engagement(engagement, today=DAY1, deadline=reader_child.awake_clock() + 600)
     assert report.unreached == 0 and set(report.updates) == {i.identifier for i in ITEMS}
 
 

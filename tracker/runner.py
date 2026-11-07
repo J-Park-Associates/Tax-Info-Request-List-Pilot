@@ -181,6 +181,7 @@ from tracker import (
     ledger,
     ocr,
     page_rows,
+    reader_child,
     settings,
     store,
 )
@@ -784,13 +785,14 @@ FILL_NOT_KEPT = "the firm summary did not keep its answer"
 #: problem on the practice page, when the clients root can take one.
 DATA_FOLDER_PROBLEM = "Data folder problem: {problem}"
 
-#: Each household's share of a pass (decision 189), on ``ocr.awake_clock``
-#: from the household's start and checked **between files**: a household
-#: can run at most this plus one document's stop (600 s), 25 minutes -
-#: and Run now is this same pass for one household (decision 203), so it
-#: has the same share - and four stalled households fit in the schedule's
-#: two hours while the order below serves the rest next pass. A threshold
-#: stated in advance (UX 9), not measured into place.
+#: Each household's share of a pass (decision 189), on
+#: ``reader_child.awake_clock`` from the household's start and checked
+#: **between files**: a household can run at most this plus one document's
+#: stop (600 s), 25 minutes - and Run now is this same pass for one
+#: household (decision 203), so it has the same share - and four stalled
+#: households fit in the schedule's two hours while the order below serves
+#: the rest next pass. A threshold stated in advance (UX 9), not measured
+#: into place.
 HOUSEHOLD_BUDGET_SECONDS = 15 * 60
 #: launchd has no execution time limit, and the lock's stale rule assumes the
 #: scheduler killed an owner by :data:`RUN_TIME_LIMIT_SECONDS` (137 L6,
@@ -1273,8 +1275,8 @@ def run_household(
 
     **Bounded** (decision 189). ``budget`` seconds - by default
     :data:`HOUSEHOLD_BUDGET_SECONDS`, the scheduled pass and Run now alike
-    - on ``ocr.awake_clock`` from the household's start, checked by the
-    sort and the scan before each file that would need a new judgment (a
+    - on ``reader_child.awake_clock`` from the household's start, checked by
+    the sort and the scan before each file that would need a new judgment (a
     cache miss; ruling 2.2): a kept verdict is taken whatever the time.
     Past it they read no more, what they did is recorded, every working return says
     :data:`OUT_OF_TIME` and is not drafted, and the README is still
@@ -1323,7 +1325,7 @@ def run_household(
     # This pass's start, for the sweep (decision 155): a temp that came to
     # be after it is nothing a killed write left.
     started = time.time()
-    deadline = ocr.awake_clock() + (HOUSEHOLD_BUDGET_SECONDS if budget is None else budget)
+    deadline = reader_child.awake_clock() + (HOUSEHOLD_BUDGET_SECONDS if budget is None else budget)
     # Stamped before anything is touched, so a return that fails its
     # pre-checks still says when it was last looked at.
     runs = [EngagementRun(engagement=one, last_pass=dt.datetime.now()) for one in returns]
@@ -2025,7 +2027,7 @@ def run_registry(
     # it. With a graphics card pack it starts now and settles the device,
     # so the run log's first line says which reader read.
     served: dict[Path, list[EngagementRun]] = {}
-    with ocr.reading_session(settle=True, in_a_child=content_check.READ_IN_A_CHILD) as reader:
+    with reader_child.reading_session(settle=True, in_a_child=content_check.READ_IN_A_CHILD) as reader:
         report.reader, report.reader_note = reader.device, reader.note
         for n, at in enumerate(order, start=1):
             household, returns = walk[at]

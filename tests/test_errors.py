@@ -412,7 +412,7 @@ SAID_WHOLE_ON_PURPOSE = {
     ("settings.py", "_read"): "the firm's own settings file",
     ("settings.py", "product_name"): "the app's own package file",
     ("ocr.py", "_on_the_card"): "the graphics card's engine failing to build: the machine's words",
-    ("ocr.py", "settle"): "the reader cannot run on this machine: the machine's words",
+    ("reader_child.py", "settle"): "the reader cannot run on this machine: the machine's words",
     ("ocr.py", ""): "the reader's CLI saying why it cannot run on this machine",
     ("scheduling.py", ""): "the scheduling CLI: a bad argument, or Task Scheduler's words",
 }

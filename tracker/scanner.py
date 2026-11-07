@@ -785,13 +785,13 @@ def scan_engagement(
     **Kept as it goes, and bounded** (decision 189). The verdicts are
     saved after every request, so a pass killed mid-scan reads again only
     what it was killed on (a save with nothing new is no transaction at
-    all). ``deadline`` is a moment on ``ocr.awake_clock``, checked where a
-    request would need a new judgment - a cache miss (ruling 2.2,
+    all). ``deadline`` is a moment on ``reader_child.awake_clock``, checked
+    where a request would need a new judgment - a cache miss (ruling 2.2,
     :func:`tracker.content_check.before_a_judgment`): a request whose
-    verdicts are all kept is scanned whatever the time, and past the
-    deadline the first request that would read stops the scan. What was
-    scanned is recorded, and the rest keep the status the record holds
-    until the next pass (``unreached``).
+    verdicts are all kept is scanned whatever the time, and past the deadline
+    the first request that would read stops the scan. What was scanned is
+    recorded, and the rest keep the status the record holds until the next
+    pass (``unreached``).
 
     Dry runs read everything but write nothing — no event, no cache save,
     no lock file — safe to run alongside a real scan.

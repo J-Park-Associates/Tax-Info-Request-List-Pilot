@@ -30,7 +30,7 @@ import pytest
 from tests.builders import make_engagement, named_page
 from tests.children import CRASHED, STOP_IN_TESTS, STOPPED, eventually, no_child_left, running
 from tests.samples import scanned_pdf, text_pdf
-from tracker import content_check, ocr, reasons
+from tracker import content_check, locking, ocr, reader_child, reasons
 from tracker.content_check import check_content, extract
 from tracker.keywords import contains_keyword
 from tracker.manifest import RequestItem
@@ -924,7 +924,8 @@ def a_card(monkeypatch, tmp_path):
     monkeypatch.setattr(ocr, "_PROCESSOR_ONLY", False)
     monkeypatch.setattr(ocr, "_NOTES", [])
     monkeypatch.setattr(ocr, "_build_engine", build)
-    monkeypatch.setattr(ocr, "gpu_pack", lambda: card.pack)
+    for module in (ocr, reader_child):
+        monkeypatch.setattr(module, "gpu_pack", lambda: card.pack)
     monkeypatch.setattr(onnxruntime, "preload_dlls",
                         lambda **kwargs: card.loaded.append(kwargs.get("directory")))
     return card
@@ -959,7 +960,8 @@ def test_no_gpu_pack_means_the_cpu_without_a_word(tmp_path, monkeypatch, a_card)
     and says nothing but "processor" in the run log's first line."""
     from tracker.runner import append_log
 
-    monkeypatch.setattr(ocr, "gpu_pack", lambda: None)
+    for module in (ocr, reader_child):
+        monkeypatch.setattr(module, "gpu_pack", lambda: None)
     engagement = make_engagement(tmp_path / "root", w2_rows())
     scans_in_the_inbox(engagement, {"one.pdf": 1})
 
@@ -1084,7 +1086,7 @@ def test_one_child_reads_every_document_of_a_pass_and_ends_with_it(tmp_path, in_
     when the pass ends. A reading made with no pass open has a child of its
     own, ended with it."""
     pages = [text_pdf(tmp_path / f"page {n}.pdf", "Form W-2 2025", style="bare") for n in range(3)]
-    with ocr.reading_session():
+    with reader_child.reading_session():
         pids = [pid_of_the_reader(page) for page in pages]
         assert len(set(pids)) == 1 and running(pids[0])
     assert eventually(lambda: not running(pids[0]))
@@ -1097,9 +1099,9 @@ def test_one_child_reads_every_document_of_a_pass_and_ends_with_it(tmp_path, in_
 def test_a_long_lived_reader_is_replaced_every_hundred_documents(tmp_path, in_a_child):
     """R-4's hygiene: a child that has served its count is let go and the
     next document gets a fresh one. (The count is patched down from 100.)"""
-    in_a_child.setattr(ocr, "DOCUMENTS_PER_CHILD", 2)
+    in_a_child.setattr(reader_child, "DOCUMENTS_PER_CHILD", 2)
     pages = [text_pdf(tmp_path / f"page {n}.pdf", "Form W-2 2025", style="bare") for n in range(3)]
-    with ocr.reading_session():
+    with reader_child.reading_session():
         first, second, third = (pid_of_the_reader(page) for page in pages)
     assert first == second != third
     assert no_child_left()
@@ -1113,7 +1115,7 @@ def test_a_long_lived_reader_is_replaced_after_a_stop(tmp_path, a_short_stop):
 
     stuck = text_pdf(tmp_path / "stuck.pdf", "Form W-2 2025", style="bare")
     after = text_pdf(tmp_path / "after.pdf", "Form W-2 2025", style="bare")
-    with ocr.reading_session():
+    with reader_child.reading_session():
         before = pid_of_the_reader(after)
         answer, failed = content_check.in_a_child(stuck, child_readers.a_text_layer_that_never_finishes)
         assert answer is None and failed.reason == STOPPED
@@ -1130,7 +1132,7 @@ def test_a_long_lived_reader_is_replaced_after_a_crash(tmp_path, in_a_child):
 
     crash = text_pdf(tmp_path / "a crash.pdf", "Form W-2 Wage and Tax Statement 2025", style="bare")
     after = text_pdf(tmp_path / "after.pdf", "Form W-2 Wage and Tax Statement 2025", style="bare")
-    with ocr.reading_session():
+    with reader_child.reading_session():
         before = pid_of_the_reader(after)
         answer, failed = content_check.in_a_child(crash, child_readers.a_reader_that_dies_on_a_crash)
         assert answer is None and failed.reason == CRASHED and not failed.transient
@@ -1166,8 +1168,8 @@ import sys, time
 from pathlib import Path
 sys.path[:0] = [sys.argv[2]]
 from tests import child_readers
-from tracker import content_check, ocr
-with ocr.reading_session():
+from tracker import content_check, reader_child
+with reader_child.reading_session():
     answer, failed = content_check.in_a_child(Path(sys.argv[1]), child_readers.the_childs_process_id)
     Path(sys.argv[1] + ".child").write_text(answer.text, encoding="utf-8")
     time.sleep(600)
@@ -1209,7 +1211,7 @@ def test_no_reading_child_outlives_the_pass(tmp_path):
 # makes a child "on the card" to the session.
 
 
-def who_read(session: ocr.Session, path: Path, reader) -> tuple[int, bool]:
+def who_read(session: reader_child.Session, path: Path, reader) -> tuple[int, bool]:
     """(the child's process id, whether it was kept on the processor)."""
     outcome = session.run(reader, (path,), {}, STOP_IN_TESTS * 6)
     assert outcome.kind == "read", (outcome.kind, outcome.error)
@@ -1221,7 +1223,8 @@ def who_read(session: ocr.Session, path: Path, reader) -> tuple[int, bool]:
 def a_pack_here(monkeypatch, tmp_path):
     pack = tmp_path / ocr.GPU_PACK_DIR_NAME
     pack.mkdir()
-    monkeypatch.setattr(ocr, "gpu_pack", lambda: pack)
+    for module in (ocr, reader_child):
+        monkeypatch.setattr(module, "gpu_pack", lambda: pack)
     return pack
 
 
@@ -1232,7 +1235,7 @@ def test_a_card_fault_in_a_child_moves_the_rest_of_the_pass_to_the_processor(tmp
     from tests import child_readers
 
     fault, after = tmp_path / "a fault.pdf", tmp_path / "after.pdf"
-    with ocr.reading_session() as session:
+    with reader_child.reading_session() as session:
         first, first_off_the_card = who_read(session, fault, child_readers.a_reader_that_tells_the_pass)
         second, second_off_the_card = who_read(session, after, child_readers.a_reader_that_tells_the_pass)
         assert not first_off_the_card and second_off_the_card and second != first
@@ -1250,7 +1253,7 @@ def test_a_pack_found_unusable_in_a_child_keeps_every_later_child_off_the_card(t
     from tests import child_readers
 
     unusable, crash = tmp_path / "unusable.pdf", tmp_path / "a crash.pdf"
-    with ocr.reading_session() as session:
+    with reader_child.reading_session() as session:
         _pid, off_the_card = who_read(session, unusable, child_readers.a_reader_that_tells_the_pass)
         assert not off_the_card and "could not be used" in session.note
         session.run(child_readers.a_reader_that_dies_on_a_crash, (crash,), {}, STOP_IN_TESTS * 6)
@@ -1269,7 +1272,7 @@ def test_a_card_child_that_dies_is_a_card_fault_and_the_document_is_read_on_the_
 
     scan = text_pdf(tmp_path / "scan.pdf", "Form W-2 2025", style="bare")
     after = text_pdf(tmp_path / "after.pdf", "Form W-2 2025", style="bare")
-    with ocr.reading_session() as session:
+    with reader_child.reading_session() as session:
         answer, failed = content_check.in_a_child(scan, child_readers.a_card_that_dies)
         assert failed is None, failed.reason
         pid, off_the_card = answer.text.split()
@@ -1288,7 +1291,7 @@ def test_a_death_in_a_used_child_is_retried_once_on_a_fresh_one(tmp_path):
     from tests import child_readers
 
     one, two = tmp_path / "one.pdf", tmp_path / "two.pdf"
-    with ocr.reading_session() as session:
+    with reader_child.reading_session() as session:
         first, _ = who_read(session, one, child_readers.a_reader_that_dies_once_used)
         second, off_the_card = who_read(session, two, child_readers.a_reader_that_dies_once_used)
         assert second != first and off_the_card is False     # no pack: not the card's
@@ -1300,14 +1303,14 @@ def test_a_death_in_a_used_child_is_retried_once_on_a_fresh_one(tmp_path):
 def test_the_reading_childs_job_caps_its_memory(a_pack_here):
     """SPEC-169 section 9, amended by P285: 4 GB for a processor child, 6 GB for a child on
     the graphics card, set on the job object that already ends it."""
-    for processor_only, cap in ((True, ocr.PROCESSOR_CHILD_MEMORY),
-                                (False, ocr.GRAPHICS_CARD_CHILD_MEMORY)):
-        child = ocr.ReadingChild(processor_only=processor_only)
+    for processor_only, cap in ((True, reader_child.PROCESSOR_CHILD_MEMORY),
+                                (False, reader_child.GRAPHICS_CARD_CHILD_MEMORY)):
+        child = reader_child.ReadingChild(processor_only=processor_only)
         try:
-            assert ocr._job_memory(child._job_object)[0] == cap
+            assert reader_child._job_memory(child._job_object)[0] == cap
         finally:
             child.finish()
-    assert (ocr.PROCESSOR_CHILD_MEMORY, ocr.GRAPHICS_CARD_CHILD_MEMORY) == (4 * 1024**3, 6 * 1024**3)
+    assert (reader_child.PROCESSOR_CHILD_MEMORY, reader_child.GRAPHICS_CARD_CHILD_MEMORY) == (4 * 1024**3, 6 * 1024**3)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="the memory cap is the Windows job object's")
@@ -1320,7 +1323,7 @@ def test_a_child_over_its_memory_limit_is_replaced_and_the_next_document_reads(t
 
     big = text_pdf(tmp_path / "big.pdf", "Form W-2 2025", style="bare")
     after = text_pdf(tmp_path / "after.pdf", "Form W-2 2025", style="bare")
-    with ocr.reading_session() as session:
+    with reader_child.reading_session() as session:
         answer, failed = content_check.in_a_child(big, child_readers.a_reader_that_needs_too_much_memory)
         assert answer is None and failed.reason == CRASHED and not failed.transient
         assert failed.error.startswith("MemoryError")
@@ -1354,9 +1357,9 @@ def test_the_posix_watch_caps_a_child_the_way_the_job_object_does(a_pack_here):
     """R31: the same 4 GB for a processor child and 6 GB for a child on the
     graphics card, held by the pass's watch where Windows holds it in a job
     object - and no job object here to hold it."""
-    for processor_only, cap in ((True, ocr.PROCESSOR_CHILD_MEMORY),
-                                (False, ocr.GRAPHICS_CARD_CHILD_MEMORY)):
-        child = ocr.ReadingChild(processor_only=processor_only)
+    for processor_only, cap in ((True, reader_child.PROCESSOR_CHILD_MEMORY),
+                                (False, reader_child.GRAPHICS_CARD_CHILD_MEMORY)):
+        child = reader_child.ReadingChild(processor_only=processor_only)
         try:
             assert child.memory_limit == cap
             assert child._watches_memory and child._job_object is None
@@ -1368,13 +1371,13 @@ def test_the_posix_watch_caps_a_child_the_way_the_job_object_does(a_pack_here):
 def test_a_linux_childs_memory_is_its_resident_pages():
     """R31: the second field of /proc/<pid>/statm, in bytes. A process that
     touches 64 MB holds at least that much more than it did."""
-    before = ocr._footprint(os.getpid())
+    before = reader_child._footprint(os.getpid())
     held = bytearray(b"x" * (64 * 1024**2))
-    after = ocr._footprint(os.getpid())
+    after = reader_child._footprint(os.getpid())
     assert before > 0 and after - before >= 48 * 1024**2, (before, after)
     del held
     with pytest.raises(OSError):
-        ocr._footprint(2**22 + os.getpid())               # past pid_max: no such process
+        reader_child._footprint(2**22 + os.getpid())               # past pid_max: no such process
 
 
 def test_a_macs_memory_is_the_physical_footprint_libproc_reports(monkeypatch):
@@ -1389,18 +1392,18 @@ def test_a_macs_memory_is_the_physical_footprint_libproc_reports(monkeypatch):
         asked.append((pid, flavor))
         return 0
 
-    monkeypatch.setattr(ocr, "_libproc", lambda: SimpleNamespace(proc_pid_rusage=proc_pid_rusage))
-    assert ocr._footprint(4242, "darwin") == 987_654_321
+    monkeypatch.setattr(reader_child, "_libproc", lambda: SimpleNamespace(proc_pid_rusage=proc_pid_rusage))
+    assert reader_child._footprint(4242, "darwin") == 987_654_321
     assert asked == [(4242, 2)]                           # RUSAGE_INFO_V2
 
-    monkeypatch.setattr(ocr, "_libproc", lambda: SimpleNamespace(proc_pid_rusage=lambda *a: -1))
+    monkeypatch.setattr(reader_child, "_libproc", lambda: SimpleNamespace(proc_pid_rusage=lambda *a: -1))
     with pytest.raises(OSError, match="refused process 4242"):
-        ocr._footprint(4242, "darwin")
+        reader_child._footprint(4242, "darwin")
 
 
 def test_a_platform_with_no_way_to_read_memory_says_so():
     with pytest.raises(OSError, match="plan9"):
-        ocr._footprint(1, "plan9")
+        reader_child._footprint(1, "plan9")
 
 
 @OFF_WINDOWS
@@ -1411,19 +1414,19 @@ def test_a_reading_past_its_memory_on_posix_ends_as_a_crash_and_is_replaced(tmp_
     and the next document is read by a fresh child."""
     from tests import child_readers
 
-    in_a_child.setattr(ocr, "MEMORY_WATCH_SECONDS", 0.1)
+    in_a_child.setattr(reader_child, "MEMORY_WATCH_SECONDS", 0.1)
     big = text_pdf(tmp_path / "big.pdf", "Form W-2 2025", style="bare")
     again = text_pdf(tmp_path / "again.pdf", "Form W-2 2025", style="bare")
     after = text_pdf(tmp_path / "after.pdf", "Form W-2 2025", style="bare")
-    over = ocr.PROCESSOR_CHILD_MEMORY + 1
-    in_a_child.setattr(ocr, "_footprint", a_footprint_that_is_over_for(
+    over = reader_child.PROCESSOR_CHILD_MEMORY + 1
+    in_a_child.setattr(reader_child, "_footprint", a_footprint_that_is_over_for(
         child_readers.reached(big, "text-layer"), over))
-    with ocr.reading_session() as session:
+    with reader_child.reading_session() as session:
         outcome = session.run(child_readers.a_text_layer_that_never_finishes, (big,), {}, 60)
         assert outcome.kind == "died" and outcome.seconds < 30
         assert outcome.error.endswith("; it had reached its memory limit (4 GB)"), outcome.error
         assert session.child is None                      # let go, not asked again
-        in_a_child.setattr(ocr, "_footprint", a_footprint_that_is_over_for(
+        in_a_child.setattr(reader_child, "_footprint", a_footprint_that_is_over_for(
             child_readers.reached(again, "text-layer"), over))
         answer, failed = content_check.in_a_child(again, child_readers.a_text_layer_that_never_finishes,
                                                   stop=60)
@@ -1439,10 +1442,10 @@ def test_a_child_under_its_limit_is_left_to_read(tmp_path, in_a_child):
     a figure at the limit itself is a reading that goes on."""
     from tests import child_readers
 
-    in_a_child.setattr(ocr, "MEMORY_WATCH_SECONDS", 0.1)
-    in_a_child.setattr(ocr, "_footprint", lambda pid, system=None: ocr.PROCESSOR_CHILD_MEMORY)
+    in_a_child.setattr(reader_child, "MEMORY_WATCH_SECONDS", 0.1)
+    in_a_child.setattr(reader_child, "_footprint", lambda pid, system=None: reader_child.PROCESSOR_CHILD_MEMORY)
     slow = text_pdf(tmp_path / "slow.pdf", "Form W-2 2025", style="bare")
-    child = ocr.ReadingChild(processor_only=True)
+    child = reader_child.ReadingChild(processor_only=True)
     try:
         assert child.run(child_readers.the_childs_process_id, (slow,), {}, 60).kind == "read"
         outcome = child.run(child_readers.a_text_layer_that_never_finishes, (slow,), {}, 1.0)
@@ -1457,10 +1460,10 @@ def test_the_watch_does_not_stretch_a_readings_stop(tmp_path, in_a_child):
     stop, so a slice longer than the stop still ends the reading at the stop."""
     from tests import child_readers
 
-    in_a_child.setattr(ocr, "MEMORY_WATCH_SECONDS", 30.0)
-    in_a_child.setattr(ocr, "_footprint", lambda pid, system=None: 1)
+    in_a_child.setattr(reader_child, "MEMORY_WATCH_SECONDS", 30.0)
+    in_a_child.setattr(reader_child, "_footprint", lambda pid, system=None: 1)
     slow = text_pdf(tmp_path / "slow.pdf", "Form W-2 2025", style="bare")
-    child = ocr.ReadingChild(processor_only=True)
+    child = reader_child.ReadingChild(processor_only=True)
     try:
         assert child.run(child_readers.the_childs_process_id, (slow,), {}, 60).kind == "read"
         outcome = child.run(child_readers.a_text_layer_that_never_finishes, (slow,), {}, 0.6)
@@ -1479,12 +1482,12 @@ def test_a_footprint_that_cannot_be_read_is_no_cap_and_is_said_once(tmp_path, in
     def unreadable(pid, system=None):
         raise OSError("no /proc")
 
-    in_a_child.setattr(ocr, "MEMORY_WATCH_SECONDS", 0.1)
-    in_a_child.setattr(ocr, "_footprint", unreadable)
-    in_a_child.setattr(ocr, "_SAID", set())
+    in_a_child.setattr(reader_child, "MEMORY_WATCH_SECONDS", 0.1)
+    in_a_child.setattr(reader_child, "_footprint", unreadable)
+    in_a_child.setattr(reader_child, "_SAID", set())
     slow = text_pdf(tmp_path / "slow.pdf", "Form W-2 2025", style="bare")
     for _ in range(2):
-        child = ocr.ReadingChild(processor_only=True)
+        child = reader_child.ReadingChild(processor_only=True)
         try:
             assert child.run(child_readers.the_childs_process_id, (slow,), {}, 60).kind == "read"
             with caplog.at_level("WARNING", logger=ocr.log.name):
@@ -1493,7 +1496,7 @@ def test_a_footprint_that_cannot_be_read_is_no_cap_and_is_said_once(tmp_path, in
         finally:
             child.finish()
     said = [r.getMessage() for r in caplog.records if "memory could not be read" in r.getMessage()]
-    assert said == [ocr.MEMORY_UNREADABLE.format(reason="OSError")]
+    assert said == [reader_child.MEMORY_UNREADABLE.format(reason="OSError")]
 
 
 def test_a_reader_that_cannot_run_is_not_blamed_on_the_card(monkeypatch, a_card):
@@ -1504,14 +1507,14 @@ def test_a_reader_that_cannot_run_is_not_blamed_on_the_card(monkeypatch, a_card)
         raise ocr.ReaderUnavailable("the model PP-OCRv6_det_small.onnx is missing")
 
     monkeypatch.setattr(ocr, "_build_engine", nothing_builds)
-    session = ocr.Session(in_a_child=False)
+    session = reader_child.Session(in_a_child=False)
     session.settle()
     assert session.note == ocr.READER_CANNOT_RUN.format(
         reason="the model PP-OCRv6_det_small.onnx is missing")
     assert session.device == ocr.DEVICE_PROCESSOR and "graphics card" not in session.note
 
-    in_a_child = ocr.Session()
-    monkeypatch.setattr(ocr.Session, "run", lambda *a, **k: ocr.Outcome(
+    in_a_child = reader_child.Session()
+    monkeypatch.setattr(reader_child.Session, "run", lambda *a, **k: reader_child.Outcome(
         "failed", error="ReaderUnavailable", message="the model PP-OCRv6_det_small.onnx is missing"))
     in_a_child.settle()
     assert in_a_child.note == session.note
@@ -1577,7 +1580,7 @@ def test_time_asleep_does_not_count_toward_the_reading_stop(monkeypatch, watches
 
     awake = [1000.0]
     biased = [5000.0]
-    monkeypatch.setattr(ocr, "awake_clock", lambda: awake[0])
+    monkeypatch.setattr(reader_child, "awake_clock", lambda: awake[0])
     monkeypatch.setattr(time, "monotonic", lambda: biased[0])
     stop = 60.0
 
@@ -1600,7 +1603,7 @@ def test_time_asleep_does_not_count_toward_the_reading_stop(monkeypatch, watches
             return self.said.pop(0)
 
     ended = []
-    child = object.__new__(ocr.ReadingChild)
+    child = object.__new__(reader_child.ReadingChild)
     child._jobs = SimpleNamespace(send=lambda job: None)
     child._answers = Answers()
     child.served = 0
@@ -1610,8 +1613,8 @@ def test_time_asleep_does_not_count_toward_the_reading_stop(monkeypatch, watches
         assert watches_memory, "Windows' job object caps the child; the pass never reads its memory"
         return False
 
-    monkeypatch.setattr(ocr.ReadingChild, "_past_its_memory", past_its_memory)
-    monkeypatch.setattr(ocr.ReadingChild, "end", lambda self: ended.append(True))
+    monkeypatch.setattr(reader_child.ReadingChild, "_past_its_memory", past_its_memory)
+    monkeypatch.setattr(reader_child.ReadingChild, "end", lambda self: ended.append(True))
 
     outcome = child.run(len, ("x",), {}, stop)
 
@@ -1621,8 +1624,8 @@ def test_time_asleep_does_not_count_toward_the_reading_stop(monkeypatch, watches
 
 
 def test_the_readings_own_stop_reads_the_awake_clock():
-    assert content_check._clock is ocr.awake_clock
-    assert ocr.awake_clock() <= ocr.awake_clock()
+    assert content_check._clock is reader_child.awake_clock
+    assert reader_child.awake_clock() <= reader_child.awake_clock()
 
 
 # --------------------------------------- the reading child's scratch (decision 186) ----
@@ -1632,7 +1635,7 @@ def test_a_reading_child_keeps_every_temporary_file_in_its_own_folder_in_the_dat
     from tests import child_readers
     from tracker.settings import inside, scratch_root
 
-    child = ocr.ReadingChild(processor_only=True)
+    child = reader_child.ReadingChild(processor_only=True)
     try:
         own = scratch_root() / str(child.pid)
         outcome = child.run(child_readers.where_temporary_files_go, (), {}, 60)
@@ -1659,10 +1662,10 @@ def test_a_sweep_never_empties_the_folder_of_a_process_that_is_alive(tmp_path, m
     for folder in (alive, dead, unknown):
         folder.mkdir(parents=True)
         (folder / "a-page.tmp").write_bytes(b"a page")
-    real = ocr.pid_alive
-    monkeypatch.setattr(ocr, "pid_alive", lambda pid: None if pid == "4000000000" else real(pid))
+    real = locking.pid_alive
+    monkeypatch.setattr(reader_child, "pid_alive", lambda pid: None if pid == "4000000000" else real(pid))
 
-    assert ocr.sweep_scratch(root) == [dead]
+    assert reader_child.sweep_scratch(root) == [dead]
     assert alive.is_dir() and unknown.is_dir() and not dead.exists()
 
 
@@ -1671,28 +1674,28 @@ def test_a_folder_the_tracker_did_not_name_is_never_swept(tmp_path):
     for name in ("notes", "123abc"):
         (root / name).mkdir(parents=True)
     (root / "42").write_bytes(b"a file, not a folder")
-    assert ocr.sweep_scratch(root) == []
+    assert reader_child.sweep_scratch(root) == []
     assert {path.name for path in root.iterdir()} == {"notes", "123abc", "42"}
-    assert ocr.sweep_scratch(tmp_path / "nothing-here") == []
+    assert reader_child.sweep_scratch(tmp_path / "nothing-here") == []
 
 
 def test_a_child_that_is_killed_leaves_its_folder_for_the_next_childs_sweep(in_a_child):
     from tests import child_readers
     from tracker.settings import scratch_root
 
-    first = ocr.ReadingChild(processor_only=True)
+    first = reader_child.ReadingChild(processor_only=True)
     try:
         assert first.run(child_readers.where_temporary_files_go, (), {}, 60).kind == "read"
         folder = scratch_root() / str(first.pid)
         assert folder.is_dir()
-        ocr._end(first._process)                                   # killed: nothing of the pass removes it
+        reader_child._end(first._process)                                   # killed: nothing of the pass removes it
         assert folder.is_dir()
     finally:
         first._done = True                                         # the pass never got to end it
         for end in (first._jobs, first._answers, first._held):
             end.close()
-        ocr._close_job(first._job_object)
-    second = ocr.ReadingChild(processor_only=True)
+        reader_child._close_job(first._job_object)
+    second = reader_child.ReadingChild(processor_only=True)
     try:
         assert second.run(child_readers.where_temporary_files_go, (), {}, 60).kind == "read"
         assert not folder.exists()                                 # swept by the next child
@@ -1710,7 +1713,7 @@ def test_no_reading_child_starts_without_a_data_home(tmp_path, in_a_child, monke
 
     monkeypatch.setenv(ENV_DATA_HOME, "data")
     monkeypatch.chdir(tmp_path)
-    session = ocr.Session(in_a_child=True)
+    session = reader_child.Session(in_a_child=True)
     try:
         outcome = session.run(child_readers.where_temporary_files_go, (), {}, 30)
     finally:
