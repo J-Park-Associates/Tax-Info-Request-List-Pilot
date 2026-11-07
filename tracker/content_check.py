@@ -100,6 +100,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from dataclasses import MISSING, asdict, dataclass, field, fields, replace
 from pathlib import Path
+from typing import cast
 
 from tracker import errors, hold, ocr, reasons, store
 from tracker.manifest import RequestItem, derived_date_pattern, has_routing_rules, keyword_alternatives
@@ -839,7 +840,7 @@ def dominant_forms(text: str) -> set[str]:
     top = max(scores.values())
     if top < 2:
         return set()
-    return {min((key for key, n in scores.items() if n == top), key=first.get)}
+    return {min((key for key, n in scores.items() if n == top), key=lambda key: first[key])}
 
 
 #: A title that names this many form families in their own right is a
@@ -868,7 +869,8 @@ def _title_forms(low: str) -> set[str]:
             break
         if weight > _REFERENCE_WEIGHT:
             forms.add(key)
-    families = {_FAMILY.match(key).group(0) for key in forms}
+    # Every form key begins with its family, by construction, so the match is never None.
+    families = {cast(re.Match[str], _FAMILY.match(key)).group(0) for key in forms}
     return forms if len(families) < _LIST_OF_FORMS else set()
 
 
@@ -878,7 +880,7 @@ def form_family(key: str) -> str:
     prints several of one family's numbers and is one document
     (``_title_forms``' note); two families on one page are two documents
     (decision 94)."""
-    return _FAMILY.match(key).group(0)
+    return cast(re.Match[str], _FAMILY.match(key)).group(0)   # every form key begins with its family
 
 
 #: How many distinct form families naming themselves make one page two
@@ -1067,7 +1069,8 @@ def _menu_tails(low: str) -> set[int]:
         separator = _REFERENCE_AFTER.match(low, end)
         if separator is None:                      # the shape says it matched
             continue
-        tail = _SPACES.match(low, separator.end()).end()
+        # The run of spaces may be empty, so it matches at any position.
+        tail = cast(re.Match[str], _SPACES.match(low, separator.end())).end()
         if not _BREAK_RUN.search(low, end, tail):  # the title is on the form's own line
             tails.add(tail)
     return tails
@@ -1555,9 +1558,9 @@ def judgment_of(reading: Extraction, questions: Questions) -> Judgment:
         from tracker.names import check_name, read_names
 
         page = read_names(words)
-        for question in questions.names:
-            if question not in names:
-                names[question] = check_name(words, question.own, dict(question.others), page=page)
+        for asked in questions.names:
+            if asked not in names:
+                names[asked] = check_name(words, asked.own, dict(asked.others), page=page)
     return replace(
         base,
         has_words=bool(words),
@@ -2152,7 +2155,7 @@ def _read_in_a_child(path: Path, questions: Questions) -> Judgment:
     stop: :func:`judge`, handed the reader by reference
     (``_CHILD_READER``, which the suite swaps for a stand-in)."""
     answer, failed = in_a_child(path, judge, questions=questions, reader=_CHILD_READER)
-    return unjudged(failed) if failed is not None else answer
+    return unjudged(failed) if failed is not None else cast(Judgment, answer)   # judge returns a Judgment
 
 
 def in_a_child(path: Path, job, *, stop: float | None = None, **kwargs) -> tuple[object, Extraction | None]:

@@ -159,9 +159,11 @@ has proved its shape, so its family functions take ``dict`` (P3.3), and
 line omit is ``NotRequired``, a value it holds to a rule has that rule's
 type, and a key it passes over unread is ``object``. The key constants a
 typed writer reads a line through are ``Final`` (:data:`EVENT_KEY`,
-:data:`KEY_KEY`, :data:`RULES_KEY`, :data:`REMOVED_KEY`, :data:`INFO_KEY`),
-so the type checker reads ``event.get(KEY_KEY)`` as that key's own type
-rather than ``object``; the rest stay plain until a typed reader needs one.
+:data:`KEY_KEY`, :data:`RULES_KEY`, :data:`REMOVED_KEY`, :data:`INFO_KEY`,
+and the filer's steps (P4.1): :data:`OP_KEY`, :data:`FROM_KEY`,
+:data:`TO_KEY`, :data:`DIGEST_KEY`), so the type checker reads
+``event.get(KEY_KEY)`` as that key's own type rather than ``object``; the
+rest stay plain until a typed reader needs one.
 The types are for the type checker. Under this module's
 ``from __future__ import annotations`` a class-form ``TypedDict`` cannot
 see ``NotRequired`` when the class is made, so its ``__required_keys__``
@@ -180,7 +182,7 @@ import json
 import logging
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, NotRequired, TypedDict
@@ -235,10 +237,10 @@ KEYWORD_KEY = "keyword"
 #: key decision 129 wrote the other record's half under is refused by
 #: name (``tracker.admission.ALSO_IN``) wherever it is met.
 OPS_KEY = "ops"
-OP_KEY = "op"
-FROM_KEY = "from"
-TO_KEY = "to"
-DIGEST_KEY = "digest"
+OP_KEY: Final = "op"
+FROM_KEY: Final = "from"
+TO_KEY: Final = "to"
+DIGEST_KEY: Final = "digest"
 EVENT_KEY_AFTER = "then"
 DECIDED_BY_KEY = "by"
 ALSO_KEY = "also"
@@ -739,7 +741,7 @@ def _not_written(exc: OSError) -> RecordNotWritten:
     return RecordNotWritten(errno.errorcode.get(exc.errno or 0, "OSError"))
 
 
-def op_ends(op: dict) -> tuple[tuple[str, bool], ...]:
+def op_ends(op: Mapping[str, object]) -> tuple[tuple[str, bool], ...]:
     """The places one step of an intent names, each with whether the step
     writes there: ``(location, writes)`` for its ``from`` and its ``to``
     (decision 187).

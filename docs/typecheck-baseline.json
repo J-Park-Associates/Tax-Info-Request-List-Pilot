@@ -1,7 +1,7 @@
 {
   "note": "Every type error each file had when this was written, by python tools/typecheck.py update. check fails when a file has more; update refuses to raise a count. Never edit it by hand.",
   "mypy": "2.3.1",
-  "total": 206,
+  "total": 138,
   "files": {
     "tools/learned_keywords.py": [
       "Cannot find implementation or library stub for module named \"vocab_report\"  [import-not-found]"
@@ -90,73 +90,9 @@
       "Incompatible types in assignment (expression has type \"Skipped\", variable has type \"Attachment\")  [assignment]",
       "Incompatible types in assignment (expression has type \"object\", variable has type \"Opened | str | OSError\")  [assignment]"
     ],
-    "tracker/content_check.py": [
-      "\"RowQuestion\" has no attribute \"others\"  [attr-defined]",
-      "\"RowQuestion\" has no attribute \"own\"  [attr-defined]",
-      "Argument \"key\" to \"min\" has incompatible type overloaded function; expected \"Callable[[str], SupportsDunderLT[Any] | SupportsDunderGT[Any]]\"  [arg-type]",
-      "Incompatible return value type (got \"object\", expected \"Judgment\")  [return-value]",
-      "Incompatible types in assignment (expression has type \"NameQuestion\", variable has type \"RowQuestion\")  [assignment]",
-      "Invalid index type \"RowQuestion\" for \"dict[NameQuestion, object]\"; expected type \"NameQuestion\"  [index]",
-      "Item \"None\" of \"Match[str] | None\" has no attribute \"end\"  [union-attr]",
-      "Item \"None\" of \"Match[str] | None\" has no attribute \"group\"  [union-attr]",
-      "Item \"None\" of \"Match[str] | None\" has no attribute \"group\"  [union-attr]"
-    ],
     "tracker/errors.py": [
       "\"BaseException\" has no attribute \"code\"  [attr-defined]",
       "Invalid index type \"int | None\" for \"Mapping[int, str]\"; expected type \"int\"  [index]"
-    ],
-    "tracker/filer.py": [
-      "\"object\" has no attribute \"candidates\"  [attr-defined]",
-      "\"object\" has no attribute \"candidates\"  [attr-defined]",
-      "\"object\" has no attribute \"candidates\"  [attr-defined]",
-      "\"object\" has no attribute \"candidates\"  [attr-defined]",
-      "\"object\" has no attribute \"candidates\"  [attr-defined]",
-      "\"object\" has no attribute \"candidates\"  [attr-defined]",
-      "\"object\" has no attribute \"code\"  [attr-defined]",
-      "\"object\" has no attribute \"evidence_record\"  [attr-defined]",
-      "\"object\" has no attribute \"evidence_record\"  [attr-defined]",
-      "\"object\" has no attribute \"evidence_record\"  [attr-defined]",
-      "\"object\" has no attribute \"filed_to\"  [attr-defined]",
-      "\"object\" has no attribute \"identifier\"  [attr-defined]",
-      "\"object\" has no attribute \"reason\"  [attr-defined]",
-      "Argument \"prepared_location\" to \"replace\" of \"IndexEntry\" has incompatible type \"str | None\"; expected \"str\"  [arg-type]",
-      "Argument 1 to \"is_reserved_name\" has incompatible type \"str | None\"; expected \"str\"  [arg-type]",
-      "Argument 1 to \"join\" of \"str\" has incompatible type \"list[str | None]\"; expected \"Iterable[str]\"  [arg-type]",
-      "Argument 1 to \"len\" has incompatible type \"str | None\"; expected \"Sized\"  [arg-type]",
-      "Argument 1 to \"sha256_of\" has incompatible type \"Path | None\"; expected \"Path\"  [arg-type]",
-      "Argument 1 to \"sha256_of\" has incompatible type \"Path | None\"; expected \"Path\"  [arg-type]",
-      "Argument 1 to \"sha256_of\" has incompatible type \"Path | None\"; expected \"Path\"  [arg-type]",
-      "Argument 2 to \"_by_the_name\" has incompatible type \"list[tuple[_ReturnRun, Routing]]\"; expected \"list[tuple[_ReturnRun, object]]\"  [arg-type]",
-      "Argument 2 to \"_copy_whole\" has incompatible type \"Path | None\"; expected \"Path\"  [arg-type]",
-      "Argument 2 to \"_move_whole\" has incompatible type \"Path | None\"; expected \"Path\"  [arg-type]",
-      "Argument 2 to \"_move_whole\" has incompatible type \"Path | None\"; expected \"Path\"  [arg-type]",
-      "Argument 2 to \"_move_whole\" has incompatible type \"Path | None\"; expected \"Path\"  [arg-type]",
-      "Argument 2 to \"_move_whole\" has incompatible type \"Path | None\"; expected \"Path\"  [arg-type]",
-      "Argument 2 to \"locate\" has incompatible type \"str | None\"; expected \"str\"  [arg-type]",
-      "Argument 2 to \"measured_length\" has incompatible type \"Path | None\"; expected \"Path | str\"  [arg-type]",
-      "Argument 2 to \"measured_length\" has incompatible type \"Path | None\"; expected \"Path | str\"  [arg-type]",
-      "Argument 3 to \"_op\" has incompatible type \"Path | None\"; expected \"Path\"  [arg-type]",
-      "Argument 3 to \"_op\" has incompatible type \"Path | None\"; expected \"Path\"  [arg-type]",
-      "Argument 3 to \"_op\" has incompatible type \"Path | None\"; expected \"Path\"  [arg-type]",
-      "Argument 3 to \"_the_trouble\" has incompatible type \"dict[Any, Any] | None\"; expected \"dict[Any, Any]\"  [arg-type]",
-      "Argument 4 to \"_make_again\" has incompatible type \"Path | None\"; expected \"Path\"  [arg-type]",
-      "Argument 4 to \"_make_again\" has incompatible type \"Path | None\"; expected \"Path\"  [arg-type]",
-      "Incompatible types in assignment (expression has type \"IndexEntry | None\", variable has type \"IndexEntry\")  [assignment]",
-      "Incompatible types in assignment (expression has type \"int | None\", variable has type \"int\")  [assignment]",
-      "Incompatible types in assignment (expression has type \"object\", variable has type \"Routing\")  [assignment]",
-      "Incompatible types in assignment (expression has type \"object\", variable has type \"Routing\")  [assignment]",
-      "Item \"None\" of \"Path | None\" has no attribute \"stat\"  [union-attr]",
-      "Item \"None\" of \"dict[Any, Any] | None\" has no attribute \"get\"  [union-attr]",
-      "Item \"None\" of \"dict[Any, Any] | None\" has no attribute \"get\"  [union-attr]",
-      "Item \"None\" of \"str | None\" has no attribute \"casefold\"  [union-attr]",
-      "Item \"None\" of \"str | None\" has no attribute \"casefold\"  [union-attr]",
-      "Need type annotation for \"grown\" (hint: \"grown: list[<type>] = ...\")  [var-annotated]",
-      "Unsupported operand types for + (\"int\" and \"None\")  [operator]",
-      "Unsupported operand types for - (\"int\" and \"None\")  [operator]",
-      "Unsupported operand types for / (\"Path\" and \"None\")  [operator]",
-      "Value of type \"dict[Any, Any] | None\" is not indexable  [index]",
-      "Value of type \"dict[Any, Any] | None\" is not indexable  [index]",
-      "Value of type \"dict[Any, Any] | None\" is not indexable  [index]"
     ],
     "tracker/firm_pages.py": [
       "Argument 1 to \"View\" has incompatible type \"Any | None\"; expected \"dict[Any, Any]\"  [arg-type]",
@@ -187,16 +123,6 @@
       "Argument 3 to \"replace\" of \"RequestItem\" has incompatible type \"**dict[str, object]\"; expected \"int\"  [arg-type]",
       "Argument 3 to \"replace\" of \"RequestItem\" has incompatible type \"**dict[str, object]\"; expected \"str\"  [arg-type]",
       "Argument 3 to \"replace\" of \"RequestItem\" has incompatible type \"**dict[str, object]\"; expected \"tuple[str, ...]\"  [arg-type]"
-    ],
-    "tracker/ocr.py": [
-      "\"object\" object is not iterable  [misc]",
-      "Argument 1 to \"_footprint\" has incompatible type \"int | None\"; expected \"int\"  [arg-type]",
-      "Argument 1 to \"_kill_on_close_job\" has incompatible type \"int | None\"; expected \"int\"  [arg-type]",
-      "Item \"None\" of \"ReadingChild | None\" has no attribute \"run\"  [union-attr]",
-      "Item \"None\" of \"ReadingChild | None\" has no attribute \"served\"  [union-attr]",
-      "Tuple index out of range  [misc]",
-      "Tuple index out of range  [misc]",
-      "Tuple index out of range  [misc]"
     ],
     "tracker/progress.py": [
       "Argument 1 to \"passes_dir\" has incompatible type \"Path | None\"; expected \"Path\"  [arg-type]"

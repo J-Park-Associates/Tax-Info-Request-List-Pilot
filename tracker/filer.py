@@ -191,6 +191,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
+from typing import cast
 
 from tracker import containers, door, errors, ledger, ocr, reasons, store
 from tracker.bounds import typed_identifier_problem
@@ -322,6 +323,7 @@ from tracker.records import (
     Person,
     Received,
     ReceivedLine,
+    Routing,
     UnderReview,
     WaitsFor,
     entry_from_json,
@@ -622,7 +624,8 @@ def prepared_name_for(item: RequestItem, extension: str, taken: set[str], *,
         if candidate is None:
             shortest = _named(_stem_of(identifier, "", period), counter, suffix)
             limit = limit_for(extension)
-            raise NoRoom(limit - room + len(shortest), limit, extension)
+            # Reached only when a room was measured: with ``None`` the first name is kept.
+            raise NoRoom(limit - cast(int, room) + len(shortest), limit, extension)
         if candidate.lower() not in taken:
             taken.add(candidate.lower())
             return candidate
@@ -1185,16 +1188,18 @@ def _unique_path(
 
     counter = 1
     while True:
-        fitted: str | None = _named(stem, counter, suffix)
+        fitted = _named(stem, counter, suffix)
         if fits is not None and len(fitted) > fits:
             cuts = (stem[:keep].rstrip(". ") for keep in range(len(stem) - 1, 0, -1))
-            fitted = next((_named(cut, counter, suffix) for cut in cuts
-                           if cut and len(_named(cut, counter, suffix)) <= fits), None)
-            if fitted is None:
-                length = measured_length(folder / _named(stem[:1], counter, suffix), root) + spare
-                limit = measured_length(folder, root) + 1 + room
+            cut_to_fit = next((_named(cut, counter, suffix) for cut in cuts
+                               if cut and len(_named(cut, counter, suffix)) <= fits), None)
+            if cut_to_fit is None:
+                # ``fits`` is set only with a room, and a room only with a root (refused above otherwise).
+                length = measured_length(folder / _named(stem[:1], counter, suffix), cast(Path, root)) + spare
+                limit = measured_length(folder, cast(Path, root)) + 1 + cast(int, room)
                 raise NoRoom(length, limit, suffix, sentence=REVIEW_NO_ROOM.format(
                     name=name, length=length, limit=limit, ext=_kind_of(suffix)))
+            fitted = cut_to_fit
         target = folder / fitted
         counter += 1
         if (claimed is not None and target in claimed) or (fitted != name and is_reserved_name(fitted)):
@@ -1788,7 +1793,7 @@ OPEN_INTENT_REFUSAL = ("a run was interrupted here; the next pass finishes it fi
 
 
 def _op(engagement_dir: Path, kind: str, source: Path,
-        target: Path | None = None, digest: str = "") -> dict:
+        target: Path | None = None, digest: str = "") -> ledger.IntentOp:
     """One file operation of a decision, as the record carries it.
 
     Paths relative to the engagement folder and POSIX, as every path the
@@ -1797,8 +1802,8 @@ def _op(engagement_dir: Path, kind: str, source: Path,
     the whole of how a recovery tells a step that happened from one that
     did not.
     """
-    op = {ledger.OP_KEY: kind, ledger.FROM_KEY: location_of(engagement_dir, source),
-          ledger.DIGEST_KEY: digest}
+    op: ledger.IntentOp = {ledger.OP_KEY: kind, ledger.FROM_KEY: location_of(engagement_dir, source),
+                           ledger.DIGEST_KEY: digest}
     if target is not None:
         op[ledger.TO_KEY] = location_of(engagement_dir, target)
     return op
@@ -1818,7 +1823,7 @@ def _may_touch(engagement_dir: Path, location: str, *, writes: bool) -> bool:
     return place_problem(engagement_dir, location, writes=writes) is None
 
 
-def _refuse_a_step_outside(engagement_dir: Path, op: dict) -> None:
+def _refuse_a_step_outside(engagement_dir: Path, op: ledger.IntentOp) -> None:
     """:data:`OP_OUTSIDE` for the first place in ``op`` a step of this
     return may not touch, before any of it is done."""
     removes = op.get(ledger.OP_KEY) == ledger.OP_REMOVE
@@ -1829,7 +1834,7 @@ def _refuse_a_step_outside(engagement_dir: Path, op: dict) -> None:
                                                 reason=code))
 
 
-def _refuse_a_step_through_a_link(engagement_dir: Path, op: dict) -> None:
+def _refuse_a_step_through_a_link(engagement_dir: Path, op: ledger.IntentOp) -> None:
     """:class:`MovedThroughALinkError` for a step either of whose ends is
     reached through a link below the clients root (decision 187, B-11).
 
@@ -1863,7 +1868,7 @@ def _door_for(root: Path, household: str, target: Path) -> None:
                 raise FilingError(str(exc)) from None
 
 
-def _mark_a_move_into_review(engagement_dir: Path, op: dict) -> None:
+def _mark_a_move_into_review(engagement_dir: Path, op: ledger.IntentOp) -> None:
     """Mark the working copy a move is carrying into review, or raise
     :class:`MarkRefusedError` (decision 190's review, S2).
 
@@ -1884,7 +1889,7 @@ def _mark_a_move_into_review(engagement_dir: Path, op: dict) -> None:
         _mark_for_review(source, name=target.name)
 
 
-def _do_op(engagement_dir: Path, op: dict, *, cache: ContentCache | None = None) -> None:
+def _do_op(engagement_dir: Path, op: ledger.IntentOp, *, cache: ContentCache | None = None) -> None:
     """Carry out one operation of an intent.
 
     The one place the plan an intent wrote down and the work it stands for
@@ -1926,7 +1931,7 @@ def _do_op(engagement_dir: Path, op: dict, *, cache: ContentCache | None = None)
 def _intend(
     engagement_dir: Path,
     key: str,
-    ops: list[dict],
+    ops: list[ledger.IntentOp],
     *,
     by: str,
     row: dict | None = None,
@@ -2003,7 +2008,7 @@ def _intend(
     store.record(store.connect(), engagement_dir, event)
 
 
-def _prove(engagement_dir: Path, ops: list[dict]) -> None:
+def _prove(engagement_dir: Path, ops: list[ledger.IntentOp]) -> None:
     """Give every copy in ``ops`` the fingerprint it will be proved against
     (decision 187), or raise :data:`COPY_UNPROVED` before anything is
     recorded. In place, because the caller carries out the very operations
@@ -2017,7 +2022,7 @@ def _prove(engagement_dir: Path, ops: list[dict]) -> None:
     with neither has nothing to be proved against, and an intent that
     would carry one is never written.
     """
-    came_from: dict[str, dict] = {}          # a step's target -> the step that brings it there
+    came_from: dict[str, ledger.IntentOp] = {}   # a step's target -> the step that brings it there
 
     def fingerprint(location: str) -> str:
         step = came_from.get(location)
@@ -2064,7 +2069,7 @@ def _abandon(engagement_dir: Path, key: str) -> None:
         log.error("Could not record that a move was abandoned (%s)", errors.error_class(exc))
 
 
-def _carry_out_a_persons_ops(engagement_dir: Path, key: str, ops: list[dict]) -> None:
+def _carry_out_a_persons_ops(engagement_dir: Path, key: str, ops: list[ledger.IntentOp]) -> None:
     """Carry out the operations of a person's unfiling or put-back, whose
     first step is the one that may go into review (decision 190's
     re-check, M-N1).
@@ -2328,17 +2333,17 @@ def replaced_in_pbc(
     for path in iter_candidate_files(originals_dir):
         if through_a_link(path, originals_dir):
             continue
-        entry = by_path.get(path)
-        if entry is None:
+        row = by_path.get(path)
+        if row is None:
             continue
         if is_cloud_placeholder(path):
             continue
         try:
-            if round(path.stat().st_size / 1024, 1) == entry.size_kb and sha256_of(path) == entry.digest:
+            if round(path.stat().st_size / 1024, 1) == row.size_kb and sha256_of(path) == row.digest:
                 continue
         except OSError:
             continue                 # unreadable now; the next run looks again
-        replaced.append((path, entry))
+        replaced.append((path, row))
     return replaced
 
 
@@ -2438,6 +2443,7 @@ def _follow_moved_originals(
     if not gone:
         return strays, [], []
     waiting: dict[str, list[int]] = {}
+    position: int | None
     for position in gone:
         if entries[position].digest:
             waiting.setdefault(entries[position].digest, []).append(position)
@@ -2744,7 +2750,7 @@ def _make_again_or_hold(
         remade, sentence = _remade(entry, absent, stamp)
         if not dry_run:
             try:
-                _make_again(engagement_dir, entry, remade, source, absent,
+                _make_again(engagement_dir, entry, remade, cast(Path, source), absent,   # proved: a path
                             by=ledger.BY_PASS, then=ledger.COPY_REMADE, cache=cache)
             except (OSError, FilingError) as exc:
                 problem = REMAKE_FAILED.format(home=PLACES_JOINED.join(absent), pbc=_shown(entry.pbc_location),
@@ -3040,8 +3046,8 @@ def _the_bytes(path: Path) -> str | None:
 
 
 def _finish_the_ops(
-    engagement_dir: Path, ops: list[dict], cache: ContentCache | None
-) -> tuple[str, dict | None]:
+    engagement_dir: Path, ops: list[ledger.IntentOp], cache: ContentCache | None
+) -> tuple[str, ledger.IntentOp | None]:
     """Finish the steps of one intent that reality says are not done.
 
     Each step is checked by bytes and only then acted on, in the order the
@@ -3240,6 +3246,7 @@ def _finish_interrupted_moves(
             log.warning("An interrupted step was abandoned (%s)", errors.error_class(exc))
             continue
         if outcome == _SYNCING:
+            op = cast(ledger.IntentOp, op)   # every outcome but _FINISHED names the step it stopped at
             attention.append(FileError(Path(op[ledger.FROM_KEY]).name, INTERRUPTED_SYNCING.format(
                 name=Path(op[ledger.FROM_KEY]).name,
                 location=op.get(ledger.TO_KEY) or op[ledger.FROM_KEY],
@@ -3275,6 +3282,7 @@ def _finish_interrupted_moves(
             log.warning("Finished the interrupted %s of %s from the record",
                         intent.get(ledger.EVENT_KEY_AFTER), entry.original_name)
             continue
+        op = cast(ledger.IntentOp, op)       # _FINISHED, the one outcome with no step, went on above
         sentence = _the_trouble(engagement_dir, entry, op, outcome)
         parked, copy_said = _a_copy_to_act_on(engagement_dir, entry, cache)
         new_entry = replace(
@@ -3298,7 +3306,7 @@ def _finish_interrupted_moves(
     return attention
 
 
-def _the_trouble(engagement_dir: Path, entry: IndexEntry, op: dict, outcome: str) -> str:
+def _the_trouble(engagement_dir: Path, entry: IndexEntry, op: ledger.IntentOp, outcome: str) -> str:
     """The sentence a row gets when its step could not be finished: the
     destination holds a different file, or neither end holds the bytes."""
     if outcome == _TAKEN:
@@ -4162,14 +4170,14 @@ def _put_back_home(
     return True
 
 
-def _do_all_or_take_back(engagement_dir: Path, key: str, ops: list[dict],
+def _do_all_or_take_back(engagement_dir: Path, key: str, ops: list[ledger.IntentOp],
                          cache: ContentCache | None = None) -> None:
     """Do every operation of an intent already written, all or nothing: a
     step that fails (an ``OSError`` or a :class:`FilingError`) takes back
     what this call already did (:func:`_take_back`), abandons the intent
     (:func:`_abandon`) and raises for the caller to say. A kill is not a
     failure: nothing is taken back, and the next pass finishes the intent."""
-    done: list[dict] = []
+    done: list[ledger.IntentOp] = []
     try:
         for op in ops:
             _do_op(engagement_dir, op, cache=cache)
@@ -4180,7 +4188,7 @@ def _do_all_or_take_back(engagement_dir: Path, key: str, ops: list[dict],
         raise
 
 
-def _take_back(engagement_dir: Path, done: list[dict]) -> None:
+def _take_back(engagement_dir: Path, done: list[ledger.IntentOp]) -> None:
     """Undo the operations of an intent this call made before one failed,
     newest first: a copy it made is removed while it still holds the bytes
     it was made with, and a move is moved back. Never anything else - the
@@ -4571,7 +4579,7 @@ NAME_CONFIRMED_NOTE = "name confirmed ({spelling})"
 _NAME_REASONS = (reasons.NAME_NOT_ON_PAGE, reasons.NAMES_ANOTHER_RETURN, reasons.NO_PEOPLE_ON_FILE)
 
 
-def _with_the_name(routing, verdict: NameVerdict):
+def _with_the_name(routing: Routing, verdict: NameVerdict) -> Routing:
     """``routing`` with the name's own evidence added to every candidate it
     names (decision 128, :data:`tracker.records.RULE_NAME`).
 
@@ -4604,8 +4612,8 @@ class _NameStage:
     household quotes (decision 204), never a word of the page.
     """
 
-    kept: list[tuple[_ReturnRun, object]] = field(default_factory=list)
-    graded: dict[int, object] = field(default_factory=dict)
+    kept: list[tuple[_ReturnRun, Routing]] = field(default_factory=list)
+    graded: dict[int, Routing] = field(default_factory=dict)
     met: list[tuple[object, str]] = field(default_factory=list)
     confirmed: dict[int, str] = field(default_factory=dict)
     spelling: dict[int, str] = field(default_factory=dict)
@@ -4632,7 +4640,7 @@ def _name_question(run: _ReturnRun, runs: list[_ReturnRun]) -> NameQuestion:
 
 
 def _by_the_name(
-    judgment: Judgment, accepting: list[tuple[_ReturnRun, object]], runs: list[_ReturnRun]
+    judgment: Judgment, accepting: list[tuple[_ReturnRun, Routing]], runs: list[_ReturnRun]
 ) -> _NameStage:
     """The name tier (decision 128), run over what the request lists accepted.
 
@@ -4940,7 +4948,7 @@ def _may_hold(run: _ReturnRun) -> bool:
     return not (run.context.container and not run.home)
 
 
-def _with_the_wanting_return(home_routing, run: _ReturnRun, routing) -> str:
+def _with_the_wanting_return(home_routing: Routing | _NoRouting, run: _ReturnRun, routing: Routing) -> str:
     """The Evidence cell of a document B2 parked at home (decision 137's
     review, B #3): the home list's own evidence, then what the return in
     the other household accepted it under - keyed by that return's label
@@ -4963,7 +4971,7 @@ def _named_across(stage: _NameStage, run: _ReturnRun) -> str:
     return reasons.NAMED_ACROSS_HOUSEHOLDS.format(spelling=stage.spelling[id(run)], label=run.label)
 
 
-def _waits_for(run: _ReturnRun, routing) -> str:
+def _waits_for(run: _ReturnRun, routing: Routing) -> str:
     """The Waits For cell of a document parked because it names another
     household's person (decision 204): that return's line and what its
     list accepted - the requests in the order the page names their forms
@@ -4978,7 +4986,7 @@ def _waits_for(run: _ReturnRun, routing) -> str:
     ))
 
 
-def _the_home(accepting, routed) -> tuple[_ReturnRun, object]:
+def _the_home(accepting: list[tuple[_ReturnRun, Routing]], routed) -> tuple[_ReturnRun, Routing]:
     """The return a document nobody may file parks in, and what its own
     request list made of it (decisions 125 and 129): the **dropping
     household's own** return of the first request that accepted it, else its
@@ -5106,7 +5114,7 @@ def _plan_working_copy(
 
 
 def _intend_and_do(
-    engagement_dir: Path, entry: IndexEntry, ops: list[dict], *, by: str, then: str,
+    engagement_dir: Path, entry: IndexEntry, ops: list[ledger.IntentOp], *, by: str, then: str,
     cache: ContentCache | None, dry_run: bool, also: Sequence[dict] = (),
 ) -> None:
     """Write down what ``entry`` will be, then do ``ops``: the pass's park
@@ -5175,7 +5183,7 @@ def _file_into(
 
 def _file_it(
     drop: Path, original: Path, digest: str, size_kb: float, stamp: str,
-    run: _ReturnRun, routing, item: RequestItem, *, refiled: str = "", resent: str = "",
+    run: _ReturnRun, routing: Routing, item: RequestItem, *, refiled: str = "", resent: str = "",
     confirmed: str = "",
 ) -> IndexEntry:
     """File one preserved original under the request that accepted it.
@@ -5284,7 +5292,7 @@ def _review_copy_path(review_dir: Path, name: str, root: Path) -> tuple[Path, st
 
 def _park_it(
     drop: Path, original: Path, digest: str, size_kb: float, stamp: str,
-    run: _ReturnRun, *, reason: str, code: str, candidates, evidence: str, resent: str = "",
+    run: _ReturnRun, *, reason: str, code: str, candidates: tuple[str, ...], evidence: str, resent: str = "",
     copy: bool = True, kept_at: str | None = None, waits_for: str = "",
 ) -> IndexEntry:
     """Park one preserved original in this return's Needs Review, with a
@@ -5301,7 +5309,7 @@ def _park_it(
     or a zip, which is never written out of it."""
     context = run.context
     review_name = drop.name
-    parking: list[dict] = []
+    parking: list[ledger.IntentOp] = []
     past_reader = ""
     if copy and not context.dry_run:
         # One row, one working copy. The copy already there holding these
@@ -5489,7 +5497,7 @@ def _sort_one(
                                           else reasons.UNNAMED_ACROSS_HOUSEHOLDS.format()),
                                   code=(reasons.NAMED_ACROSS_HOUSEHOLDS.code if named
                                         else reasons.UNNAMED_ACROSS_HOUSEHOLDS.code),
-                                  candidates="",
+                                  candidates=(),
                                   evidence=_with_the_wanting_return(_NO_ROUTING, run, routing),
                                   resent=resent,
                                   waits_for=_waits_for(run, routing) if named else "")
@@ -5738,7 +5746,7 @@ def assign_review_file(
         ensure(engagement_dir)
         _refuse_if_a_move_is_open(engagement_dir)
         items = {i.identifier: i for i in load_manifest(engagement_dir)}
-        grown = []
+        grown: list[dict] = []
         if adding is not None:
             items, grown = _issuer_to_add(engagement_dir, original, identifier, items,
                                           adding=adding, head=head, seq=seq)
@@ -5804,7 +5812,7 @@ def assign_review_file(
             # - what the pass handled - and the original must still hold
             # them; the original alone is trusted only when no copy is
             # left to check it against.
-            evidence = parked if parked_here else source
+            evidence = cast(Path, parked) if parked_here else source   # parked_here: a path
             try:
                 digest = sha256_of(evidence)
                 size_kb = round(evidence.stat().st_size / 1024, 1)
@@ -5855,7 +5863,7 @@ def assign_review_file(
 
         moved = reused = parked_stood_in = False
         left_in_review = ""
-        ops: list[dict] = []
+        ops: list[ledger.IntentOp] = []
         # A copy with these bytes already in the folder is a killed earlier
         # attempt's, and is reused rather than doubled. Otherwise the parked
         # copy is moved, but only while it holds the row's bytes: its name
@@ -5870,13 +5878,14 @@ def assign_review_file(
         if existing is not None:
             filed_as, target = existing.name, existing
             reused = True
-            if parked_here and sha256_of(parked) == digest:
+            # ``parked`` is a path wherever ``parked_here`` holds, and only there is it read.
+            if parked_here and sha256_of(cast(Path, parked)) == digest:
                 # The attempt's copy stands in for it, byte for byte.
                 parked_stood_in = True
-                ops.append(_op(engagement_dir, ledger.OP_REMOVE, parked, digest=digest))
-        elif parked_here and sha256_of(parked) == digest:
+                ops.append(_op(engagement_dir, ledger.OP_REMOVE, cast(Path, parked), digest=digest))
+        elif parked_here and sha256_of(cast(Path, parked)) == digest:
             moved = True                  # keeps any notes a person made on it
-            ops.append(_op(engagement_dir, ledger.OP_MOVE, parked, target, digest))
+            ops.append(_op(engagement_dir, ledger.OP_MOVE, cast(Path, parked), target, digest))
         else:
             if parked_here:
                 left_in_review = (
@@ -5951,10 +5960,10 @@ def assign_review_file(
             # stood in for it, which is it byte for byte.
             if not _the_record_holds(engagement_dir, new_entry):
                 try:
-                    if moved:
-                        _move_whole(target, parked, within=engagement_dir)
+                    if moved:                 # moved and parked_stood_in each needed parked_here
+                        _move_whole(target, cast(Path, parked), within=engagement_dir)
                     elif parked_stood_in:
-                        _copy_whole(target, parked, expect=digest or sha256_of(target),
+                        _copy_whole(target, cast(Path, parked), expect=digest or sha256_of(target),
                                     root=room_root(engagement_dir))
                     elif not reused:          # a copy that was already there stays
                         target.unlink(missing_ok=True)
@@ -6138,7 +6147,7 @@ def hand_over(
         # filing leaves one.
         parked = locate(home_return, entry.prepared_location) if entry.prepared_location else None
         left_in_review = ""
-        releasing: list[dict] = []
+        releasing: list[ledger.IntentOp] = []
         if parked is not None and parked.is_file() and not is_cloud_placeholder(parked):
             if sha256_of(parked) == digest:
                 releasing.append(_op(home_return, ledger.OP_REMOVE, parked, digest=digest))
@@ -6660,8 +6669,8 @@ def unfile_document(
         # went back is byte for byte the one removed here.
         stood_down: list[Path] = list(mine[1:]) if still_the_rows else []
         if still_the_rows:
-            # The move keeps any notes a person made on the copy.
-            ops = [_op(engagement_dir, ledger.OP_MOVE, working, parked, entry.digest)]
+            # The move keeps any notes a person made on the copy. (still_the_rows: working is a path.)
+            ops = [_op(engagement_dir, ledger.OP_MOVE, cast(Path, working), parked, entry.digest)]
             ops += [_op(engagement_dir, ledger.OP_REMOVE, copy, digest=entry.digest)
                     for copy in stood_down]
         else:
@@ -6688,8 +6697,8 @@ def unfile_document(
             # it is, so a retry does this once rather than twice.
             if not _the_record_holds(engagement_dir, new_entry):
                 try:
-                    if still_the_rows:
-                        _move_whole(parked, working, within=engagement_dir)
+                    if still_the_rows:        # working is a path
+                        _move_whole(parked, cast(Path, working), within=engagement_dir)
                     else:
                         parked.unlink(missing_ok=True)
                     # The copies that stood down with it come back from the
@@ -6957,7 +6966,7 @@ def _make_a_gone_copy_again(
                           "now; try again when it can")
     remade, _sentence = _remade(entry, gone, stamp)
     entries[position] = remade
-    _make_again(engagement_dir, entry, remade, source, gone,
+    _make_again(engagement_dir, entry, remade, cast(Path, source), gone,   # proved: a path
                 by=ledger.BY_PERSON, then=ledger.COPY_REMADE, cache=None)
     try:
         _record(engagement_dir, before, entries, decided={ledger_key(remade): ledger.COPY_REMADE})
@@ -7111,7 +7120,7 @@ def _put_back_a_moved_copy(
     moved_home = copied_from_original = wanderer_moved = False
     parked: Path | None = None
     filled: list[Path] = []
-    ops: list[dict] = []
+    ops: list[ledger.IntentOp] = []
     if different:
         # Refused, and nothing is touched at home. This document's copy
         # goes to review under the client's own name - the wanderer
@@ -7193,16 +7202,17 @@ def _put_back_a_moved_copy(
         # retry does this once rather than twice.
         if not _the_record_holds(engagement_dir, new_entry):
             try:
+                # wanderer_moved is set only where the wanderer was a path that held the row.
                 if parked is not None:
                     if wanderer_moved:
-                        _move_whole(parked, wanderer, within=engagement_dir)
+                        _move_whole(parked, cast(Path, wanderer), within=engagement_dir)
                     else:
                         parked.unlink(missing_ok=True)
                 else:
                     for copy in filled[1:]:
                         copy.unlink(missing_ok=True)
                     if wanderer_moved and filled:
-                        _move_whole(filled[0], wanderer, within=engagement_dir)
+                        _move_whole(filled[0], cast(Path, wanderer), within=engagement_dir)
                     elif filled:
                         filled[0].unlink(missing_ok=True)
             except (OSError, FilingError) as undo:
@@ -7413,12 +7423,12 @@ def rename_request(
                  for path in assign_files(prepared, identifiers).get(spelled, [])]
 
         renamed_entries: list[IndexEntry] = []
-        ops_for: dict[str, list[dict]] = {}
+        ops_for: dict[str, list[ledger.IntentOp]] = {}
         destinations: set[str] = set()
         for position, entry in enumerate(entries):
             locations = entry.filed_locations
-            mapped = {location: moved_to_new(location) for location in locations}
-            mapped = {was: now for was, now in mapped.items() if now}
+            asked = {location: moved_to_new(location) for location in locations}
+            mapped = {was: now for was, now in asked.items() if now}
             names_it = bool(entry.identifier) and identifier_key(entry.identifier) == identifier_key(old)
             candidates = [new if identifier_key(one) == identifier_key(old) else one
                           for one in entry.candidate_list]
@@ -7443,7 +7453,7 @@ def rename_request(
                 continue
             if mapped and entry.decision == FILE_MOVED:
                 raise FilingError(RENAME_COPY_MOVED.format(name=entry.original_name, old=old))
-            ops = []
+            ops: list[ledger.IntentOp] = []
             for was, now in mapped.items():
                 source, target = locate(engagement_dir, was), locate(engagement_dir, now)
                 if not source.is_file():

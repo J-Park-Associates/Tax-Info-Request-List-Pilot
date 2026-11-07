@@ -165,6 +165,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, cast
 
 from tracker import errors
 from tracker.locking import pid_alive
@@ -1208,7 +1209,8 @@ class ReadingChild:
             for end in (sender, jobs, lifeline):
                 end.close()
         self._pid = self._process.pid
-        self._job_object = _kill_on_close_job(self._process.pid, memory_limit=self.memory_limit)
+        self._job_object = _kill_on_close_job(cast(int, self._process.pid),   # started above
+                                              memory_limit=self.memory_limit)
         #: Windows caps the child in its job object; everywhere else the
         #: pass watches (R31).
         self._watches_memory = sys.platform != "win32"
@@ -1226,6 +1228,7 @@ class ReadingChild:
         except OSError as exc:
             return Outcome("not_started", error=f"the reading's process was gone ({errors.error_class(exc)})",
                            seconds=awake_clock() - started)
+        answer: tuple[Any, ...]                 # what the pipe carries after the kind
         kind, answer, begun, over, capped = "died", (), False, False, False
         while True:
             # Measured again after every message and every wake, on the
@@ -1289,7 +1292,7 @@ class ReadingChild:
         (:data:`MEMORY_UNREADABLE`), never replaced by a guess - unless the
         child is simply gone, which is no news."""
         try:
-            return _footprint(self._process.pid) > self.memory_limit
+            return _footprint(cast(int, self._process.pid)) > self.memory_limit   # started above
         except (OSError, ValueError, AttributeError) as exc:
             if self._process.is_alive():
                 _say_once(MEMORY_UNREADABLE.format(reason=errors.error_class(exc)))
@@ -1691,7 +1694,7 @@ class Session:
         if self.in_a_child:
             outcome = self.run(warm_up, (), {}, stop=WARM_UP_STOP_SECONDS, retry=False)
             if outcome.kind == "read":
-                self.device, why = outcome.answer
+                self.device, why = cast(tuple[str, str], outcome.answer)   # warm_up's (device, why)
             else:
                 # The warm-up reads the firm's own self-test, never a client's
                 # file, so its words are the machine's and are said in full.
@@ -1759,7 +1762,7 @@ class Session:
                 errors.keep("ocr: the reading child could not be made", exc)
                 return Outcome("not_started", error=errors.said(exc, (SettingsError,)),
                                seconds=awake_clock() - started), None
-        child = self.child
+        child = cast(ReadingChild, self.child)   # made above where there was none
         outcome = child.run(job, args, kwargs, stop, since=started if fresh else None)
         self.hear(outcome.notes)
         # The child keeps nothing itself: what it kept crossed with its

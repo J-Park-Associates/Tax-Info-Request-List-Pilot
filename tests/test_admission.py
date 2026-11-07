@@ -96,6 +96,8 @@ def test_a_moving_line_in_a_households_record_is_refused():
 #: retired hand-over's branch and whose docstring names ``tracker.store_check.check`` - and added
 #: two: the new ``_admit_hand_over``, and ``ledger.HANDED_OVER_BY_PERSON_EVENT``, which that
 #: branch reads.
+#: Pinned again under 6 when P4.1 typed op_ends' step as Mapping[str, object]: one annotation,
+#: no rule changed.
 ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.layout.CLIENTS": "3b8264d65abeec66",
     "tracker.layout.CLIENTS_TREE": "488530d6164e0dd6",
@@ -1360,7 +1362,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.ledger.TEXT_FINGERPRINT_KEY": "0db6b5095dc3896e",
     "tracker.ledger.TO_KEY": "e28f3243b469e21d",
     "tracker.ledger.WAS_KEY": "1d383f963e096e21",
-    "tracker.ledger.op_ends": "a4e5e845ab4c8deb",
+    "tracker.ledger.op_ends": "9025d37bcbc0e293",
     "tracker.reasons.KNOWN_CODES": "4ad3f21d00c7f8e5",
     "tracker.records.BLANK_BOUNDS": "cec8e55a02712202",
     "tracker.records.CANDIDATE_SEP": "3c01b9ef061065a0",
