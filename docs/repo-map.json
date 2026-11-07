@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 367,
     "edges": 1708,
-    "reused": 313
+    "reused": 312
   },
   "node_types": [
     "artifact",
@@ -1222,10 +1222,11 @@
       "id": "tracker/copies.py",
       "type": "module",
       "layer": "core",
-      "sha256": "208d937c086a50dc",
-      "lines": 1136,
+      "sha256": "78afb97b0b2be70f",
+      "lines": 1162,
       "exports": [
         "COPY_MISMATCH",
+        "COPY_SYNCING",
         "COPY_UNPROVED",
         "COPY_UNREAD",
         "CopyMismatchError",
@@ -1238,6 +1239,8 @@
         "MarkRefusedError",
         "MovedThroughALinkError",
         "NoRoom",
+        "ORIGINAL_GONE",
+        "ORIGINAL_SYNCING",
         "PATH_NO_ROOM",
         "PATH_NO_ROOM_IN",
         "README_LOCK_FILENAME",
@@ -1258,6 +1261,9 @@
         "sweep_stranded_temps"
       ],
       "constants": {
+        "ORIGINAL_GONE": "'the original {original} is no longer there'",
+        "ORIGINAL_SYNCING": "'the original {original} is still syncing; try again when it is here'",
+        "COPY_SYNCING": "'{location} is still syncing; try again when it is here'",
         "PATH_NO_ROOM": "\"the working copy's path would be {length} characters at its shortest, past the {limit} characters a {ext} copy may have; shorten the clients root, or this request's Short name in the editor\"",
         "PATH_NO_ROOM_IN": "\"the working copy's path in {label} would be {length} characters at its shortest, past the {limit} characters a {ext} copy may have; shorten the clients root, or that request's Short name in {label}'s list in the editor\"",
         "HOUSEHOLD_NO_ROOM": "'no room under {label} for even a review copy ({length} characters at its shortest, past the {limit} characters any copy may have); nothing in this household is sorted until the clients root is shorter'",
@@ -1366,8 +1372,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "5978867526745ea2",
-      "lines": 6644,
+      "sha256": "885151263399d292",
+      "lines": 6642,
       "cli": "python -m tracker.filer",
       "exports": [
         "ALREADY_SPELLED",
@@ -1428,7 +1434,6 @@
         "RENAME_COPY_CHANGED",
         "RENAME_COPY_MISSING",
         "RENAME_COPY_MOVED",
-        "RENAME_COPY_SYNCING",
         "RENAME_COPY_TAKEN",
         "RENAME_NOTHING",
         "RENAME_PATH_TOO_LONG",
@@ -1540,7 +1545,6 @@
         "RENAME_COPY_MOVED": "'{name} is not where the record put it; put it back or send it to review before renaming {old}'",
         "RENAME_COPY_MISSING": "'{location} is not there, so it cannot move with {old}; the next pass says where it went - rename after it'",
         "RENAME_COPY_CHANGED": "'{location} no longer holds the file the record filed there; look at it before renaming {old}'",
-        "RENAME_COPY_SYNCING": "'{location} is still syncing; try again when it is here'",
         "RENAME_PATH_TOO_LONG": "'{location} would be {length} characters, past what Windows opens ({limit}); choose a shorter identifier'",
         "RENAME_UNFINISHED": "'{old} is renamed {new} on the record, but {name} could not be moved yet ({problem}); the next pass finishes it (or press Run now)'"
       },

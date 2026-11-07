@@ -204,11 +204,14 @@ from tracker.content_check import (
 # them from tracker.copies.
 from tracker.copies import (
     _AN_EXTENSION,
+    COPY_SYNCING,
     COPY_UNPROVED,
     COPY_UNREAD,
     FIRM_WRITTEN,
     MARK_REFUSED_STEP,
     MOVE_THROUGH_A_LINK,
+    ORIGINAL_GONE,
+    ORIGINAL_SYNCING,
     PATH_NO_ROOM_IN,
     REVIEW_COPY_FAILED,
     FilingError,
@@ -218,6 +221,7 @@ from tracker.copies import (
     _copy_whole,
     _digest_or_none,
     _existing_copy,
+    _here,
     _kind_of,
     _mark_for_review,
     _may_carry_code,
@@ -1615,9 +1619,9 @@ def _record_missing_digests(
             continue                 # the row's copy is gone; what sits at its path is another row's
         copy = locate(engagement_dir, entry.prepared_location)
         original = locate(engagement_dir, entry.pbc_location)
-        if not copy.is_file() or is_cloud_placeholder(copy):
+        if not _here(copy):
             continue
-        if not original.is_file() or is_cloud_placeholder(original):
+        if not _here(original):
             continue
         try:
             digest = sha256_of(copy)
@@ -2123,7 +2127,7 @@ def _waiting_on_sync(path: Path) -> bool:
 def _the_bytes(path: Path) -> str | None:
     """What this file holds, or None where there is nothing to read - no
     file, a placeholder, or a file this host cannot read now."""
-    if not path.is_file() or is_cloud_placeholder(path):
+    if not _here(path):
         return None
     return _digest_or_none(path)
 
@@ -4834,11 +4838,9 @@ def assign_review_file(
                 prepared=PREPARED_DIR_NAME, pbc=_shown(entry.pbc_location)))
         source = locate(engagement_dir, entry.pbc_location)
         if not source.is_file():
-            raise FilingError(
-                f"the original {_shown(entry.pbc_location)} is no longer there"
-            )
+            raise FilingError(ORIGINAL_GONE.format(original=_shown(entry.pbc_location)))
         if is_cloud_placeholder(source):
-            raise FilingError(f"the original {_shown(entry.pbc_location)} is still syncing; try again when it is here")
+            raise FilingError(ORIGINAL_SYNCING.format(original=_shown(entry.pbc_location)))
         digest, size_kb = entry.digest, entry.size_kb
         # The copy to move is the one the record says this row's bytes are
         # at. For nearly every row that is the Prepared Location column;
@@ -4857,7 +4859,7 @@ def assign_review_file(
         # row names, so that question is not asked of one - and its bytes
         # are checked below either way, which is the stronger test.
         parked_here = (
-            parked is not None and parked.is_file() and not is_cloud_placeholder(parked)
+            parked is not None and _here(parked)
             and (entry.decision == FILE_MOVED
                  or not _copy_taken_by_a_later_row(entries, position))
         )
@@ -5163,10 +5165,9 @@ def hand_over(
             raise FilingError(reasons.OPENED_NOT_ACROSS.format())
         source = locate(home_return, entry.pbc_location)
         if not source.is_file():
-            raise FilingError(f"the original {_shown(entry.pbc_location)} is no longer there")
+            raise FilingError(ORIGINAL_GONE.format(original=_shown(entry.pbc_location)))
         if is_cloud_placeholder(source):
-            raise FilingError(
-                f"the original {_shown(entry.pbc_location)} is still syncing; try again when it is here")
+            raise FilingError(ORIGINAL_SYNCING.format(original=_shown(entry.pbc_location)))
         digest = entry.digest
         if not digest:
             raise FilingError(
@@ -5206,7 +5207,7 @@ def hand_over(
         parked = locate(home_return, entry.prepared_location) if entry.prepared_location else None
         left_in_review = ""
         releasing: list[ledger.IntentOp] = []
-        if parked is not None and parked.is_file() and not is_cloud_placeholder(parked):
+        if parked is not None and _here(parked):
             if sha256_of(parked) == digest:
                 releasing.append(_op(home_return, ledger.OP_REMOVE, parked, digest=digest))
             else:
@@ -5678,7 +5679,7 @@ def unfile_document(
         strangers: list[str] = []
         for location, is_the_named_copy in candidates:
             copy = locate(engagement_dir, location)
-            if not copy.is_file() or is_cloud_placeholder(copy):
+            if not _here(copy):
                 continue
             if is_the_named_copy and taken:
                 continue
@@ -5702,7 +5703,7 @@ def unfile_document(
                     f"{_shown(entry.pbc_location)} is no longer there; there is nothing to put back"
                 )
             if is_cloud_placeholder(source):
-                raise FilingError(f"the original {_shown(entry.pbc_location)} is still syncing; try again when it is here")
+                raise FilingError(ORIGINAL_SYNCING.format(original=_shown(entry.pbc_location)))
             if entry.digest and _digest_or_none(source) != entry.digest:
                 # Proved before the intent is written, not by the copy after
                 # it: a copy of other bytes would fail half way through a
@@ -6147,7 +6148,7 @@ def _put_back_a_moved_copy(
         if not path.is_file():
             absent.append(location)
         elif is_cloud_placeholder(path):
-            raise FilingError(f"{location} is still syncing; try again when it is here")
+            raise FilingError(COPY_SYNCING.format(location=location))
         elif sha256_of(path) != entry.digest:
             different.append(location)
 
@@ -6165,9 +6166,7 @@ def _put_back_a_moved_copy(
                 f"longer there; there is nothing to put back"
             )
         if is_cloud_placeholder(source):
-            raise FilingError(
-                f"the original {_shown(entry.pbc_location)} is still syncing; try again when it is here"
-            )
+            raise FilingError(ORIGINAL_SYNCING.format(original=_shown(entry.pbc_location)))
         if sha256_of(source) != entry.digest:
             raise FilingError(
                 f"neither {looked} nor the original {_shown(entry.pbc_location)} holds the bytes this "
@@ -6333,7 +6332,6 @@ RENAME_COPY_MISSING = ("{location} is not there, so it cannot move with {old}; t
                        "where it went - rename after it")
 RENAME_COPY_CHANGED = ("{location} no longer holds the file the record filed there; look at it "
                        "before renaming {old}")
-RENAME_COPY_SYNCING = "{location} is still syncing; try again when it is here"
 RENAME_PATH_TOO_LONG = ("{location} would be {length} characters, past what Windows opens "
                         "({limit}); choose a shorter identifier")
 #: What a rename says when the record took it and a file would not move
@@ -6517,7 +6515,7 @@ def rename_request(
                 if not source.is_file():
                     raise FilingError(RENAME_COPY_MISSING.format(location=was, old=old))
                 if is_cloud_placeholder(source):
-                    raise FilingError(RENAME_COPY_SYNCING.format(location=was))
+                    raise FilingError(COPY_SYNCING.format(location=was))
                 if entry.digest and sha256_of(source) != entry.digest:
                     raise FilingError(RENAME_COPY_CHANGED.format(location=was, old=old))
                 if target.exists() or now.casefold() in destinations:

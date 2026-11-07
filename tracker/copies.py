@@ -176,6 +176,21 @@ def numbered(stem: str, counter: int, suffix: str) -> str:
 class FilingError(Exception):
     """A person's filing decision could not be carried out as asked."""
 
+# A person's refusals, named once (SPEC-architecture-p4 P4.5, A-10): the
+# sentences a filing action refuses with when the file it needs is not on this
+# machine. Each was written inline at every action that said it; named here,
+# the actions cannot drift apart and a guard can find the sentence by its name.
+
+#: Refuses assigning a review file to a request and handing a file over, when the
+#: original recorded for the row is not in the client's folder any more.
+ORIGINAL_GONE = "the original {original} is no longer there"
+#: Refuses those two, taking a filed document back out, and putting a moved copy
+#: back, when the original is a cloud placeholder still syncing.
+ORIGINAL_SYNCING = "the original {original} is still syncing; try again when it is here"
+#: Refuses putting a moved copy back, and renaming a request, when a filed copy is
+#: still syncing (it was ``RENAME_COPY_SYNCING`` in the filer).
+COPY_SYNCING = "{location} is still syncing; try again when it is here"
+
 
 # ------------------------------------------------------------------ names ----
 
@@ -660,6 +675,17 @@ def _may_carry_code(source: Path) -> bool:
     the recorded one: ``book.xlsm<U+200B>`` is copied as ``book.xlsm``."""
     return (bears_macros(source) or containers.is_container(source.name)
             or containers.is_container(recorded_name(source.name, fallback="")))
+
+
+def _here(path: Path) -> bool:
+    """The file is on this machine: there, and not a cloud placeholder still syncing.
+
+    ``is_file()`` is tested first and short-circuits, so ``is_cloud_placeholder``
+    is never called on a path that is not a file - the same calls, in the same
+    order, as each site made when it wrote the pair out. ``not _here(x)`` is the
+    refusal's test: absent, or present but still syncing.
+    """
+    return path.is_file() and not is_cloud_placeholder(path)
 
 
 def _shown(location: str) -> str:
