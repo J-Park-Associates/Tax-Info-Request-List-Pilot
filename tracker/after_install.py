@@ -10,8 +10,10 @@ remember is a step that is skipped on the one machine where it mattered,
 and nothing says so until a filing deadline.
 
 **One function, every job, in order** (:func:`run`): the schedule, then the
-record check. A future one-time step is a third job added here and nowhere
-else - not a line in the runbook, not a button.
+record check, then the rest below, each one entry of one table
+(:data:`_JOBS`, P349) in the order it runs. A future one-time step is one
+more entry there and its own function, here and nowhere else - not a line
+in the runbook, not a button.
 
 1. **The schedule** - registered only on the computer the designation file
    in the firm's private tree names (``scheduling.schedule_decision``): the
@@ -151,7 +153,7 @@ import os
 import subprocess
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
@@ -832,6 +834,134 @@ def _remove_the_retired_caches(root: Path | None) -> _Step | None:
     return _Step(RETIRED_CACHE_KEY, RETIRED_CACHE_REMOVED.format(n=removed)) if removed else None
 
 
+@dataclass(slots=True)
+class _Context:
+    """What one run's jobs read (P349): why the step runs, the saved root and
+    why it was refused, the saved choice and why it could not be read or
+    saved, the launch door's switched-off, whether a Mac's first pass is due,
+    the checkout a caller named, and each earlier job's step by its entry's
+    key. Read once, before the first job, as the step always has."""
+
+    reason: str
+    root: Path | None
+    refused: str
+    preference: scheduling.SchedulePreference | None
+    unreadable: str
+    unusable: str
+    switched_off: bool
+    kick: bool
+    checkout: Path | None
+    results: dict[str, _Step | None] = field(default_factory=dict)
+
+
+def _run_schedule(context: _Context) -> _Step:
+    """The schedule's entry: a refused root, a choice that cannot be used and
+    a Mac switched off under Login Items each register nothing and say why,
+    in that order; otherwise :func:`_schedule`, then the agent's first pass
+    when it is due (:func:`_first_pass`, SPEC-mac R27)."""
+    if context.refused:
+        return _Step(scheduling.NO_ROOT, context.refused, failed=True)
+    if context.preference is None or context.unusable:
+        return _Step(PREFERENCE_KEY, context.unusable or context.unreadable, failed=True)
+    if context.switched_off:
+        return _Step(SWITCHED_OFF_KEY, SCHEDULE_SWITCHED_OFF.format(product=settings.product_name()),
+                     failed=True)
+    schedule = _schedule(context.root, context.preference)
+    return _first_pass(schedule) if context.kick else schedule
+
+
+def _run_time_machine(context: _Context) -> _Step | None:
+    """The Time Machine job's entry (SPEC-mac R7): :func:`_time_machine`."""
+    return _time_machine()
+
+
+def _run_check(context: _Context) -> _Step:
+    """The record check's entry: a refused root fails it in the root's own
+    sentence, without asking; otherwise :func:`_check`."""
+    if context.refused:
+        return _Step(CHECK_FAILED_KEY, context.refused, failed=True)
+    return _check(context.root)
+
+
+def _run_clear_test_cache(context: _Context) -> _Step | None:
+    """The test cache's entry (R8): :func:`_clear_test_cache` of the checkout
+    a caller named, else of :data:`CHECKOUT`."""
+    return _clear_test_cache(context.checkout)
+
+
+def _run_remove_the_retired_caches(context: _Context) -> _Step | None:
+    """The retired caches' entry (P234): :func:`_remove_the_retired_caches`."""
+    return _remove_the_retired_caches(context.root)
+
+
+def _run_ready_the_overview(context: _Context) -> _Step | None:
+    """The Overview's entry (P218): never asked when the root was refused;
+    otherwise :func:`_ready_the_overview`, told what the check did. ``None``
+    where it did not run, so it says nothing."""
+    sentence = "" if context.refused else _ready_the_overview(context.root, context.reason,
+                                                               cast(_Step, context.results["check"]))
+    return _Step("overview", sentence) if sentence else None
+
+
+def _its_sentence(step: _Step, context: _Context) -> list[str]:
+    """Its sentence: the schedule's always (the first line), the retired
+    caches' and the Overview's whenever they said one."""
+    return [step.sentence]
+
+
+def _its_sentence_when_said(step: _Step, context: _Context) -> list[str]:
+    """Time Machine's: its sentence when it has one and did not fail (a
+    failure is said with the others, after the lines)."""
+    return [step.sentence] if step.sentence and not step.failed else []
+
+
+def _the_checks_lines(step: _Step, context: _Context) -> list[str]:
+    """The check's: its sentence unless the schedule's step already said it
+    (a refused root is one sentence for both), each finding indented, then
+    :data:`FINDINGS_WAIT` when it found any. The one rule that reads another
+    entry's step, and it reads an earlier one."""
+    said = [] if step.sentence == cast(_Step, context.results["schedule"]).sentence else [step.sentence]
+    return said + [f"  {finding}" for finding in step.findings] + ([FINDINGS_WAIT] if step.findings else [])
+
+
+def _its_sentence_unless_failed(step: _Step, context: _Context) -> list[str]:
+    """The test cache's: its sentence unless it failed (said after the lines)."""
+    return [] if step.failed else [step.sentence]
+
+
+@dataclass(frozen=True, slots=True)
+class _Job:
+    """One entry of :data:`_JOBS`: the job's key, the function that runs it,
+    whether its failure counts among the run's failures (which keep the
+    program identity out of the record, so the next start runs the step
+    again), and how its step adds to the lines."""
+
+    key: str
+    run: Callable[[_Context], _Step | None]
+    counts: bool
+    lines: Callable[[_Step, _Context], list[str]]
+
+
+#: Every one-time job, in the order it runs (decision 209, P349). A further
+#: one-time step is one more entry here and its own function: ``_run`` does
+#: not change. Each entry's function calls its job by the module's name for
+#: it, looked up when it runs - never a job held in this tuple, which would
+#: be the function as it was at import: a test's stand-in on
+#: ``after_install._check`` or ``_schedule`` replaces the name, and the call
+#: would miss it (nor does ``tools/patch_sites.py`` follow a reference kept in
+#: a tuple). The retired caches and the Overview never count as a failure
+#: (P234, P218): a file left behind or a cold first Overview is no reason to
+#: run the whole step again at the next start.
+_JOBS = (
+    _Job("schedule", _run_schedule, True, _its_sentence),
+    _Job("time_machine", _run_time_machine, True, _its_sentence_when_said),
+    _Job("check", _run_check, True, _the_checks_lines),
+    _Job("cache", _run_clear_test_cache, True, _its_sentence_unless_failed),
+    _Job("retired_caches", _run_remove_the_retired_caches, False, _its_sentence),
+    _Job("overview", _run_ready_the_overview, False, _its_sentence),
+)
+
+
 class _Busy(Exception):
     """This run could not have the step's lock; the sentence saying why."""
 
@@ -896,6 +1026,13 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
          checkout: Path | None = None, switched_off: bool = False) -> AfterInstall:
     """Every one-time job, in order, and the record of what they did.
 
+    The jobs are the entries of :data:`_JOBS`, run in the table's order,
+    each from the run's :class:`_Context`; one loop adds each step's failure,
+    where its entry says it counts, and its lines, by the entry's own rule,
+    and the failures not yet said follow the lines. **A further one-time
+    step is one entry of :data:`_JOBS` and its own function; this function
+    does not change** (decision 209, P349).
+
     The schedule registers the choice saved in the settings file (pilot
     P21) - on or off, the first run's time, how often - so every door
     registers what the Schedule button shows. ``start`` and ``every``, when
@@ -921,25 +1058,21 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
     program = program_identity() if on_a_mac else ""
     previous = (read_record() or {}) if on_a_mac else {}
     kick = on_a_mac and previous.get("kicked") != program
-    if refused:
-        schedule = _Step(scheduling.NO_ROOT, refused, failed=True)
-    elif preference is None or unusable:
-        schedule = _Step(PREFERENCE_KEY, unusable or unreadable, failed=True)
-    elif switched_off:
-        schedule = _Step(SWITCHED_OFF_KEY, SCHEDULE_SWITCHED_OFF.format(product=settings.product_name()),
-                         failed=True)
-    else:
-        schedule = _schedule(root, preference)
-        if kick:
-            schedule = _first_pass(schedule)
-    excluded = _time_machine()
-    check = _Step(CHECK_FAILED_KEY, refused, failed=True) if refused else _check(root)
-    cache = _clear_test_cache(checkout)
-    retired = _remove_the_retired_caches(root)
-    # The last job before the record (P218, S3): never a failure.
-    overview = "" if refused else _ready_the_overview(root, reason, check)
-    failed = list(dict.fromkeys(step.sentence for step in (schedule, excluded, check, cache)
-                                if step is not None and step.failed))
+    context = _Context(reason=reason, root=root, refused=refused, preference=preference, unreadable=unreadable,
+                       unusable=unusable, switched_off=switched_off, kick=kick, checkout=checkout)
+    failed: list[str] = []
+    lines: list[str] = []
+    for job in _JOBS:
+        step = context.results[job.key] = job.run(context)
+        if step is None:
+            continue
+        if job.counts and step.failed and step.sentence not in failed:
+            failed.append(step.sentence)
+        lines += job.lines(step, context)
+    # The schedule's and the check's entries always say something; the
+    # cache's and the Overview's are None where they had nothing to do.
+    schedule, check = cast(_Step, context.results["schedule"]), cast(_Step, context.results["check"])
+    cache, overview = context.results["cache"], context.results["overview"]
     identity = "" if failed else (program or program_identity())
     now = designation_now(root)
     record = {
@@ -957,26 +1090,12 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
     except OSError:
         failed.append(RECORD_UNWRITABLE.format(file=record_path()))
         identity = ""
-    lines = [schedule.sentence]
-    if excluded is not None and excluded.sentence and not excluded.failed:
-        lines.append(excluded.sentence)
-    if check.sentence != schedule.sentence:
-        lines.append(check.sentence)
-    lines += [f"  {finding}" for finding in check.findings]
-    if check.findings:
-        lines.append(FINDINGS_WAIT)
-    if cache is not None and not cache.failed:
-        lines.append(cache.sentence)
-    if retired is not None:
-        lines.append(retired.sentence)
-    if overview:
-        lines.append(overview)
     lines += [sentence for sentence in failed if sentence not in lines]
     return AfterInstall(reason=reason, ran_at=ran_at, schedule=schedule.key,
                         schedule_sentence=schedule.sentence, check=check.key,
                         check_sentence=check.sentence, schedule_host=schedule.host,
                         cache_sentence=cache.sentence if cache is not None else "",
-                        overview_sentence=overview,
+                        overview_sentence=overview.sentence if overview is not None else "",
                         findings=check.findings,
                         failed=tuple(failed), program=identity, command=schedule.command,
                         xml=schedule.xml, lines=tuple(lines))
