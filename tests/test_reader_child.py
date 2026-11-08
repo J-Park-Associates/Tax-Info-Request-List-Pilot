@@ -15,6 +15,7 @@ named here by assignment.
 
 from __future__ import annotations
 
+import mmap
 import os
 import sys
 import tempfile
@@ -276,12 +277,19 @@ def test_the_posix_watch_caps_a_child_the_way_the_job_object_does(a_pack_here):
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="/proc/<pid>/statm is Linux's")
 def test_a_linux_childs_memory_is_its_resident_pages():
     """R31: the second field of /proc/<pid>/statm, in bytes. A process that
-    touches 64 MB holds at least that much more than it did."""
+    touches 64 MB holds at least that much more than it did.
+
+    The pages are an anonymous mapping written one byte to a page, so each is
+    certainly new to the process: a ``bytearray`` of the same size could be
+    served by a block the allocator kept resident from an earlier test, grow
+    the process by nothing, and fail this on a busy worker (P4.12's finding)."""
     before = reader_child._footprint(os.getpid())
-    held = bytearray(b"x" * (64 * 1024**2))
+    held = mmap.mmap(-1, 64 * 1024**2)
+    for offset in range(0, len(held), mmap.PAGESIZE):
+        held[offset] = 1
     after = reader_child._footprint(os.getpid())
     assert before > 0 and after - before >= 48 * 1024**2, (before, after)
-    del held
+    held.close()
     with pytest.raises(OSError):
         reader_child._footprint(2**22 + os.getpid())               # past pid_max: no such process
 

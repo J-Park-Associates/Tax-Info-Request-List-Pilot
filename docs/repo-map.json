@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 413,
     "edges": 2418,
-    "reused": 354
+    "reused": 353
   },
   "node_types": [
     "artifact",
@@ -10007,8 +10007,8 @@
       "id": "tests/test_reader_child.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7d866c44878afeba",
-      "lines": 586,
+      "sha256": "6e388b04465fa2ca",
+      "lines": 594,
       "exports": [
         "OFF_WINDOWS",
         "a_footprint_that_is_over_for",
