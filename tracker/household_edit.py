@@ -42,7 +42,8 @@ import: the body writes the command's warnings into the reply's envelope
 (each household the mirror returns as pending is said as a notice), which
 is the API's per-command state (the audit's C-3). ``tracker.api._cmd_create``
 reads a new household's name and members here too, and the roll-household
-command and the API's ``_new_return_dir`` read :func:`_folder_name`.
+command and :func:`tracker.creation._new_return_dir` (P343) read
+:func:`_folder_name`.
 
 **Why it sits at layer 3.** It asks :func:`tracker.registry.households_named`
 in its own layer (the households a related list names, walked as the

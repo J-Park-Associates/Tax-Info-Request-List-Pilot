@@ -26,7 +26,7 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of fifty-seven modules in six layers.
+`tracker/` is one Python package of fifty-eight modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The scanner never imports the filer; a person's actions
@@ -197,6 +197,14 @@ the package but each other.
   (decisions 125, 129, 188, P170, P342). Out of the API so a command line
   could reach them (decision 123's lesson); the API's handlers call them by
   import.
+- `creation.py`: creating a return - the folder it takes under its household
+  and year, refused where a name is not one folder, the year is out of
+  bounds, the return or a typed household name is already taken by the
+  layout's key, or the list would pass the room - and decision 137's undo,
+  which removes only the folders one create or rollover's own `mkdir` made:
+  a folder it owns whole, a level above one only when empty (decisions 125,
+  131, 137, 188, P343). Out of the API so a command line could reach them
+  (decision 123's lesson); `create` and `rollover` call them by import.
 - `scanner.py`: walks the working copies, runs the three tiers, resolves each
   request's status (override- and revert-aware) and records the result.
 - `reminder.py`: drafts the client's chase email in four stages measured

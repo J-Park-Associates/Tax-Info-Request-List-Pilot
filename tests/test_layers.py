@@ -258,9 +258,14 @@ LAYERS: dict[int, frozenset[str]] = {
     # of ``api``, which imports them back - ``registry`` (in-layer),
     # ``households``, ``manifest``, ``records`` and ``screen_words`` (L1),
     # ``locking`` and ``layout`` (L0).
+    # ``creation`` joins L3 with P343 (SPEC-architecture-p5 P5.6): the create
+    # transaction's folder, its refusals and decision 137's undo, out of ``api``,
+    # which imports them back - ``household_edit`` (in-layer), ``copies`` (L2),
+    # ``households``, ``ledger``, ``manifest``, ``store`` and ``screen_words``
+    # (L1), ``errors`` and ``layout`` (L0).
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review",
                   "verify", "intents", "inbox", "readme_ack", "actions", "request_edit",
-                  "household_edit"}),
+                  "household_edit", "creation"}),
     # ``after_install`` joins L4 with decision 209, beside the scheduler it
     # drives: it imports ``scheduling`` (L4), ``store`` (L1), ``registry``
     # (L3) and L0; the API imports it, and nothing lower may.
@@ -287,7 +292,7 @@ DOMAINS: dict[str, frozenset[str]] = {
     "record": frozenset({"__init__", "ledger", "locking", "checkpoint", "fsio", "layout", "door",
                          "settings", "hold", "records", "bounds", "store", "index", "manifest",
                          "households", "templates", "scaffold", "admission", "store_check",
-                         "verify", "request_edit", "household_edit"}),
+                         "verify", "request_edit", "household_edit", "creation"}),
     # Opening a client's file, checking it and getting the text out of it.
     "reading": frozenset({"validators", "containers", "content_check", "ocr", "verdicts",
                           "reader_child"}),

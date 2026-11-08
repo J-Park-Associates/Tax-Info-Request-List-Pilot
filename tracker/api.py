@@ -84,7 +84,10 @@ and ``edit``, ``create`` and the rollover call them by import. A
 household's members, feeds and related households, and the mirror that
 writes a related mark onto the other households' records, live in
 ``tracker/household_edit.py`` (P342), and ``edit-household``, ``create``
-and ``roll-household`` call them by import.
+and ``roll-household`` call them by import. Creating a return - the folder
+it takes, the refusals it meets and decision 137's undo of what a failed
+create or rollover made - lives in ``tracker/creation.py`` (P343), and
+``create`` and ``rollover`` call it by import.
 """
 
 from __future__ import annotations
@@ -93,7 +96,6 @@ import datetime as dt
 import json
 import logging
 import os
-import shutil
 import sys
 from collections.abc import Callable
 from contextlib import ExitStack
@@ -140,9 +142,9 @@ from tracker.containers import is_container
 from tracker.copies import (
     FilingError,
     _may_carry_code,
-    refuse_a_path_past_the_limit,
     room_for,
 )
+from tracker.creation import _new_return_dir, _refuse_a_taken_household_name, _undo_made
 from tracker.errlog import ERROR_LOG_FILENAME, error_log, error_log_path
 from tracker.filer import (
     NOT_WAITING,
@@ -176,7 +178,6 @@ from tracker.households import (
     pause_of,
     resolve_feeds,
     return_disagrees,
-    return_name_taken,
     save_household,
     shared_on,
 )
@@ -206,7 +207,6 @@ from tracker.layout import (
     originals_dir_for,
     private_household_dir,
     recorded_name,
-    return_dir_for,
     year_of,
 )
 from tracker.locking import (
@@ -381,7 +381,6 @@ from tracker.screen_words import (
     CARD_POSITION,
     CHANGE_FORM_LABEL,
     CHANGE_HOUSEHOLD_LABEL,
-    CLIENT_FOLDER_TAKEN,
     CLIENT_TYPE_FORMS,
     CLIENTS_FOLDER_LABEL,
     CONTACT_HELP,
@@ -392,7 +391,6 @@ from tracker.screen_words import (
     DISMISS_NOTE_HINT,
     DISMISSED_HEADING,
     DRAFT_MOVED,
-    DUPLICATE_HOUSEHOLD,
     EDIT_HOUSEHOLD_LABEL,
     EDITOR_ADD_LABEL,
     EDITOR_ADVANCED_LABEL,
@@ -833,31 +831,6 @@ BUCKET_HEADINGS = {
     BUCKET_CONTAINER: "Emails and Zips",
     BUCKET_NOT_A_DOCUMENT: "Not Documents",
 }
-
-
-def _new_return_dir(root: Path, household: str, year: int, return_name: str,
-                    items: list | None = None) -> Path:
-    """Where a new return goes: ``<root>/<private tree>/<household>/<year>/<return>``.
-
-    Refused when the household or the return is not a single folder name,
-    when the year is outside the bounds the dialog shows, when a return of
-    that name already exists for that household and year, and when the
-    deepest working copy the list implies would pass what Windows will
-    open (§3.9.1 of decision 125): a folder made today that cannot hold a
-    filed document in February is a failure at a filing deadline, and the
-    refusal names the length so a person knows what to shorten.
-    """
-    household = _folder_name(household, "household")
-    return_name = _folder_name(return_name, "return")
-    year = check_tax_year(int(year))
-    engagement = return_dir_for(root, household, year, return_name)
-    # Unique by the layout's key within the household-year (decision
-    # 188), so a look-alike of a return already there is that return.
-    if (taken := return_name_taken(engagement.parent, return_name)) is not None:
-        raise ManifestError(
-            f"A return named '{taken}' already exists for {household} {year}")
-    refuse_a_path_past_the_limit(engagement, items or [])
-    return engagement
 
 
 def _engagement_dir(argv: list[str]) -> Path:
@@ -3111,40 +3084,6 @@ def _with_list(reply: dict, registry: Registry | None = None) -> dict:
     return reply
 
 
-def _folders_in(tree: Path) -> list[Path]:
-    """The folders directly in one tree, by name, from one listing."""
-    try:
-        with os.scandir(tree) as entries:
-            return sorted(Path(entry.path) for entry in entries if entry.is_dir(follow_symlinks=False))
-    except OSError:
-        return []
-
-
-def _refuse_a_taken_household_name(root: Path, household: str) -> None:
-    """Refuse a typed household name that is, by the layout's key, one
-    already taken in either tree (decision 188, R7): a household folder or
-    a household record's name (:data:`DUPLICATE_HOUSEHOLD` - pick it in the
-    list), a folder the tracker did not make where a household would be
-    (:data:`HOUSEHOLD_NOT_OURS`), or a client folder no household owns
-    (:data:`CLIENT_FOLDER_TAKEN`). Names are unique across both trees."""
-    key = layout.name_key(household)
-    for folder in _folders_in(layout.private_tree_of(root)):
-        recorded = ledger.path_for(folder).is_file()
-        claim = ""
-        if recorded:
-            try:
-                claim = load_household_info(folder).name
-            except ManifestError:
-                claim = ""
-        if layout.name_key(folder.name) == key or (claim and layout.name_key(claim) == key):
-            if recorded:
-                raise ManifestError(DUPLICATE_HOUSEHOLD.format(existing=folder.name))
-            raise ManifestError(HOUSEHOLD_NOT_OURS.format(name=folder.name))
-    for folder in _folders_in(layout.clients_tree_of(root)):
-        if layout.name_key(folder.name) == key:
-            raise ManifestError(CLIENT_FOLDER_TAKEN)
-
-
 def _cmd_create(argv: list[str]) -> dict:
     """Create a new return - and, where it is a new one, its household -
     from a JSON spec on stdin:
@@ -3287,50 +3226,6 @@ def _cmd_create(argv: list[str]) -> dict:
     if made_household is not None:
         reply["checklist"] = _sharing_checklist(root, household)
     return _with_list(reply)   # a new return, perhaps a new household (decision 194)
-
-
-def _undo_made(made: list[Path], owned: set[Path]) -> None:
-    """Undo, innermost first, the folders one create or rollover made -
-    :func:`tracker.fsio.make_new_folders`' list and nothing else.
-
-    Only a folder this call **owns** - the return, or a household whose
-    record it wrote - is removed whole (:func:`_undo_create`). A level
-    above one, such as a year folder it had to make, is removed only when
-    it is empty (the review's F4): a second create running at the same
-    moment may have put its own return there, and that is not this call's
-    to take."""
-    for folder in reversed(made):
-        if folder in owned:
-            _undo_create(folder)
-            continue
-        try:
-            folder.rmdir()
-        except OSError:
-            pass
-
-
-def _undo_create(engagement: Path) -> None:
-    """What a failed create or rollover leaves behind: nothing.
-
-    **Only ever called on a folder this call's own mkdir created**
-    (decision 137; :func:`_undo_made` is how every caller reaches it). The
-    ``rmtree`` is whole because everything under such a folder is this
-    call's too; called on a folder that was already there it would remove
-    a person's folder, or an old return, which is what it once did.
-
-    The folder first, so the name is free again whatever happens next;
-    then the store's row, in its own try, because a store that cannot be
-    reached at this moment (locked, refused by version) must not replace
-    the refusal sentence the person is owed with its own, nor leave the
-    folder standing for :func:`_new_return_dir` to refuse by name. The
-    row it could not drop is a ghost ``create_engagement`` forgets on the
-    next attempt.
-    """
-    shutil.rmtree(engagement, ignore_errors=True)
-    try:
-        store.forget(store.connect(), engagement)
-    except Exception as exc:
-        errors.keep("api: forgetting a failed return", exc, name=engagement.name)
 
 
 def _cmd_edit_household(argv: list[str]) -> dict:

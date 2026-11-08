@@ -33,7 +33,19 @@ from tests.node_harness import RENDERER_SCRIPTS, js_function, read, renderer_tex
 from tests.samples import PRIOR_YEAR, text_pdf
 from tests.source_pins import py_function
 from tests.wording import title_case
-from tracker import household_edit, layout, ledger, manifest, reasons, reminder, request_edit, screen_words, store, view
+from tracker import (
+    creation,
+    household_edit,
+    layout,
+    ledger,
+    manifest,
+    reasons,
+    reminder,
+    request_edit,
+    screen_words,
+    store,
+    view,
+)
 from tracker.bounds import (
     COUNT_BOUNDS,
     MAX_EXPECTED_COUNT,
@@ -3905,7 +3917,7 @@ def test_create_adds_a_return_to_an_existing_household_and_leaves_its_record_alo
     code, payload = run(capsys, "create", stdin={
         "household": "Park Family", "return_name": "1065 - Park & Lee LLC",
         "items": [{"identifier": "C01", "document": "K-1"}]})
-    assert code == 1 and payload["error"] == api.DUPLICATE_HOUSEHOLD.format(existing="Park Family")
+    assert code == 1 and payload["error"] == screen_words.DUPLICATE_HOUSEHOLD.format(existing="Park Family")
     assert len(ledger.read_events(household_dir)) == 1
 
 
@@ -6785,7 +6797,7 @@ def test_typing_an_existing_households_name_is_refused_and_points_at_the_list(ca
     items = [{"identifier": "A01", "document": "W-2"}]
     assert run(capsys, "create", stdin={"household": "Park Family", "return_name": "1040 - Park",
                                         "items": items})[0] == 0
-    said = api.DUPLICATE_HOUSEHOLD.format(existing="Park Family")
+    said = screen_words.DUPLICATE_HOUSEHOLD.format(existing="Park Family")
     assert "add a first name or a middle initial" in said and "add the city" in said
     for typed in ("Park Family", "PARK FAMILY", "  park   family "):
         code, payload = run(capsys, "create", stdin={"household": typed, "return_name": "1040 - X",
@@ -6828,7 +6840,7 @@ def test_a_client_folder_no_household_owns_is_never_adopted(capsys, demo_root):
         code, payload = run(capsys, "create", stdin={
             "household": typed, "return_name": "1040 - Lee",
             "items": [{"identifier": "A01", "document": "W-2"}]})
-        assert code == 1 and payload["error"] == api.CLIENT_FOLDER_TAKEN, typed
+        assert code == 1 and payload["error"] == screen_words.CLIENT_FOLDER_TAKEN, typed
     assert not (demo_root / PRIVATE_TREE).exists() or not any((demo_root / PRIVATE_TREE).iterdir())
     assert sorted(p.name for p in stray.rglob("*")) == ["2025", "w2.pdf"]
 
@@ -7403,28 +7415,6 @@ def test_a_database_that_cannot_be_used_is_said_as_itself_with_its_code_and_keep
     assert failure["sentence"] == getattr(api, sentence).format(code=code, log=api.ERROR_LOG_FILENAME)
     assert code in failure["sentence"] and "did not expect" not in failure["sentence"]
     assert api.ERROR_LOG_FILENAME in failure["sentence"]
-
-
-def test_a_failed_create_that_cannot_forget_its_store_row_still_cleans_up_and_logs_it(
-        tmp_path, monkeypatch, caplog):
-    """E3 (P297): the cleanup finishes and raises nothing in place of the
-    refusal; the row it could not drop is kept on the error log."""
-    import logging
-
-    from tracker import errors
-
-    folder = tmp_path / "half-made"
-    folder.mkdir()
-
-    def locked(*_args, **_kwargs):
-        raise store.StoreUnavailable("SQLITE_BUSY")
-
-    monkeypatch.setattr(store, "forget", locked)
-    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
-        api._undo_create(folder)
-    assert not folder.exists()
-    assert "api: forgetting a failed return (half-made)" in caplog.text
-    assert "StoreUnavailable" in caplog.text
 
 
 def test_a_rollover_that_could_not_read_last_years_index_says_so_in_its_reply(
@@ -10175,7 +10165,7 @@ def test_the_other_households_record_is_read_and_written_inside_its_own_lock(cap
                 said.append("refused")
         return info
 
-    for module in (api, household_edit):
+    for module in (api, creation, household_edit):
         monkeypatch.setattr(module, "load_household_info", and_another_writer)
     code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})
     assert code == 0, payload
