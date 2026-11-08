@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-11-07",
+  "generated": "2026-11-08",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
   "module_table_sha256": "ab2a38012aee8106",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 383,
+    "nodes": 384,
     "edges": 1980,
-    "reused": 328
+    "reused": 330
   },
   "node_types": [
     "artifact",
@@ -5075,6 +5075,13 @@
       "layer": "docs",
       "sha256": "5cff9f1caae5559c",
       "lines": 2538
+    },
+    {
+      "id": "pilot/SPEC-architecture-p5.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "f4864a66e0eff616",
+      "lines": 1878
     },
     {
       "id": "pilot/SPEC-architecture.md",
