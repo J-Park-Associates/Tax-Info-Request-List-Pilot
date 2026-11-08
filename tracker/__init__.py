@@ -33,6 +33,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - runner        : the unattended pass (file -> scan -> weekly draft)
 - run_log       : what one pass reports - the records the console, the page and the run log are drawn from, the run log's codes, the run log and its rotation, and the last-pass file the app reads
 - status_page   : the practice status page in the clients root - every return with what it owes, every file waiting for a person, every failure and every folder left alone, drawn from the pass's report and the store, and written whole
+- letter_render : the letter's look - the emphasis each stage carries and its colours, the letter's shapes and the HTML the clipboard takes - drawn from a letter, inline styles only, nothing fetched or sent
 - pass_order    : the household order hint beside the store - which household a pass serves first, the mark as each one starts, and who was not served two passes running - only ever a hint, read within its bound and written whole
 - scheduling    : generate the Task Scheduler job
 - after_install : every one-time step after installing or upgrading - the schedule on the computer that runs it, the record check - run by Setup, the app's launch and the first root saved

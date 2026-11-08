@@ -23,6 +23,7 @@ from tests.samples import text_pdf
 from tracker import ledger, reasons
 from tracker import reminder as reminder_module
 from tracker.layout import inbox_of
+from tracker.letter_render import HOLD_COLOUR, LETTER_INK, STAGE_COLOURS
 from tracker.manifest import (
     EXPECTED_PATTERN,
     NOT_ASKED_LABEL,
@@ -45,8 +46,6 @@ from tracker.reminder import (
     EXTENSION_ASK,
     GENERIC_ASK,
     HELD_REFUSAL,
-    HOLD_COLOUR,
-    LETTER_INK,
     NEW_DRAFT_FILENAME,
     PARKED_HOLD,
     PARTIAL_ASK,
@@ -59,15 +58,12 @@ from tracker.reminder import (
     SIDE_CLIENT,
     SIDE_DECIDE,
     SIDE_US,
-    STAGE_COLOURS,
-    STAGE_EMPHASIS,
     STAGE_KEY,
     STAGE_LINE,
     STAGE_NONE,
     STAGES,
     SUBJECT_COMPLETE,
     SUBJECT_NEEDED,
-    Emphasis,
     ReminderError,
     ReminderHeldError,
     approval_state,
@@ -1341,24 +1337,6 @@ def test_the_letter_structure_flattens_to_the_text_body(tmp_path):
     bare = draft_reminder(folder, today=DUE)          # no Due Date, no share link
     assert bare.letter.deadline == () and bare.letter.link == ""
     assert bare.letter.text() == bare.body
-
-
-def test_the_emphasis_table_matches_the_design_notes():
-    """Where each stage spends its colour and its weight, pinned: one table
-    serves the letter, the clipboard and the card, and stage 1's colour is
-    the body's own ink, so applying it colours nothing."""
-    from tracker.page import PALETTE
-
-    assert STAGE_EMPHASIS == {
-        1: Emphasis(),
-        2: Emphasis(target_colour=True),
-        3: Emphasis(deadline_colour=True, dates_bold=True, list_bold=True),
-        4: Emphasis(subject_colour=True, subject_bold=True, deadline_colour=True,
-                    dates_bold=True, consequences_bold=True, list_colour=True, list_bold=True),
-    }
-    assert STAGE_COLOURS == {1: "slate_600", 2: "gold_800", 3: "warning_600", 4: "danger_600"}
-    assert PALETTE[STAGE_COLOURS[1]] == PALETTE[LETTER_INK["body"]]
-    assert HOLD_COLOUR == STAGE_COLOURS[3]
 
 
 def test_the_stage_toggle_regenerates_the_same_recipients_at_every_stage_and_writes_nothing(tmp_path):

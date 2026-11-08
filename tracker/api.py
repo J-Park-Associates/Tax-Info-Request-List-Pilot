@@ -129,6 +129,7 @@ from tracker import (
     firm_pages,
     layout,
     ledger,
+    letter_render,
     names,
     ocr,
     progress,
@@ -961,8 +962,8 @@ def _stages() -> list[dict]:
     palette, and where that stage spends its emphasis. The renderer looks
     the colour up and applies the flags; it decides neither."""
     return [{"number": stage.number, "name": stage.name,
-             "colour": reminder.STAGE_COLOURS[stage.number],
-             "emphasis": asdict(reminder.STAGE_EMPHASIS[stage.number]),
+             "colour": letter_render.STAGE_COLOURS[stage.number],
+             "emphasis": asdict(letter_render.STAGE_EMPHASIS[stage.number]),
              "short": stage.short}
             for stage in reminder.STAGES]
 
@@ -1361,8 +1362,8 @@ def vocab() -> dict:
             "nothing_to_send": NOTHING_OUTSTANDING,
             "stages": _stages(),
             "palette": dict(PALETTE),
-            "hold_colour": reminder.HOLD_COLOUR,
-            "letter_ink": dict(reminder.LETTER_INK),
+            "hold_colour": letter_render.HOLD_COLOUR,
+            "letter_ink": dict(letter_render.LETTER_INK),
             # Whose move each outstanding row is (decision 200): the
             # reminder's own three lists, named for a preparer.
             "sides": [{"key": side.key, "label": side.label, "sentence": side.sentence}
@@ -3956,7 +3957,7 @@ def _letter_payload(letter) -> dict:
     """
     if letter is None:
         return {}
-    marks = reminder.stage_emphasis(letter.stage)
+    marks = letter_render.stage_emphasis(letter.stage)
     return {
         "greeting": letter.greeting,
         "progress": letter.progress,
@@ -3975,7 +3976,7 @@ def _letter_payload(letter) -> dict:
 def _run_payload(run, marks) -> dict:
     """One run of the deadline paragraph, with what its stage does to it
     already decided: the page marks what it is told to mark."""
-    coloured, bold = reminder.run_emphasis(run, marks)
+    coloured, bold = letter_render.run_emphasis(run, marks)
     return {"text": run.text, "kind": run.kind, "colour": coloured, "bold": bold}
 
 
@@ -4049,7 +4050,7 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
         # no stage's emphasis is put on them.
         body = reminder.pasted_text(path)
         subject, text = reminder.split_pasted(body)
-        html, letter = reminder.render_text_html(text), None
+        html, letter = letter_render.render_text_html(text), None
     else:
         subject, text = draft.subject, draft.body
         html, letter = reminder.render_html(draft), draft.letter

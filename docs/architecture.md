@@ -26,7 +26,7 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of sixty-two modules in six layers.
+`tracker/` is one Python package of sixty-three modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The scanner never imports the filer; a person's actions
@@ -64,6 +64,10 @@ the package but each other.
   (decision 125), and the disk half of it: a checked root, a return's folder
   from a typed path.
 - `page.py`: the markup both of the firm's pages are drawn with.
+- `letter_render.py`: the letter's look: the emphasis each stage carries and
+  its colours (decision 118), the letter's shapes, and the HTML for the
+  clipboard, drawn from a letter and sending nothing; the reminder imports
+  it back and keeps `render_html`, which its own draft types.
 - `progress.py`: the one progress-line format a running pass is watched by.
 - `replies.py`: the shape of every reply the API prints, written down once
   as `TypedDict`s; the recorded replies and the screen's failure kinds are

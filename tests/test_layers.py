@@ -178,9 +178,12 @@ LAYERS: dict[int, frozenset[str]] = {
     # error log out of ``settings``, which no longer imports the store - the
     # standard library and ``settings``' ``SettingsError``; the store and
     # ``errors`` only at call time. Nothing in ``settings`` offers it.
+    # ``letter_render`` joins L0 with P348 (SPEC-architecture-p5 P5.11): the
+    # letter's emphasis, colours, shapes and HTML, out of ``reminder``, which imports
+    # them back - ``page`` and the standard library.
     0: frozenset({"__init__", "reasons", "locking", "checkpoint", "page", "fsio", "settings",
                   "layout", "door", "errors", "progress", "firm_cache", "page_rows", "firm_pages",
-                  "replies", "bounds", "hold", "errlog"}),
+                  "replies", "bounds", "hold", "errlog", "letter_render"}),
     # ``index`` joins L1 with P319 (SPEC-architecture-p2 P2.9): the index's
     # words and readers out of ``filer``, which imports them back - ``ledger``,
     # ``records``, ``store`` and ``validators`` (L1) and ``layout`` and
@@ -322,7 +325,7 @@ DOMAINS: dict[str, frozenset[str]] = {
     # year it rolls over, the reminder it drafts, what it reports and how it
     # is watched.
     "pass": frozenset({"progress", "registry", "rollover", "reminder", "runner", "scheduling",
-                       "after_install", "run_log", "pass_order"}),
+                       "after_install", "run_log", "pass_order", "letter_render"}),
     # The one way the app reaches the rest, the engine that answers it, what
     # an error is called, where its words are kept, the words it sends the
     # screen and the shape of every reply it prints.

@@ -1041,8 +1041,8 @@ def test_the_stylesheet_carries_no_stage_colour():
     stylesheet reads the four colours as variables the renderer sets from
     the API, so a stage's value written here would be a second mirror
     nothing holds to the tokens."""
+    from tracker.letter_render import HOLD_COLOUR, LETTER_INK, STAGE_COLOURS
     from tracker.page import PALETTE
-    from tracker.reminder import HOLD_COLOUR, LETTER_INK, STAGE_COLOURS
 
     css = read("app/renderer/style.css").lower()
     # The four rungs, the colour a hold is said in and the letter's two inks.

@@ -2919,7 +2919,7 @@ def _the_reminder_card_words_are_all_pythons(words):
     name. A hex reaches the app only through this map."""
     from dataclasses import asdict
 
-    from tracker import reminder
+    from tracker import letter_render, reminder
     from tracker.page import PALETTE
     from tracker.runner import NOTHING_OUTSTANDING
 
@@ -2945,13 +2945,13 @@ def _the_reminder_card_words_are_all_pythons(words):
         "line_unreadable": api.REMINDER_LINE_UNREADABLE,
         "nothing_to_send": NOTHING_OUTSTANDING,
         "stages": [{"number": stage.number, "name": stage.name,
-                    "colour": reminder.STAGE_COLOURS[stage.number],
-                    "emphasis": asdict(reminder.STAGE_EMPHASIS[stage.number]),
+                    "colour": letter_render.STAGE_COLOURS[stage.number],
+                    "emphasis": asdict(letter_render.STAGE_EMPHASIS[stage.number]),
                     "short": stage.short}
                    for stage in reminder.STAGES],
         "palette": dict(PALETTE),
-        "hold_colour": reminder.HOLD_COLOUR,
-        "letter_ink": dict(reminder.LETTER_INK),
+        "hold_colour": letter_render.HOLD_COLOUR,
+        "letter_ink": dict(letter_render.LETTER_INK),
         "sides": [{"key": side.key, "label": side.label, "sentence": side.sentence}
                   for side in reminder.SIDES],
     }

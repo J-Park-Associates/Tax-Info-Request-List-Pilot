@@ -3,7 +3,7 @@
   "generated": "2026-11-08",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
-  "module_table_sha256": "df41d3a936956b59",
+  "module_table_sha256": "60ff67a4453417fe",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 400,
-    "edges": 2153,
-    "reused": 346
+    "nodes": 402,
+    "edges": 2162,
+    "reused": 348
   },
   "node_types": [
     "artifact",
@@ -125,8 +125,8 @@
       "id": "tracker/__init__.py",
       "type": "module",
       "layer": "core",
-      "sha256": "0c3aebed224ae6e0",
-      "lines": 109,
+      "sha256": "8699e0b3ae6ce17d",
+      "lines": 110,
       "role": "Package docstring listing every component, and STANDING_RULES - the four rules worded once.",
       "notes": "Imports nothing of the package at load time since decision 99: the re-exports of the manifest and scaffold APIs (thirteen names no file in tracker/, tools/, tests/ or the entry point consumed) are gone, and with them the package's one load-time cycle (this package -> tracker/manifest.py -> from tracker import ledger). Its module list names the manifest as the request list - its schema, validation, and its reading from and writing to the record - and the scanner as an orchestrator that records rather than writes back (decision 104). There is no load-time cycle left to name: tests/test_layers.py pins the layer of every module and that no load-time import points upward. Every cycle the derived edges show closes through an import at call time (the map labels those separately), and tests/test_layers.py names the four that remain: registry <-> store, store <-> store_check and store <-> verify (each through the store's __main__ block), and scaffold <-> validators (validators' __main__ block). Standing rule 1 still says 'deterministic rules in the manifest': the manifest is the request list, and its home changed with decision 104, not the word. SAFEGUARDS (P64): the four standing rules again in one short line each, in the same order, for the app's Safeguards dialog; STANDING_RULES keeps the full wording that every doc quotes."
     },
@@ -380,8 +380,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f51e38f8785c6f10",
-      "lines": 4960,
+      "sha256": "e5e0a7c88cc0acd4",
+      "lines": 4961,
       "cli": "python -m tracker.api",
       "exports": [
         "BUCKET_HEADINGS",
@@ -1723,6 +1723,38 @@
       "notes": "Decision 87 wrote it beside the files that already existed and had nothing read it; decision 88 made the readers believe it; DECISION 102 MADE IT THE INDEX; DECISION 103 THE STATUSES AND THE PERSON'S RULES; DECISION 104 THE ONLY PLACE THE RULES ARE. The fold of these lines - through tracker/store.py, which keeps the fold so that no reader pays for it twice - IS what index.read_index() returns and what manifest.load_manifest() and manifest.load_engagement_info() answer, and nothing else holds those rows. apply() folds a rules_changed event, and the retired rules_imported an older journal carries, the same way (_apply_rules_event): the rows the event carried replace those identifiers, the ones it names as removed go, the details it carried are set; the create carries the whole list and every save only what moved, so the fold of every event is the list - which is what makes store.rebuild_engagement() able to take everything from the journal alone. RETIRED_EVENTS names what this version reads and never writes: new(), append() and store.record() refuse rules_imported by sentence (RETIRED_EVENT), and a digest an old line carries is simply not read. replay().rows holds the rows in the index's own order, and a row that changed identity keeps the place the one it left held. What keeps it honest is the autouse fixture in tests/plugin_agreement.py: after every test a store is built from nothing and held to replay() over these lines - the documents, the statuses and the rules alike. Sits at the bottom beside tracker/locking.py and imports only it: the events are plain dicts, so each writer serialises its own rows with the function in tracker/records.py that owns that shape, and no cycle is created. Plain at the boundary, typed past the gate (decision 187, SPEC-architecture P2.11): new(), append(), read_events(), replay() and apply() take and return dict, because a line is untrusted until the store's admission has read it, and replay() also folds lines no gate read (store_check.check folds the journal before it judges a line; this module's CLI has no store). Event and one TypedDict per family - RowEvent, ScannedEvent, RulesChangedEvent, IntentEvent with its IntentOp steps, ReleaseEvent, KeywordEvent, HouseholdEvent, DraftEvent - describe a line after the gate, standard library only. store._apply casts to IntentEvent or RulesChangedEvent only once _refuse_a_malformed_line has returned, where it hands the line to _write_intent or _apply_rules_event; the other families stay descriptions: the admission reads a line before anything has proved its shape, so its family functions take dict (P3.3), and new returns a plain dict by design. The key constants those two writers read through (EVENT_KEY, KEY_KEY, RULES_KEY, REMOVED_KEY, INFO_KEY) and the filer's steps (P4.1) read through (OP_KEY, FROM_KEY, TO_KEY, DIGEST_KEY) are Final, so the type checker reads each as its own key; the rest stay plain until a typed reader needs one. The types are the checker's: under this module's from __future__ import annotations a class-form TypedDict's __required_keys__ names every key at run time. One os.write of the whole line under O_APPEND then fsync, so a kill mid-append leaves at most a torn tail: read_events() ignores it and the next append() truncates it, and nothing else ever rewrites the file. O_APPEND is atomic for concurrent writers on POSIX and is not on Windows, which is why append() refuses unless locking.lock_is_held() says this process holds the engagement lock. Not SQLite: a database file a cloud client syncs is a corrupted database file. migrated is the one event that carries no row - it named the files decision 102's migration moved aside; nothing writes one since 104, and it stays readable. Rows are keyed by the original's PBC location; a row that followed an original the client moved carries the identity it left (was), so the fold drops the vacated one. apply() passes over an event name it does not know and read_events() refuses a bad line anywhere but the tail. The reminder writes files and takes no lock, so drafted is reserved; runner and api reach the writers through the filer, the scanner and the manifest and make no call of their own. Decision 115 unreserved DRAFTED: written by the pass under the lock it holds and by the reminder's CLI under one it takes, carrying ASKED_KEY (identifiers asked, in order; [] on a quiet week) or HELD_KEY (identifiers that held the draft), and FILE_KEY / FINGERPRINT_KEY when a file was written - identifiers only, never a word of the email; appended only when something moved. day_of() is the one reading of a stamp, the local day it fell on, beside stamp() the one writing. Decision 113 gave it the one fold it never had: KEYWORD_UNLEARNED is the event a person's unlearn writes, Folded.learned is identifier -> the keywords filings taught and nobody has taken back, and _apply_keyword_event() folds both - learn appends the word, or moves it last where it is already there, and unlearn removes it, so a word taught again lands last either way, which is the order the store's own ORDER BY seq gives, its insert carrying the new line's sequence number. The two folds agree by construction and not because no writer here teaches a word twice. The identifier is keyed exactly as each line spells it, because this module sits below records and may not borrow identifier_key (test_layers); the readers that have to join two spellings of a request hand replay() and apply() a key instead (key=records.identifier_key, P326): the store's writer, and store_check.check(), whose _check_learned() compares the table with that keyed fold. So the learned table is inside store_check.check() at last, and the suite's rebuild-and-check fixture proves it after every test. Decision 110 added restored_by_person to ROW_EVENTS: a person put a working copy back where the record put it, one name whatever the click found, because the row the line carries says whether the bytes moved home, were copied home from the original, were already there, or were refused a home holding a different file and sent to review. Decision 119 added MOVING (not a row event) and MOVE_ABANDONED: what one decision is about to do to the disk, written before the first file operation and keyed by the row's own identity - OPS_KEY (the operations in order, each with the digest both ends should hold), ROW_KEY (the row the decision will record), EVENT_KEY_AFTER (the event that will complete it), DECIDED_BY_KEY (a pass or a person), ALSO_KEY (the events that travel with the row, a taught keyword today) and DAY_KEY (the runner's own day, carried where there is no row to carry it). They fold into Folded.intents rather than into the index: the row event that names the key closes the intent, and the abandonment closes one the record refused. Decision 118 added draft_approved beside drafted: a person read the week's draft in the app and approved it, carrying the stage, the file, that file's header fingerprint and the identifiers asked. Folded by nothing, like drafted - a fact about a week, not a row of the index - and carrying no word of the letter. Decision 126 added sharing_confirmed on the same pattern, in the household's journal: the firm's word that it shared the household with its client, folded by nothing and carrying nothing at all but the stamp, because the tracker cannot see Drive's sharing and must not record what it cannot check. tracker.admission._refuse_a_malformed_line() refuses a line of it that carries anything. Decision 132 added RELEASED ({event, key, reason}, no row, the shape of MOVE_ABANDONED; not a row event): apply() removes the row under the key - and under a was, the path a row event's re-key already deletes - and closes the intent, so the dropping household of a hand-over keeps no row and the journal line alone says which return took it (REASON_KEY). RELEASE_EVENTS is RELEASED and the retired handed_over_by_person decision 129 wrote, which joins RETIRED_EVENTS: read once, folded as a release of its key, never written. Nothing an intent carries is written into another return's record any more; decision 129's ALSO_IN_KEY is gone and tracker.store refuses a moving line that carries it, by name. Decision 135: read_with_head() returns the events and the head from one read of the file; read_events() and head() are thin wrappers over the same _parse() and _digest(), so there is one parser. Whoever saves a head beside lines it applied (the store) uses read_with_head(). Decision 137 (A3): _parse_lines() keeps each event's own line bytes, chain_link() is one step of the applied chain (sha256 of the chain so far and the line), and read_with_chain() returns the events, the head and the chain after each line from one read - the store's proof that the lines it applied are still the journal's. The journal's format is unchanged. Decision 143 added the row event OPENED ('opened'), whose line carries ATTACHMENTS_KEY and SKIPPED_KEY beside the row; the fold keeps the row only. Decision 160 added the row event RENAMED_BY_PERSON ('renamed_by_person'): a person's rename re-wrote the row - its copies renamed in place (moved into the renamed request folder before decision 168), or only its identifier changed; each closes one intent the rename wrote. Decision 157 added two row events: COPY_REMADE ('copy_remade' - a gone working copy made again from its original, by the pass or by a person's Put it back, closing its intent) and ORIGINAL_RETURNED ('original_returned' - a row's own original back from the inbox, moved to its recorded place, no new row); ANSWER_WITHDRAWN_BY_PERSON also records a person marking a both-gone row's own request missing. Both fold like every row event, so the store's version is unchanged. Decision 180: every ValueError a line raises while it is parsed - a number past the interpreter's digit limit included - is the record's LedgerError with its line. Decision 189 (A-9): an OSError from _write_raw() or _truncate_torn_tail() leaves as RecordNotWritten(LedgerError) with code = the errno's name and the fixed sentence RECORD_NOT_WRITTEN - the path (a client's folder) stays on __cause__, so the pass catches it as it catches every LedgerError and one full disk costs one household. Decision 187: op_ends(op) says once which end of a step reads and which writes - (from, read) and (to, write) for a copy or a move, (from, write) for a removal - for the filer and the store's gate. STAGE_KEY moved here from reminder (reminder re-exports it) so the gate can bound a draft's stage. Decision 187's review (S1): day_of catches OSError and OverflowError as well as ValueError, so a stamp Windows cannot give a local day reads as long ago. Decision 188: ACCEPTED_KEY ('accepted') with the one value FOLDER_NAME_ACCEPTED ('folder_name') - a person's word that a folder's name is the name, carried only on the household_changed and rules_changed lines the API's accept-folder-name writes (through households.accept_name and manifest.accept_folder_name since P327); the store admits it there with that value only. Decision 159: every new line carries LINE_KEYS - prev (the SHA-256 link, computed only in chain_link, pinned by a guard test), host and fmt (RECORD_FORMAT 1); a broken link, an unlinked line after linked ones or a newer format stops the reader at that line by name (BROKEN_LINK, UNLINKED_LINE, NEWER_FORMAT, each ending RUN_RECOVER). Carried onto decision 187: the reader keeps only what the chain alone can say; what the three keys and a line's time hold (a link blank or a digest, a format this version writes, a writer that is a machine's name - bounds.host_problem - and a time as stamp() writes it) is held to its one rule at the store's admission, and line_of() builds the line without judging it. A last line that lost only its newline is kept; a RecursionError in a nested tail is a torn tail, and mid-record a named LedgerError. siblings() lists the conflict copies and lock copies beside a record that the practice page names every pass. DECISION 190: TEXT_FINGERPRINT_KEY on draft_approved is the fingerprint of the letter approved, as read; an edit after it lapses the approval, and an event without it is not an approval. SPEC-mac R22: the journal's three flushes (an appended line, a restored newline, a truncated torn tail) go through locking.full_sync, so on a Mac a line is on the drive before the append counts."
     },
     {
+      "id": "tracker/letter_render.py",
+      "type": "module",
+      "layer": "core",
+      "sha256": "bdcf17d438b5a0ee",
+      "lines": 281,
+      "exports": [
+        "Emphasis",
+        "HOLD_COLOUR",
+        "LETTER_INK",
+        "Letter",
+        "RUN_CONSEQUENCES",
+        "RUN_DEADLINE_DATE",
+        "RUN_TARGET",
+        "Run",
+        "STAGE_COLOURS",
+        "STAGE_EMPHASIS",
+        "Section",
+        "render_text_html",
+        "run_emphasis",
+        "stage_colour",
+        "stage_emphasis"
+      ],
+      "constants": {
+        "HOLD_COLOUR": "'warning_600'",
+        "RUN_TARGET": "'target'",
+        "RUN_DEADLINE_DATE": "'deadline_date'",
+        "RUN_CONSEQUENCES": "'consequences'"
+      },
+      "role": "The letter's look, drawn from a letter and from nothing else. Emphasis says where one stage spends its colour and its weight (eight flags, all off by default); STAGE_COLOURS names each rung's colour by its key in page.PALETTE, HOLD_COLOUR is what a hold is said in, LETTER_INK is the letter's own surface (body, muted, paper) and STAGE_EMPHASIS is the ladder in one table, so the letter, the clipboard and the app's card apply one ladder (decisions 117 and 118). Run, Section and Letter are the letter's shapes and Letter.text() is the one place the letter becomes text. stage_emphasis and stage_colour read the tables (a letter at no stage is the first rung's), run_emphasis says whether one run of the deadline paragraph is coloured and bold, render_text_html is the clipboard's body for a draft a person edited by hand (their paragraphs in the letter's type, no style block, no address), and _styled, _emphasised, _paragraph and _with_last are what render_html in the reminder is built from. Inline styles only; nothing fetched, sent, read or written; no CLI.",
+      "notes": "SPEC-architecture-p5 P5.11 (P348; the architecture audit's C-8). Layer 0, domain pass. Moved byte for byte from tracker/reminder.py with their comments and docstrings: the ladder block (Emphasis to STAGE_EMPHASIS), Run, Section and Letter, the three RUN_* kinds, the body's helpers (stage_emphasis to _paragraph) and render_text_html with _with_last. The reminder imports back the thirteen its own code reads and keeps render_html (typed by its own ReminderDraft, which is why it could not move below the reminder), pasted_text, split_pasted and _RUN_MARK (no moved definition reads it). Imports tracker.page and the standard library only, and does not log. Decision 115: nothing is sent and no network module is imported; the rule's enforcer stays the reminder, which drafts and stops. Decision 118: one ladder, one table; the HTML is rendered on demand and never written to disk."
+    },
+    {
       "id": "tracker/locking.py",
       "type": "module",
       "layer": "core",
@@ -2606,8 +2638,8 @@
       "id": "tracker/reminder.py",
       "type": "module",
       "layer": "core",
-      "sha256": "5acea11bc2e4f0b5",
-      "lines": 2262,
+      "sha256": "d26be9300445e222",
+      "lines": 2067,
       "cli": "python -m tracker.reminder",
       "exports": [
         "AMBIGUOUS_HOLD",
@@ -2636,7 +2668,6 @@
         "EDITED_BY_HAND",
         "EXTENSION_ASK",
         "EXTENSION_ASK_PHOTO",
-        "Emphasis",
         "FIRM_PHONE_LINE",
         "FIRM_PHONE_UNUSED_LINE",
         "FOOTER_RULE",
@@ -2645,13 +2676,10 @@
         "HELD_SUMMARY",
         "HELD_TOO_LONG",
         "HELD_WARN_DAYS",
-        "HOLD_COLOUR",
         "INBOX_HELD_SUMMARY",
         "INBOX_HOLD",
         "LAST_DRAFTED_LINE",
-        "LETTER_INK",
         "LINK_DROPPED",
-        "Letter",
         "NEVER_DRAFTED_LINE",
         "NEW_DRAFT_FILENAME",
         "NOTHING_OWED",
@@ -2669,14 +2697,10 @@
         "REMINDER_NOT_YET",
         "REVIEW_ADVICE",
         "REVIEW_WARNING",
-        "RUN_CONSEQUENCES",
-        "RUN_DEADLINE_DATE",
-        "RUN_TARGET",
         "ReminderDraft",
         "ReminderError",
         "ReminderHeldError",
         "ReminderLine",
-        "Run",
         "SECTION_FAILED",
         "SECTION_MISSING",
         "SECTION_ORDER",
@@ -2691,8 +2715,6 @@
         "STAGE_2_DAYS",
         "STAGE_3_DAYS",
         "STAGE_4_CONSEQUENCES",
-        "STAGE_COLOURS",
-        "STAGE_EMPHASIS",
         "STAGE_FLAG",
         "STAGE_GROUP_LABEL",
         "STAGE_KEY",
@@ -2704,7 +2726,6 @@
         "SUBJECT_PREFIX",
         "SUBJECT_RESPONSE",
         "SUBJECT_URGENT",
-        "Section",
         "Side",
         "Stage",
         "TODAY_FLAG",
@@ -2733,14 +2754,10 @@
         "record_draft",
         "recorded_fingerprint",
         "render_html",
-        "render_text_html",
-        "run_emphasis",
         "set_aside_other_draft",
         "shown_text",
         "sides",
         "split_pasted",
-        "stage_colour",
-        "stage_emphasis",
         "stage_for",
         "stage_line",
         "stage_named",
@@ -2814,10 +2831,6 @@
         "PHONE_CLAUSE": "', or call us right away at {phone} so we can discuss your options'",
         "STAGE_LINE": "'Stage: {number} - {name}'",
         "STAGE_NONE": "'Stage: -'",
-        "HOLD_COLOUR": "'warning_600'",
-        "RUN_TARGET": "'target'",
-        "RUN_DEADLINE_DATE": "'deadline_date'",
-        "RUN_CONSEQUENCES": "'consequences'",
         "DROP_WITH_LINK": "'folder. One folder, no sorting and no naming needed; we do that:'",
         "DROP_NO_LINK": "'folder we set up. One folder, no sorting and no naming needed.'",
         "UNUSABLE_ONLY_NOTE": "'One file you sent could not be used; please see the note below.'",
@@ -2825,7 +2838,7 @@
         "SIGN_OFF": "'Thank you,'"
       },
       "role": "Drafts the client chase email from a scanned engagement's record, or holds it for a person. Since decision 117 the letter has four stages (STAGES, stage_for(), stage_named()) chosen by how far today is from the Due Date, and the words of all four are here and nowhere else. Draft only - there is no SMTP anywhere in this module, and tests/test_layers.py pins that no module under the package imports a mail or network one.",
-      "notes": "Validation notes are translated into plain client instructions, never quoted. Rows we have not read yet are held back for a person instead of being asked for (a row with no request folder was too, until decision 168 retired the folder, NO_REQUEST_FOLDER and the scaffold-gap list: triage() returns three lists). A row nobody asked for (decision 142) is skipped before anything else: never asked, never a hold. Each draft carries a fingerprint of its own text so an edited draft is never overwritten. A Partial row whose shortfall is a file we have not read is held back too. Reads the engagement's details from the record for client, link, due, sender and firm (manifest.load_engagement_info(); a folder with no record is a ReminderError naming the journal's file); keyword arguments are one-off overrides for the CLI. Decision 57: write_draft() raises DraftsEditedError rather than overwrite an edited NEW draft; the runner reports BOTH_DRAFTS_EDITED and writes nothing. Decision 62: EXTENSION_ASK names the row's own file types; --write preserves edits. Decision 76: count_needs_review() is still the folder's count less the working copies whose newest index row is index.NOT_REQUESTED. An index it cannot read leaves every file counted. Decision 103: the draft is built from the record alone; a status only the record holds is what it counts. Decision 115: triage() returns a fourth list, held - a Failed row with no firm-side marker, or a Partial whose shortfall is a refused file, is ambiguous (AMBIGUOUS_HOLD) and one such row holds the whole draft: write_draft() raises ReminderHeldError (HELD_REFUSAL, naming every held row) before touching a file, the CLI prints HELD lines and --write exits 2, and SECTION_FAILED left SECTION_ORDER (unreachable from a pass; client_ask() asks only a Partial row's count, P236). A firm-side marker on any outstanding status, Missing included, is the firm's (109's rule stated once). The draft is on the record: drafted_event() builds the ledger.DRAFTED event (asked identifiers, file and fingerprint; or held identifiers), draft_changed() says whether it differs from the last one (or is a new draft week's, when the caller passes the week), record_draft() writes it through store.record() under the caller's lock, last_draft_event() reads the newest (or the newest carrying a key). write_draft(changed_from=...) opens the header with CHANGED_HEADING / CHANGED_ADDED / CHANGED_REMOVED against the last event that carried asked, above the separator. HELD_SUMMARY is the one line the app shows, through api.vocab(). Decision 117: the draft escalates in four stages against the Due Date (STAGE_2_DAYS, STAGE_3_DAYS - constants, the owner's), each with its own subject, intro, deadline paragraph and close; the stage changes the words only - triage() still decides the recipients and the gate holds at every stage - and the sentences name the Due Date and the Filing Deadline and never the arithmetic between two dates a person may have moved. The stage rides in the header above the fingerprint line (STAGE_LINE, so an edit is still never overwritten) and in the DRAFTED event (STAGE_KEY), which draft_changed() compares as a fifth key, so a client who crossed a threshold gets this week's draft even when the asked set did not move; --stage and --today write another stage's or another day's letter. The final notice's phone sentence comes from settings.firm_phone() - the firm's, not the engagement's - and is dropped when that is blank. And the hold of decision 115 gained a second cause: a parked index row whose code (since decision 190; its reason before) is a holding one, and whose shortlist in tracker/review.py names a request still asked for, holds that request (PARKED_HOLD, _parked_holds(), a call-time import of review), because a drop the rules refused at tier 2 never reaches a status and the draft would ask for a document the client knows they sent; draft_reminder() reads the rows itself and the API hands in the ones it has already read. It reads the SHORTLIST and not the row's Candidates cell: candidates are the requests that accepted the file, and a file refused before a word of it could be read - the locked PDF, the headline case - has none, so the draft and the review card now answer 'what does this parked file point at?' the same way. Decision 118: the letter is a structure before it is words. _compose_letter() builds a Letter (greeting, progress, intro, sections, drop lines and link, the deadline paragraph as runs, close, sign-off) and Letter.text() is the body the file carries, so the plain text, render_html()'s inline-styled body for the clipboard and the shape the app draws its preview from are three renderings of one thing and cannot say different things. The deadline paragraph is cut into runs by formatting the stage's own sentence with sentinels round the target, the filing deadline and the consequences sentence - never by searching the finished sentence for a date, which an engagement name could also contain. STAGE_COLOURS, HOLD_COLOUR, LETTER_INK name keys of page.PALETTE and STAGE_EMPHASIS says where each stage spends its colour and its weight; render_html() reads that table and the API ships it, so the letter, the clipboard and the card apply one ladder. render_html() is rendered on demand and never written to disk - the .txt stays what the pass writes. approved_event()/last_approved_event()/approval_state()/is_protected() are the approval a person makes in the app: until the next draft day the pass treats the approved file exactly as it treats one somebody edited (write_draft(approved_since=...) puts the regenerated draft in the .NEW file instead), and set_aside_other_draft() renames any draft standing beside it by SET_ASIDE_DRAFT_PATTERN rather than deleting it. Imports tracker.page at load time for esc() and the palette, which is L3 -> L0. An approval holds against every writer, not only the pass: approval_state(since=None) asks only whether this is the approved file, so the command line - a layer below the runner, and unable to learn the draft week - lands its --write draft beside an approved one rather than over it, and the pass, which knows the week, is the one caller that spends the approval. pasted_text() gives the letter between the header's rule and FOOTER_RULE: the staff-side footer write_draft() may add is the machine's note to the person, as the header is, and firm-side sentences must not be one paste from a client. DECISION 133 - THE REMINDER WAITS FOR THE SORT: unsorted_in_inbox() counts the distinct paths tracker/inbox.py's iter_drops, unfinished_drops and unreachable_drops (imported at call time, as the rest of this module reaches the sorter's modules; the filer's until P333) return for layout.inbox_of() of the return - its OWN household's inbox only; an inbox in another household that also feeds it (decision 132) is not read, a known limit. draft_reminder() stores it as ReminderDraft.unsorted, and is_held is now bool(held) or unsorted > 0, so the pass, the command line and the app hold alike and write_draft() refuses before touching a file; held stays the rows. held_refusal() says INBOX_HOLD when files wait, HELD_REFUSAL when rows hold, both joined by '; '; INBOX_HELD_SUMMARY is the app's line (api vocab inbox_held_line). P134: unsorted_files_in_inbox() gives each counted path's own name, sorted, from the same walk, and unsorted_in_inbox() is its length; the API's reminder card carries it as unsorted_files for the sheet to list. A hold records a drafted event with held and no file, so the next pass that sorts the inbox drafts the same day. Decision 137 (L5): a recorded link that is not http(s) (records.link_problem) is left out of the letter and ReminderDraft.link_dropped says so (LINK_DROPPED), above the footer and on the CLI; saving one is refused by the manifest and the household writers. Decision 140: _parked_holds() asks reason.holds, not 'not firm_side'; a firm-side reason that holds (SHOWS_ITS_FORM_NUMBER) says CONFIRM_HOLD with the reason's firm note and no client ask, so neither the held line nor the draft ever says the client's file was wrong; a client-side hold keeps PARKED_HOLD word for word. _parked_holds() returns FirmSideFlags; a confirm hold carries confirm=True, and held_refusal() refuses those rows with CONFIRM_REFUSAL ('held until a person confirms the parked file (open it in Needs Review)') beside HELD_REFUSAL for the rest. Decision 190: _firm_side_reason and _ambiguous_reason read the notes' codes (RequestItem.note_code_list, reasons.first_of / FIRM_SIDE), and _parked_holds reads the row's code (BY_CODE, HOLDS) - never the note or the Reason, which carry the client's file names and subfolders. A parked row with an empty code (written before 190) holds where its shortlist names a request, asked with GENERIC_ASK. DECISION 190 - AN APPROVAL COVERS THE TEXT APPROVED: approved_event() also records ledger.TEXT_FINGERPRINT_KEY, letter_fingerprint() of the file - the letter as a person reads it (pasted_text, split_pasted, shown_text(), the one composition of subject and body the API fingerprints too); approval_state() answers APPROVED_NOTE while it matches, APPROVED_THEN_EDITED ('approved, then edited') after an edit, and '' for none, another file, a spent week or another draft on that name; an event from before 190 without the key reads APPROVED_THEN_EDITED (not an approval, so the person approves again, but never '' - the review's S1). 'approved this week' is approval_state() == APPROVED_NOTE (the tests compare it; no wrapper); is_protected() is edited, or approval_state() not '', so an edited file and a pre-190 approval's file both stay protected and a regenerated draft goes beside them. THE HEADER NAMES THE FIRM PHONE: ReminderDraft.phone carries the number it was composed with and phone_line() puts FIRM_PHONE_LINE, FIRM_PHONE_UNUSED_LINE (set, but this stage offers no call) or NO_FIRM_PHONE_LINE above the rule, so the body fingerprint and is_unedited() are unchanged. Since the review of 190: unusable_files(parked) lists the still-parked NOT_A_DOCUMENT rows by recorded name, and the letter asks about each under SECTION_FAILED (\"RECEIVED, BUT WE COULD NOT USE IT\", kept by decision 124) in NOT_A_DOCUMENT.ask - EXTENSION_NOT_ALLOWED's words - without holding; ReminderDraft.unusable carries them. _still_parked reads a set-aside row by its code (DISMISSED_BY_PERSON_CODE), never the start of its Reason. Since the re-check of 190: the stage, the subject's count and the progress line come from the request lines alone; has_outstanding is lines or unusable, so a letter that only asks about a program is written by the runner and editable on the app's card, at no stage (NOTHING_OWED, the SECTION_FAILED block and the drop paragraph, no deadline). Decision 190, Jason's answer 1b: a week whose only problem is a file that is not a document opens with UNUSABLE_ONLY - the quiet week's first sentence, then UNUSABLE_ONLY_NOTE ('One file you sent could not be used; please see the note below.'), or UNUSABLE_SOME with UNUSABLE_SOME_NOTE ('Some files you sent could not be used; please see the note below.') when more than one file is listed (the port review's S1) - never NOTHING_OWED's 'Nothing further is needed', which the ask below would contradict; a week with a request outstanding keeps its staged letter. Decision 200: SIDES (Client, Us, Decide) name triage()'s three lists, and sides() gives each outstanding row its side and its own sentence. The staff footer and the CLI name the Us and Decide sides and each row's status label. HELD_BACK_HEADING, HELD_BACK_LINE and HELD_LINE are retired; the letter body is unchanged. Each Stage gains a short name (Heads up, Checking in, Deadline near, Final notice) for the app's rows (SPEC-shell 11.6); the letter keeps the full name. The app-only sentences (HELD_SUMMARY, INBOX_HELD_SUMMARY, LAST_DRAFTED_LINE, EDITED_BY_HAND, COPIED_NOTE, SET_ASIDE_LINE, REMINDER_NOT_YET) were reworded to the approved short words (P84); the letter reads none of them."
+      "notes": "Validation notes are translated into plain client instructions, never quoted. Rows we have not read yet are held back for a person instead of being asked for (a row with no request folder was too, until decision 168 retired the folder, NO_REQUEST_FOLDER and the scaffold-gap list: triage() returns three lists). A row nobody asked for (decision 142) is skipped before anything else: never asked, never a hold. Each draft carries a fingerprint of its own text so an edited draft is never overwritten. A Partial row whose shortfall is a file we have not read is held back too. Reads the engagement's details from the record for client, link, due, sender and firm (manifest.load_engagement_info(); a folder with no record is a ReminderError naming the journal's file); keyword arguments are one-off overrides for the CLI. Decision 57: write_draft() raises DraftsEditedError rather than overwrite an edited NEW draft; the runner reports BOTH_DRAFTS_EDITED and writes nothing. Decision 62: EXTENSION_ASK names the row's own file types; --write preserves edits. Decision 76: count_needs_review() is still the folder's count less the working copies whose newest index row is index.NOT_REQUESTED. An index it cannot read leaves every file counted. Decision 103: the draft is built from the record alone; a status only the record holds is what it counts. Decision 115: triage() returns a fourth list, held - a Failed row with no firm-side marker, or a Partial whose shortfall is a refused file, is ambiguous (AMBIGUOUS_HOLD) and one such row holds the whole draft: write_draft() raises ReminderHeldError (HELD_REFUSAL, naming every held row) before touching a file, the CLI prints HELD lines and --write exits 2, and SECTION_FAILED left SECTION_ORDER (unreachable from a pass; client_ask() asks only a Partial row's count, P236). A firm-side marker on any outstanding status, Missing included, is the firm's (109's rule stated once). The draft is on the record: drafted_event() builds the ledger.DRAFTED event (asked identifiers, file and fingerprint; or held identifiers), draft_changed() says whether it differs from the last one (or is a new draft week's, when the caller passes the week), record_draft() writes it through store.record() under the caller's lock, last_draft_event() reads the newest (or the newest carrying a key). write_draft(changed_from=...) opens the header with CHANGED_HEADING / CHANGED_ADDED / CHANGED_REMOVED against the last event that carried asked, above the separator. HELD_SUMMARY is the one line the app shows, through api.vocab(). Decision 117: the draft escalates in four stages against the Due Date (STAGE_2_DAYS, STAGE_3_DAYS - constants, the owner's), each with its own subject, intro, deadline paragraph and close; the stage changes the words only - triage() still decides the recipients and the gate holds at every stage - and the sentences name the Due Date and the Filing Deadline and never the arithmetic between two dates a person may have moved. The stage rides in the header above the fingerprint line (STAGE_LINE, so an edit is still never overwritten) and in the DRAFTED event (STAGE_KEY), which draft_changed() compares as a fifth key, so a client who crossed a threshold gets this week's draft even when the asked set did not move; --stage and --today write another stage's or another day's letter. The final notice's phone sentence comes from settings.firm_phone() - the firm's, not the engagement's - and is dropped when that is blank. And the hold of decision 115 gained a second cause: a parked index row whose code (since decision 190; its reason before) is a holding one, and whose shortlist in tracker/review.py names a request still asked for, holds that request (PARKED_HOLD, _parked_holds(), a call-time import of review), because a drop the rules refused at tier 2 never reaches a status and the draft would ask for a document the client knows they sent; draft_reminder() reads the rows itself and the API hands in the ones it has already read. It reads the SHORTLIST and not the row's Candidates cell: candidates are the requests that accepted the file, and a file refused before a word of it could be read - the locked PDF, the headline case - has none, so the draft and the review card now answer 'what does this parked file point at?' the same way. Decision 118: the letter is a structure before it is words. _compose_letter() builds a Letter (greeting, progress, intro, sections, drop lines and link, the deadline paragraph as runs, close, sign-off) and Letter.text() is the body the file carries, so the plain text, render_html()'s inline-styled body for the clipboard and the shape the app draws its preview from are three renderings of one thing and cannot say different things. The deadline paragraph is cut into runs by formatting the stage's own sentence with sentinels round the target, the filing deadline and the consequences sentence - never by searching the finished sentence for a date, which an engagement name could also contain. STAGE_COLOURS, HOLD_COLOUR, LETTER_INK name keys of page.PALETTE and STAGE_EMPHASIS says where each stage spends its colour and its weight (all four, with Emphasis, Run, Section and Letter, live in tracker/letter_render.py since P348); render_html() reads that table and the API ships it, so the letter, the clipboard and the card apply one ladder. render_html() is rendered on demand and never written to disk - the .txt stays what the pass writes. approved_event()/last_approved_event()/approval_state()/is_protected() are the approval a person makes in the app: until the next draft day the pass treats the approved file exactly as it treats one somebody edited (write_draft(approved_since=...) puts the regenerated draft in the .NEW file instead), and set_aside_other_draft() renames any draft standing beside it by SET_ASIDE_DRAFT_PATTERN rather than deleting it. Imports tracker.page at load time for esc() and the palette, which is L3 -> L0. An approval holds against every writer, not only the pass: approval_state(since=None) asks only whether this is the approved file, so the command line - a layer below the runner, and unable to learn the draft week - lands its --write draft beside an approved one rather than over it, and the pass, which knows the week, is the one caller that spends the approval. pasted_text() gives the letter between the header's rule and FOOTER_RULE: the staff-side footer write_draft() may add is the machine's note to the person, as the header is, and firm-side sentences must not be one paste from a client. DECISION 133 - THE REMINDER WAITS FOR THE SORT: unsorted_in_inbox() counts the distinct paths tracker/inbox.py's iter_drops, unfinished_drops and unreachable_drops (imported at call time, as the rest of this module reaches the sorter's modules; the filer's until P333) return for layout.inbox_of() of the return - its OWN household's inbox only; an inbox in another household that also feeds it (decision 132) is not read, a known limit. draft_reminder() stores it as ReminderDraft.unsorted, and is_held is now bool(held) or unsorted > 0, so the pass, the command line and the app hold alike and write_draft() refuses before touching a file; held stays the rows. held_refusal() says INBOX_HOLD when files wait, HELD_REFUSAL when rows hold, both joined by '; '; INBOX_HELD_SUMMARY is the app's line (api vocab inbox_held_line). P134: unsorted_files_in_inbox() gives each counted path's own name, sorted, from the same walk, and unsorted_in_inbox() is its length; the API's reminder card carries it as unsorted_files for the sheet to list. A hold records a drafted event with held and no file, so the next pass that sorts the inbox drafts the same day. Decision 137 (L5): a recorded link that is not http(s) (records.link_problem) is left out of the letter and ReminderDraft.link_dropped says so (LINK_DROPPED), above the footer and on the CLI; saving one is refused by the manifest and the household writers. Decision 140: _parked_holds() asks reason.holds, not 'not firm_side'; a firm-side reason that holds (SHOWS_ITS_FORM_NUMBER) says CONFIRM_HOLD with the reason's firm note and no client ask, so neither the held line nor the draft ever says the client's file was wrong; a client-side hold keeps PARKED_HOLD word for word. _parked_holds() returns FirmSideFlags; a confirm hold carries confirm=True, and held_refusal() refuses those rows with CONFIRM_REFUSAL ('held until a person confirms the parked file (open it in Needs Review)') beside HELD_REFUSAL for the rest. Decision 190: _firm_side_reason and _ambiguous_reason read the notes' codes (RequestItem.note_code_list, reasons.first_of / FIRM_SIDE), and _parked_holds reads the row's code (BY_CODE, HOLDS) - never the note or the Reason, which carry the client's file names and subfolders. A parked row with an empty code (written before 190) holds where its shortlist names a request, asked with GENERIC_ASK. DECISION 190 - AN APPROVAL COVERS THE TEXT APPROVED: approved_event() also records ledger.TEXT_FINGERPRINT_KEY, letter_fingerprint() of the file - the letter as a person reads it (pasted_text, split_pasted, shown_text(), the one composition of subject and body the API fingerprints too); approval_state() answers APPROVED_NOTE while it matches, APPROVED_THEN_EDITED ('approved, then edited') after an edit, and '' for none, another file, a spent week or another draft on that name; an event from before 190 without the key reads APPROVED_THEN_EDITED (not an approval, so the person approves again, but never '' - the review's S1). 'approved this week' is approval_state() == APPROVED_NOTE (the tests compare it; no wrapper); is_protected() is edited, or approval_state() not '', so an edited file and a pre-190 approval's file both stay protected and a regenerated draft goes beside them. THE HEADER NAMES THE FIRM PHONE: ReminderDraft.phone carries the number it was composed with and phone_line() puts FIRM_PHONE_LINE, FIRM_PHONE_UNUSED_LINE (set, but this stage offers no call) or NO_FIRM_PHONE_LINE above the rule, so the body fingerprint and is_unedited() are unchanged. Since the review of 190: unusable_files(parked) lists the still-parked NOT_A_DOCUMENT rows by recorded name, and the letter asks about each under SECTION_FAILED (\"RECEIVED, BUT WE COULD NOT USE IT\", kept by decision 124) in NOT_A_DOCUMENT.ask - EXTENSION_NOT_ALLOWED's words - without holding; ReminderDraft.unusable carries them. _still_parked reads a set-aside row by its code (DISMISSED_BY_PERSON_CODE), never the start of its Reason. Since the re-check of 190: the stage, the subject's count and the progress line come from the request lines alone; has_outstanding is lines or unusable, so a letter that only asks about a program is written by the runner and editable on the app's card, at no stage (NOTHING_OWED, the SECTION_FAILED block and the drop paragraph, no deadline). Decision 190, Jason's answer 1b: a week whose only problem is a file that is not a document opens with UNUSABLE_ONLY - the quiet week's first sentence, then UNUSABLE_ONLY_NOTE ('One file you sent could not be used; please see the note below.'), or UNUSABLE_SOME with UNUSABLE_SOME_NOTE ('Some files you sent could not be used; please see the note below.') when more than one file is listed (the port review's S1) - never NOTHING_OWED's 'Nothing further is needed', which the ask below would contradict; a week with a request outstanding keeps its staged letter. Decision 200: SIDES (Client, Us, Decide) name triage()'s three lists, and sides() gives each outstanding row its side and its own sentence. The staff footer and the CLI name the Us and Decide sides and each row's status label. HELD_BACK_HEADING, HELD_BACK_LINE and HELD_LINE are retired; the letter body is unchanged. Each Stage gains a short name (Heads up, Checking in, Deadline near, Final notice) for the app's rows (SPEC-shell 11.6); the letter keeps the full name. The app-only sentences (HELD_SUMMARY, INBOX_HELD_SUMMARY, LAST_DRAFTED_LINE, EDITED_BY_HAND, COPIED_NOTE, SET_ASIDE_LINE, REMINDER_NOT_YET) were reworded to the approved short words (P84); the letter reads none of them. SPEC-architecture-p5 P5.11 (P348; the architecture audit's C-8): the letter's look left this module for tracker/letter_render.py (L0, domain pass) - the emphasis ladder (Emphasis, STAGE_COLOURS, HOLD_COLOUR, LETTER_INK, STAGE_EMPHASIS), the letter's shapes (Run, Section, Letter, with Letter.text()), RUN_TARGET, RUN_DEADLINE_DATE and RUN_CONSEQUENCES, stage_emphasis, stage_colour, run_emphasis, render_text_html and the helpers _styled, _emphasised, _paragraph and _with_last. This module imports back by name the thirteen its own code reads (Letter, Run, Section, the three RUN_* kinds, LETTER_INK, stage_colour, stage_emphasis and the four helpers) and keeps render_html(), which is typed by ReminderDraft, pasted_text(), split_pasted() and _RUN_MARK (only the run cutting reads it). The API reads the ladder and the two renderers from letter_render directly."
     },
     {
       "id": "tracker/replies.py",
@@ -4945,8 +4958,8 @@
       "id": "docs/architecture.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "cc508ab07dba1203",
-      "lines": 423,
+      "sha256": "0e0a403b2403baca",
+      "lines": 427,
       "role": "The overview between the README and the map: the three programs (the shell, the engine, the scheduled pass) and the reading child; the package layer by layer with each module's one sentence; the tools; the tests and their guards; the three places the app writes; the decisions that shape it (deterministic, offline, standard library first, hash-checked installs, one-time steps built in); and how each package is built.",
       "notes": "Written for a person who did not watch the code grow. It names no numbers a test pins and no file the code does not own; tests/test_layers.py's table is the source of its layers."
     },
@@ -4963,8 +4976,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "f856b43419a50c9c",
-      "lines": 1996,
+      "sha256": "1fe13d2a9d55bd29",
+      "lines": 2004,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -5066,8 +5079,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "00f7294aad9485ed",
-      "lines": 341
+      "sha256": "e203a60edd47b5fa",
+      "lines": 342
     },
     {
       "id": "pilot/HANDOFF-client-folder.md",
@@ -7240,7 +7253,7 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "de76e9ad4a574b49",
+      "sha256": "8b4503520a270999",
       "lines": 11641,
       "exports": [
         "COUNTS",
@@ -8975,8 +8988,8 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "86fff7a420b05ce5",
-      "lines": 1395,
+      "sha256": "7f6d45e8eca07af2",
+      "lines": 1398,
       "exports": [
         "MOVED_OUT",
         "REPO",
@@ -9208,6 +9221,24 @@
         "A_ROW_ORIGINAL": "'../../../../Clients/Smith Family/2025/w2.pdf'",
         "NAMED_FOR_WHAT_IT_HOLDS": "('EVENT_KEY_AFTER',)"
       }
+    },
+    {
+      "id": "tests/test_letter_render.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "2afc8a8c2ff32081",
+      "lines": 133,
+      "exports": [
+        "test_a_blank_draft_is_an_empty_letter_not_an_empty_paragraph",
+        "test_a_letter_at_no_stage_is_written_in_the_bodys_own_ink",
+        "test_a_run_is_marked_only_by_the_words_its_stage_marks",
+        "test_html_for_a_letter_a_person_wrote_keeps_their_paragraphs_in_the_letters_type_with_no_style_block_and_no_address",
+        "test_html_for_a_letter_a_person_wrote_shows_markup_in_their_words_as_words",
+        "test_the_emphasis_table_matches_the_design_notes",
+        "test_the_letter_flattens_to_the_text_a_person_pastes"
+      ],
+      "role": "Owns tracker/letter_render.py: the emphasis table matches the design notes (one table serves the letter, the clipboard and the card, and stage 1's colour is the body's own ink); the clipboard's HTML for a draft a person wrote keeps their paragraphs in the letter's type with no style block and no address, and shows markup in their words as words; Letter.text flattens a letter to the text a person pastes; a run is marked only by the words its stage marks; and a letter at no stage is written in the body's own ink.",
+      "notes": "SPEC-architecture-p5 R5.11.4 (P348). One test moved here from tests/test_reminder.py by the SPEC's section 4.1 rule, byte for byte (test_the_emphasis_table_matches_the_design_notes: it constructs Emphasis and reads the ladder's tables, calling nothing of the reminder); the others are new and call the module directly. The tests that render a drafted letter stay in tests/test_reminder.py, because render_html stays in the reminder and each of them drafts through it."
     },
     {
       "id": "tests/test_lockfiles.py",
@@ -10081,8 +10112,8 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6ca26c2b3d939336",
-      "lines": 2435,
+      "sha256": "0fb2b5f6932ef44a",
+      "lines": 2413,
       "exports": [
         "A_WRITE_KILLED_HALF_WAY",
         "CLIENT_SIDE_NOT_HELD",
@@ -10182,7 +10213,6 @@
         "test_the_draft_is_built_from_the_record_and_nothing_else",
         "test_the_draft_reads_the_engagement_details_itself",
         "test_the_drafted_event_carries_the_stage_and_a_crossed_threshold_is_a_change",
-        "test_the_emphasis_table_matches_the_design_notes",
         "test_the_gate_holds_at_every_stage",
         "test_the_held_refusal_names_every_held_row_and_writes_nothing",
         "test_the_html_body_says_exactly_what_the_text_body_says",
@@ -11758,7 +11788,7 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a7684def201bf86c",
+      "sha256": "005855735018c2c2",
       "lines": 5433,
       "exports": [
         "AFTER_WHAT",
@@ -15021,6 +15051,12 @@
     },
     {
       "from": "tests/test_api.py",
+      "to": "tracker/letter_render.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
       "to": "tracker/locking.py",
       "type": "exercises",
       "source": "derived"
@@ -17810,6 +17846,18 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_letter_render.py",
+      "to": "tracker/page.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_letter_render.py",
+      "to": "tracker/letter_render.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_lockfiles.py",
       "to": "pkg:pytest",
       "type": "depends_on",
@@ -19024,6 +19072,12 @@
     {
       "from": "tests/test_reminder.py",
       "to": "tracker/ledger.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reminder.py",
+      "to": "tracker/letter_render.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -20763,6 +20817,12 @@
     },
     {
       "from": "tests/test_single_source.py",
+      "to": "tracker/letter_render.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_single_source.py",
       "to": "tracker/locking.py",
       "type": "exercises",
       "source": "derived"
@@ -22467,6 +22527,12 @@
     },
     {
       "from": "tracker/api.py",
+      "to": "tracker/letter_render.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/api.py",
       "to": "tracker/locking.py",
       "type": "imports",
       "source": "derived"
@@ -23900,6 +23966,18 @@
       "source": "curated"
     },
     {
+      "from": "tracker/letter_render.py",
+      "to": "tracker/__init__.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/letter_render.py",
+      "to": "tracker/page.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
       "from": "tracker/locking.py",
       "to": "tracker/__init__.py",
       "type": "imports_at_call",
@@ -24346,6 +24424,12 @@
     {
       "from": "tracker/reminder.py",
       "to": "tracker/ledger.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/reminder.py",
+      "to": "tracker/letter_render.py",
       "type": "imports",
       "source": "derived"
     },
