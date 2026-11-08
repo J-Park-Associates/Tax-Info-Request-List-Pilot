@@ -17,7 +17,8 @@ upholds one of the guarantees the filer's docstring states:
 - **Room** (decision 131). :func:`room_for` measures, from the request list
   alone, how much room a return has under its folder;
   :func:`refuse_a_path_past_the_limit` refuses at creation and at the
-  rollover a return whose deepest working copy would not fit; a name longer
+  rollover a return whose deepest working copy would not fit, and at the
+  editor's save a row it changes (without the review folder); a name longer
   than its room is cut to fit, the document part alone; and where not even
   the shortest name fits, :class:`NoRoom` says so with both numbers.
 - **The byte-proved copy** (decisions 155, 187 and 190). :func:`_copy_whole`
@@ -459,7 +460,8 @@ def room_for(engagement_dir: Path, items: Sequence[RequestItem]) -> Room:
                 short=max(0, short), limit=path_limit())
 
 
-def refuse_a_path_past_the_limit(engagement_dir: Path, items: Sequence[RequestItem]) -> None:
+def refuse_a_path_past_the_limit(engagement_dir: Path, items: Sequence[RequestItem], *,
+                                 review_folder: bool = True) -> None:
     """Refuse a return whose deepest working copy would not fit in a path
     Windows will open.
 
@@ -475,7 +477,8 @@ def refuse_a_path_past_the_limit(engagement_dir: Path, items: Sequence[RequestIt
     applies and :func:`tracker.layout.locate` normalises them first too.
 
     Creation, the household rollover and the editor's save all refuse
-    through this one (decisions 125, 126 and 131). It lives here rather
+    through this one, the editor with ``review_folder=False`` (decisions
+    125, 126 and 131; SPEC-architecture-p5, Q-F (C)). It lives here rather
     than in ``tracker.api`` because a rollover at layer 3 cannot reach the
     API at layer 5 - and because the file it measures is the one this
     module writes.
@@ -485,11 +488,18 @@ def refuse_a_path_past_the_limit(engagement_dir: Path, items: Sequence[RequestIt
     it at creation, and a return whose review folder Windows will not make
     is refused here with this sentence, not by the scaffold's
     ``WinError 206`` (pilot decision P29). Elsewhere that adds nothing.
+    ``review_folder=False`` leaves that term out, and is the editor's save
+    (:func:`tracker.request_edit._refuse_a_changed_row_past_the_limit`): it
+    measures only the rows a save changes, so a return whose folder has
+    grown since creation is not refused every save for a folder the save
+    does not make - every save comes out as it did before the editor
+    called this function (Jason's answer to Q-F).
     """
     limit = path_limit()
-    need = max(room_for(engagement_dir, items).need,
-               folder_need(Path(engagement_dir) / PREPARED_DIR_NAME / REVIEW_DIR_NAME,
-                           room_root(engagement_dir)))
+    need = room_for(engagement_dir, items).need
+    if review_folder:
+        need = max(need, folder_need(Path(engagement_dir) / PREPARED_DIR_NAME / REVIEW_DIR_NAME,
+                                     room_root(engagement_dir)))
     if need > limit:
         raise ManifestError(PATH_TOO_LONG.format(
             folder=engagement_dir, length=need, limit=limit))

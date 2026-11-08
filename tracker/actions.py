@@ -102,7 +102,7 @@ reaches the scanner at all. ``tests/test_layers.py`` holds all three.
 request list, the record types, the store, the journal, the scaffold and
 the validators (layer 1), and the layout, the lock, the bounds, the reasons
 and the errors (layer 0) at load time, and the scanner (layer 3) at call
-time. Only the API imports it. It is at layer 3 because the filer it reads
+time. The API and :mod:`tracker.request_edit` import it. It is at layer 3 because the filer it reads
 is; nothing below may import it, and the filer may not either, or the two
 would import each other.
 

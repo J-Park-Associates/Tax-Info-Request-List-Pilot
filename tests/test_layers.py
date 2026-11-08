@@ -247,9 +247,14 @@ LAYERS: dict[int, frozenset[str]] = {
     # actions on the record and the rescan after them, out of ``filer`` -
     # ``filer`` (in-layer, the hand-over's shared pieces), ``intents``,
     # ``inbox``, ``readme_ack``, ``copies`` and L1 and L0 at load, ``scanner``
-    # at call time; only the API imports it.
+    # at call time; the API and ``request_edit`` import it.
+    # ``request_edit`` joins L3 with P341 (SPEC-architecture-p5 P5.4): the editor's
+    # save rules and the spec's details, out of ``api``, which imports them back -
+    # ``actions`` (in-layer, the documents a request holds), ``copies`` (L2, the
+    # room), ``screen_words``, ``manifest``, ``records``, ``bounds`` and ``settings``
+    # (L1 and L0).
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review",
-                  "verify", "intents", "inbox", "readme_ack", "actions"}),
+                  "verify", "intents", "inbox", "readme_ack", "actions", "request_edit"}),
     # ``after_install`` joins L4 with decision 209, beside the scheduler it
     # drives: it imports ``scheduling`` (L4), ``store`` (L1), ``registry``
     # (L3) and L0; the API imports it, and nothing lower may.
@@ -276,7 +281,7 @@ DOMAINS: dict[str, frozenset[str]] = {
     "record": frozenset({"__init__", "ledger", "locking", "checkpoint", "fsio", "layout", "door",
                          "settings", "hold", "records", "bounds", "store", "index", "manifest",
                          "households", "templates", "scaffold", "admission", "store_check",
-                         "verify"}),
+                         "verify", "request_edit"}),
     # Opening a client's file, checking it and getting the text out of it.
     "reading": frozenset({"validators", "containers", "content_check", "ocr", "verdicts",
                           "reader_child"}),

@@ -882,7 +882,7 @@ def typed_person_problem(kind: str, name: str) -> str:
     **The typed people rule is the record's** (SPEC-architecture-p2 P2.5;
     the architecture audit's B-3 b). The typed identifier and short-title
     rules already live with the bounds they extend; the people rule lived
-    in ``tracker.api._people_from_spec``, beside the parsing of the form.
+    in ``tracker.request_edit._people_from_spec``, beside the parsing of the form.
     It is here, beside :func:`person_from_json`, which is the store's rule
     for a *stored* person and refuses in the record's own words; this is
     the rule for a *typed* one, and its sentences are for a person.

@@ -48,8 +48,9 @@ brand band; P220 counts it among the names fixed at import). The scheduled
 task starts the runner with no product name in its environment
 (``api_entry.py``'s docstring), and there ``settings.product_name()``
 raises - so a module the pass loaded that imported this one would stop the
-scheduled pass before it started. Only the API imports it, and the runner
-never imports the API (P313). A guard in ``tests/test_layers.py``,
+scheduled pass before it started. Only the API and the editor's save rules
+(:mod:`tracker.request_edit`, P341) import it, and the runner imports neither
+(P313). A guard in ``tests/test_layers.py``,
 ``test_nothing_the_scheduled_pass_loads_reads_the_products_name_at_import``,
 holds every module the runner loads to that.
 """

@@ -26,7 +26,7 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of fifty-five modules in six layers.
+`tracker/` is one Python package of fifty-six modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The scanner never imports the filer; a person's actions
@@ -178,7 +178,16 @@ the package but each other.
   put back, a request given another identifier with its documents - each
   under the lock, checked against the row the person saw, and recorded as
   theirs, then the re-scan (P335); it imports the hand-over's shared pieces
-  from the filer, the filer never imports it, and only the API does.
+  from the filer, the filer never imports it, and only the API and
+  `request_edit.py` do.
+- `request_edit.py`: the request-list editor's save rules - the details and
+  people a spec sends, a row as the editor gets it and as it is saved, and
+  the refusals a save meets before anything is recorded: a list nobody is
+  asked for, a changed row past the room, a request holding filed documents
+  taken off the list (decisions 131, 142, 160, P341). Out of the API so a
+  command line could reach them (decision 123's lesson); the API's handlers
+  call them by import, and the editor measures its room through the one
+  room function without the review folder (Q-F).
 - `scanner.py`: walks the working copies, runs the three tiers, resolves each
   request's status (override- and revert-aware) and records the result.
 - `reminder.py`: drafts the client's chase email in four stages measured

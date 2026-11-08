@@ -78,7 +78,9 @@ Every reply carries ``warnings``; every error also carries ``failure``
 Sort & Scan is ``run-now``: the scheduled runner itself (``tracker.runner.main``),
 which prints progress lines and ends with one final line (tracker.progress).
 The words it sends the screen live in ``tracker/screen_words.py`` (P340),
-and this module imports back by name the ones its own code reads.
+and this module imports back by name the ones its own code reads. The
+request-list editor's save rules live in ``tracker/request_edit.py`` (P341),
+and ``edit``, ``create`` and the rollover call them by import.
 """
 
 from __future__ import annotations
@@ -125,7 +127,6 @@ from tracker import (
 from tracker.actions import (
     assign_review_file,
     dismiss_review_file,
-    documents_by_request,
     mark_missing_again,
     rename_request,
     restore_working_copy,
@@ -184,7 +185,6 @@ from tracker.layout import (
     CLIENTS_TREE,
     ENGAGEMENT_LABEL_PATTERN,
     INBOX_DIR_NAME,
-    PATH_TOO_LONG,
     PRIVATE_TREE,
     RETURN_NAME_PATTERN,
     client_household_dir,
@@ -213,7 +213,6 @@ from tracker.manifest import (
     ANY_EXTENSION,
     COLUMN_HELP,
     COLUMNS,
-    ISO_DATE_HINT,
     MIN_EXPECTED_COUNT,
     MIN_SIZE_KB_FLOOR,
     NO_DATE_CHECK,
@@ -241,7 +240,6 @@ from tracker.manifest import (
     load_engagement_info,
     load_manifest,
     recorded_rules,
-    rule_as_read,
     save_rules,
     status_key,
     summarize,
@@ -277,7 +275,6 @@ from tracker.records import (
     Feed,
     HouseholdInfo,
     IndexEntry,
-    Person,
     identifier_key,
     info_to_json,
     ledger_key,
@@ -299,6 +296,14 @@ from tracker.registry import (
     held_back as registry_held_back,
 )
 from tracker.replies import Envelope, Failure
+from tracker.request_edit import (
+    _as_recorded,
+    _info_from_spec,
+    _refuse_a_changed_row_past_the_limit,
+    _refuse_a_list_nobody_is_asked_for,
+    _refuse_taking_away_documents,
+    _rule_for_the_editor,
+)
 from tracker.rollover import (
     ORIGIN_NEW,
     ORIGIN_NOT_APPLICABLE,
@@ -417,7 +422,6 @@ from tracker.screen_words import (
     HAND_OVER_REQUEST_LABEL,
     HAND_OVER_RETURN_LABEL,
     HANDED_OVER_LINE,
-    HOLDS_DOCUMENTS,
     HOUSEHOLD_HEADING,
     HOUSEHOLD_NAME_LABEL,
     HOUSEHOLD_NOT_OURS,
@@ -1492,64 +1496,6 @@ def _info_payload(info: EngagementInfo) -> dict:
     return info_to_json(info, blank_date="")
 
 
-def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None,
-                    blank_clears: bool = False) -> EngagementInfo:
-    """The engagement's details: what the dialog or the editor sent, over
-    what is carried (last year's details on a rollover, the details as
-    recorded on an edit), over the firm default.
-
-    ``blank_clears`` is the editor's rule: a key present with a blank
-    value clears the recorded value, and a key absent keeps it - a person
-    who empties the Link box means the link to go. The dialog and the
-    rollover keep their fallback: a blank there is nothing typed, and the
-    carried or default value stands.
-
-    The engagement's name is not written: the folder is the name, and a
-    copy in the record would drift the first time the folder was renamed.
-    """
-    base = carry or EngagementInfo()
-
-    def text(key: str, fallback: str) -> str:
-        # One line, whatever was pasted: a detail with a line break inside
-        # it would carry that break into the reminder draft's headers.
-        def clean(value: object) -> str:
-            return " ".join(str(value).split())
-
-        if blank_clears and key in spec:
-            return clean(spec[key] or "")
-        value = spec.get(key)
-        return clean(value) if value not in (None, "") else fallback
-
-    def date(key: str) -> dt.date | None:
-        # Which details are dates is the record's answer, so the two are
-        # read by one rule and a third would be read by it too.
-        typed = str(spec.get(key, "") or "").strip()
-        if typed:
-            # The record's own date rule (decision 187): a real calendar date
-            # in the years the store's gate admits, never one it refuses.
-            if bounds.date_problem(typed):
-                raise ManifestError(
-                    f"{ENGAGEMENT_LABELS[key]} must be {ISO_DATE_HINT}, got {typed!r}"
-                )
-            return dt.date.fromisoformat(typed)
-        if blank_clears and key in spec:
-            return None
-        return getattr(base, key)
-
-    return replace(
-        base,
-        client=text("client", base.client),
-        link=text("link", base.link),
-        sender=text("sender", base.sender),
-        firm=text("firm", base.firm or firm()),
-        reminders=bool(spec.get("reminders", base.reminders)),
-        active=bool(spec.get("active", base.active)),
-        people=_people_from_spec(spec["people"]) if "people" in spec else base.people,
-        # DATE_FIELDS names the record's date fields only, each a date or None.
-        **cast(dict, {key: date(key) for key in DATE_FIELDS}),
-    )
-
-
 def _members_from_spec(sent: object) -> tuple[str, ...]:
     """The household's members as the dialog and the editor send them:
     a list of names, or one text with a name per line (the editor's box).
@@ -1569,39 +1515,6 @@ def _members_from_spec(sent: object) -> tuple[str, ...]:
         raise ManifestError(f"{MEMBERS_LABEL} must be a list of names")
     folded = (" ".join(str(one).split()) for one in sent)
     return tuple(one for one in folded if one)
-
-
-def _people_from_spec(sent: object) -> tuple[Person, ...]:
-    """The return's people as the dialog and the editor's block send them:
-    a list of ``{kind, name, spellings}`` (decision 128).
-
-    Every refusal is by name and in the words their one owner gives them:
-    a kind nothing knows, a name nobody typed, a spelling of one word
-    (:data:`tracker.records.ONE_WORD_SPELLING`). Nothing is inferred here -
-    the app *proposes* spellings through ``propose-spellings`` and a person
-    ticks them, and what arrives is what they ticked.
-    """
-    if not isinstance(sent, list):
-        raise ManifestError(f"{PEOPLE_LABEL} must be a list of people")
-    people: list[Person] = []
-    for one in sent:
-        if not isinstance(one, dict):
-            raise ManifestError(f"{PEOPLE_LABEL} must be a list of people")
-        kind = str(one.get("kind", "") or "").strip()
-        name = " ".join(str(one.get("name", "") or "").split())
-        if problem := records.typed_person_problem(kind, name):
-            raise ManifestError(problem)
-        spellings: list[str] = []
-        for spelling in one.get("spellings") or []:
-            spelling = " ".join(str(spelling).split())
-            if not spelling:
-                continue
-            if problem := records.typed_spelling_problem(name, spelling):
-                raise ManifestError(problem)
-            if spelling not in spellings:
-                spellings.append(spelling)
-        people.append(Person(kind=kind, name=name, spellings=tuple(spellings)))
-    return tuple(people)
 
 
 def _placed(info: EngagementInfo, household: str, year: int, return_name: str) -> EngagementInfo:
@@ -2298,25 +2211,6 @@ def _household_payload(engagement: Path) -> dict:
     }
 
 
-def _rule_for_the_editor(row) -> dict:
-    """One stored rule as ``state`` hands it out: read as every reader reads
-    it (``rule_as_read``), with a row that accepts any file type saying so
-    with the star, ``["*"]``.
-
-    The record holds "any" as an empty list, but a person's blank means the
-    default types (``parse_extensions``), and ``edit`` reads what it is sent
-    as a person's row. So ``[]`` sent back unchanged became pdf, xlsx, csv
-    and the save recorded a change nobody made (decision 145). The star is
-    what the editor already sends for such a row, and it is how "any" has
-    always had to be said; a blank typed in the editor still means the
-    default types.
-    """
-    rule = rule_as_read(row)
-    if not rule["allowed_extensions"]:
-        rule["allowed_extensions"] = [ANY_EXTENSION]
-    return rule
-
-
 #: The four groups a return's rows and files fall into, in the order the
 #: return's page draws them (SPEC-shell 9.1). One grouping rule, in Python:
 #: the Overview's counts and the return's page read the same one.
@@ -2806,7 +2700,7 @@ def _cmd_edit(argv: list[str]) -> dict:
     naming none, is refused under the lock before anything is compared
     (``manifest.save_rules``). A request that holds filed documents may not
     leave the list - removed, or respelt other than by case - and the save
-    says so (:data:`HOLDS_DOCUMENTS`); the ``rename`` command carries them.
+    says so (:data:`tracker.screen_words.HOLDS_DOCUMENTS`); the ``rename`` command carries them.
 
     A refusal is the usual error sentence, and nothing is recorded. The
     engagement lock is taken inside the save, so an edit of a folder a
@@ -2871,104 +2765,6 @@ def _cmd_edit(argv: list[str]) -> dict:
 #: because ``state`` hands them out and a caller sends the rows back - and
 #: ``extensions``, the name the dialog has always sent the file types by.
 _ROW_KEYS = frozenset(RULE_FIELDS) | {"extensions"}
-
-
-def _as_recorded(row: dict, recorded: dict | None) -> dict:
-    """``row`` with every column it leaves out taken from ``recorded``, the
-    record's row of the same identifier (decision 160): absent means
-    unchanged, as it does for the details. A row the record does not hold
-    is a new request and takes the defaults, as before.
-
-    ``recorded`` is in the form ``state`` hands a rule out
-    (:func:`_rule_for_the_editor`), which :func:`item_from_fields` reads
-    back as the same rule. Three keys are not columns a person keeps on
-    their own: ``row`` is the position, which the save numbers from the
-    list's order; the file types sent as ``extensions`` are the file types;
-    and ``date_pattern_derived`` is what the save decided of the date
-    pattern, so it is kept only with the pattern it describes - when the
-    row leaves the pattern out too, or sends back exactly the pattern the
-    record holds. A pattern the person typed is theirs, derived or not.
-    """
-    if recorded is None:
-        return row
-    filled = dict(row)
-    for key, value in _rule_for_the_editor(recorded).items():
-        if key in row or key == "row":
-            continue
-        if key == "allowed_extensions" and "extensions" in row:
-            continue
-        if key == "date_pattern_derived" and "date_pattern" in row and \
-                str(row["date_pattern"] or "").strip() != str(recorded.get("date_pattern") or "").strip():
-            continue
-        filled[key] = value
-    return filled
-
-
-def _refuse_taking_away_documents(engagement: Path, recorded: list[dict], items: list) -> None:
-    """Refuse a save that would take a request holding filed documents off
-    the list (decision 160, the audit's D-7): the first such request, by
-    name and count (:data:`HOLDS_DOCUMENTS`). Compared without case, so a
-    respelling by case alone keeps the request and is saved. Called by
-    ``manifest.save_rules`` under the engagement lock, after the list's
-    version is checked - so ``recorded`` is the list as it still stands."""
-    kept = {identifier_key(item.identifier) for item in items}
-    held = documents_by_request(engagement, [item_from_record(rule) for rule in recorded])
-    for rule in recorded:
-        key = identifier_key(str(rule["identifier"]))
-        if key not in kept and held.get(key):
-            raise ManifestError(HOLDS_DOCUMENTS.format(identifier=rule["identifier"], n=held[key]))
-
-
-#: What a matched row is compared on to say the editor changed it (decision
-#: 131): the things a working copy's path is made of, bar the identifier,
-#: which rows are matched by (its key) and whose case is not a change (P305;
-#: its length is compared separately). The short name a copy is named by
-#: (decision 144) is the short title or the Document's derivation, so both
-#: are compared (P307).
-_PATH_FIELDS = ("document", "short_title", "period", "allowed_extensions")
-
-
-def _refuse_a_changed_row_past_the_limit(engagement: Path, items: list) -> None:
-    """The editor's save keeps creation's standard for the rows it changes
-    (decision 131).
-
-    A row is matched to the stored one by the identifier's key, so a change
-    of case alone is the same row (decision 160, P305): a case change cannot
-    alter a path's length, and a held row already past the limit is never
-    refused one. The one exception is a respelling that keeps the key and
-    changes the length: ``"İ".lower()`` is two code points, so ``İ01`` and
-    ``i̇01`` are one key and two lengths, and that row counts as changed.
-    A row whose document, short title, period or file types differ from the
-    stored list, and every new row, is measured as creation measures a
-    list (``copies.room_for``); one whose canonical working copy would pass
-    what Windows opens refuses the save with creation's own sentence, and
-    nothing is recorded - the person shortens the label and saves again.
-    A row the person did not touch is never refused: it is already in the
-    room the page and the banner report, so shortening one label is never
-    trapped by another. A row set Not Applicable is not measured, as
-    creation does not measure it, and neither is a row nobody asked for
-    (decision 142); a row a person has just set Asked, or taken off Not
-    Applicable, is measured, because it is now a request creation would
-    have measured (P307).
-    """
-    stored = {identifier_key(item.identifier): item for item in load_manifest(engagement)}
-    changed = []
-    for item in items:
-        held = stored.get(identifier_key(item.identifier))
-        # The identifier's length is compared beside the fields: ``.lower()``
-        # lengthens the one letter "İ", so a respelling that keeps the key
-        # can still grow the path (SPEC-form-inputs section 22).
-        if (held is None
-                or len(item.identifier) != len(held.identifier)
-                or any(getattr(item, name) != getattr(held, name) for name in _PATH_FIELDS)
-                or (item.asked and not held.asked)
-                or (held.manual_override == Override.NOT_APPLICABLE
-                    and item.manual_override != Override.NOT_APPLICABLE)):
-            changed.append(item)
-    room = room_for(engagement, changed)
-    if room.need > room.limit:
-        raise ManifestError(PATH_TOO_LONG.format(folder=engagement, length=room.need,
-                                                 limit=room.limit))
 
 
 def _cmd_unlearn(argv: list[str]) -> dict:
@@ -3542,15 +3338,6 @@ def _undo_made(made: list[Path], owned: set[Path]) -> None:
             folder.rmdir()
         except OSError:
             pass
-
-
-def _refuse_a_list_nobody_is_asked_for(items: list) -> None:
-    """A return always asks for at least one thing: every catalog row is on
-    it, but a list with no asked row would chase nothing and list nothing
-    as needed. Refused at creation and at every editor save, in the same
-    words, before anything is recorded."""
-    if not any(item.asked for item in items):
-        raise ManifestError(NOTHING_ASKED)
 
 
 def _undo_create(engagement: Path) -> None:

@@ -17,13 +17,23 @@ from pathlib import Path
 import pytest
 
 import tracker.api as api
-from tests.api_driver import HOUSEHOLD, PEOPLE, SAMPLE_PEOPLE, one_reply, run, sample_engagement, scan, where
+from tests.api_driver import (
+    _SPELLING_REFUSED,
+    HOUSEHOLD,
+    PEOPLE,
+    SAMPLE_PEOPLE,
+    one_reply,
+    run,
+    sample_engagement,
+    scan,
+    where,
+)
 from tests.builders import TEST_CLIENT, app_stdin, make_engagement
 from tests.node_harness import RENDERER_SCRIPTS, js_function, read, renderer_text, stripped_js
 from tests.samples import PRIOR_YEAR, text_pdf
 from tests.source_pins import py_function
 from tests.wording import title_case
-from tracker import layout, ledger, manifest, reasons, reminder, screen_words, store, view
+from tracker import layout, ledger, manifest, reasons, reminder, request_edit, screen_words, store, view
 from tracker.bounds import (
     COUNT_BOUNDS,
     MAX_EXPECTED_COUNT,
@@ -6209,11 +6219,11 @@ def test_respelling_an_identifier_with_documents_is_refused_unless_renamed_with_
                for rule in _rows_of(state)]
     code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"items": respelt, "engagement": {}})
-    assert code == 1 and payload["error"] == api.HOLDS_DOCUMENTS.format(identifier="A01", n=2)
+    assert code == 1 and payload["error"] == screen_words.HOLDS_DOCUMENTS.format(identifier="A01", n=2)
     dropped = [rule for rule in _rows_of(state) if rule["identifier"] != "A01"]
     code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"items": dropped, "engagement": {}})
-    assert code == 1 and payload["error"] == api.HOLDS_DOCUMENTS.format(identifier="A01", n=2)
+    assert code == 1 and payload["error"] == screen_words.HOLDS_DOCUMENTS.format(identifier="A01", n=2)
     assert ledger.path_for(engagement).read_bytes() == before
     # A row that holds nothing is still removed by a save, as it always was.
     empty = [rule for rule in _rows_of(state) if rule["identifier"] != "B01"]
@@ -6531,7 +6541,7 @@ def test_a_request_answered_only_by_a_statement_cannot_be_deleted_by_a_save(caps
     dropped = [rule for rule in _rows_of(state) if rule["identifier"] != "A04"]
     code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"items": dropped, "engagement": {}})
-    assert code == 1 and payload["error"] == api.HOLDS_DOCUMENTS.format(identifier="A04", n=1)
+    assert code == 1 and payload["error"] == screen_words.HOLDS_DOCUMENTS.format(identifier="A04", n=1)
     assert ledger.path_for(engagement).read_bytes() == before
 
     code, payload = run(capsys, "mark-missing", api.ENGAGEMENT_FLAG, str(engagement),
@@ -6583,7 +6593,7 @@ def test_a_filing_racing_a_save_is_seen_under_the_lock(capsys, demo_root, tmp_pa
     without_c01 = [rule for rule in _rows_of(state) if rule["identifier"] != "C01"]
     code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"items": without_c01, "engagement": {}, "head": state["list_head"]})
-    assert code == 1 and payload["error"] == api.HOLDS_DOCUMENTS.format(identifier="C01", n=1)
+    assert code == 1 and payload["error"] == screen_words.HOLDS_DOCUMENTS.format(identifier="C01", n=1)
     assert seen_under == [True]
     assert "C01" in [rule["identifier"] for rule in payload_of_state(capsys, engagement)["rules"]]
 
@@ -8473,6 +8483,7 @@ def test_a_blank_issuer_name_is_refused_before_anything_is_read(capsys, demo_roo
 
     for name in ("load_engagement_info", "load_manifest", "read_index", "assign_review_file"):
         monkeypatch.setattr(api, name, unread)
+    monkeypatch.setattr(request_edit, "load_manifest", unread)
     code, payload = _add_issuer(capsys, engagement, row, issuer=" , . ")
     assert code == 1 and payload["error"] == "an issuer row needs the name of the entity that issued the K-1"
     monkeypatch.undo()
@@ -9006,7 +9017,8 @@ def test_firm_says_an_unreadable_record_as_its_own_row(capsys, demo_root, monkey
             raise api.ManifestError("the record is not readable")
         return real(path, **kwargs)
 
-    monkeypatch.setattr(api, "load_manifest", broken)
+    for module in (api, request_edit):
+        monkeypatch.setattr(module, "load_manifest", broken)
     code, firm = run(capsys, "firm")
     assert code == 0, firm
     rows = {one["path"]: one for one in firm["returns"]}
@@ -9192,7 +9204,8 @@ def test_a_household_with_a_problem_is_never_kept_so_its_detail_is_logged_every_
             raise api.ManifestError("the record is not readable")
         return real(path, **kwargs)
 
-    monkeypatch.setattr(api, "load_manifest", broken)
+    for module in (api, request_edit):
+        monkeypatch.setattr(module, "load_manifest", broken)
     for _ in range(2):
         rows = {one["path"]: one for one in _cached_firm(capsys)["returns"]}
         assert rows[str(mixed)]["problem"] == api.FIRM_UNREADABLE
@@ -9892,8 +9905,11 @@ def test_a_record_rewritten_at_its_own_size_and_time_is_seen_the_next_day(capsys
         def today(cls):
             return dt.date.fromordinal(dt.date.today().toordinal() + 1)
 
-    # Tomorrow for the API alone, which hands the day to every firm row.
-    monkeypatch.setattr(api, "dt", types.SimpleNamespace(**{**vars(dt), "date": Tomorrow}))
+    # Tomorrow for the API, which hands the day to every firm row - and
+    # for request_edit, which reads the same ``dt`` (a stand-in follows the
+    # name's readers) - and for nothing else.
+    for module in (api, request_edit):
+        monkeypatch.setattr(module, "dt", types.SimpleNamespace(**{**vars(dt), "date": Tomorrow}))
     tomorrow = _firm_whole(capsys, monkeypatch)
     assert _cached_firm(capsys) == tomorrow and tomorrow != before
 
@@ -10746,6 +10762,7 @@ def test_the_last_counts_read_no_record_and_take_no_fingerprint(capsys, demo_roo
         raise AssertionError("firm-last read what it must not")
 
     for module, name in ((firm_cache, "fingerprint"), (firm_cache, "fingerprints"), (api, "load_manifest"),
+                         (request_edit, "load_manifest"),
                          (api, "read_index"), (api, "_firm_row"), (api, "households_named"),
                          (api, "discover_engagements"), (registry, "engagement_from"),
                          (store, "connect"), (ledger, "read_with_chain")):
@@ -10998,6 +11015,7 @@ def _forbid_the_walk(monkeypatch) -> None:
     for name in ("discover_engagements", "household_positions", "households_named", "_firm_row", "load_manifest", "read_index",
                  "load_engagement_info", "_firm_fresh", "_firm_cached"):
         monkeypatch.setattr(api, name, refuses)
+    monkeypatch.setattr(request_edit, "load_manifest", refuses)
     monkeypatch.setattr(firm_cache, "fingerprint", refuses)
     monkeypatch.setattr(firm_cache, "fingerprints", refuses)
 
@@ -11311,10 +11329,6 @@ def test_a_persons_name_longer_than_the_text_rule_is_refused_by_name(capsys, dem
     assert (list_head(engagement), ledger.path_for(engagement).read_bytes()) == before
 
 
-_SPELLING_REFUSED = (f"{api.PEOPLE_LABEL}: a spelling of Jane Smith must be one line of text of "
-                     "at most 1000 characters, with no control character")
-
-
 def _a_spelling_typed_is_refused_and_nothing_is_written(capsys, demo_root, typed):
     from tracker.manifest import list_head
 
@@ -11383,43 +11397,6 @@ def test_a_stored_spelling_past_the_rule_refuses_a_row_only_save_and_names_the_p
     assert code == 1
     assert payload["error"] == _SPELLING_REFUSED
     assert (list_head(engagement), ledger.path_for(engagement).read_bytes()) == before
-
-
-def test_a_one_word_spelling_is_refused_before_the_text_rule_is_asked():
-    from tracker.records import ONE_WORD_SPELLING
-
-    for one_word in ("x" * 1001, "Smith\x07"):
-        people = [{"kind": "taxpayer", "name": "Jane Smith", "spellings": [one_word]}]
-        with pytest.raises(ManifestError) as raised:
-            api._people_from_spec(people)
-        assert str(raised.value) == ONE_WORD_SPELLING
-
-
-def test_a_persons_spellings_are_judged_one_at_a_time_in_order():
-    """SPEC-architecture-p2 P2.5 (R2.5.4): each spelling is folded and judged
-    before the next is read, so of two bad spellings the first one's
-    sentence is the reply - a two-word spelling past the text rule before a
-    one-word spelling, and the other way round."""
-    from tracker.records import ONE_WORD_SPELLING
-
-    past_the_rule, one_word = "J " + "x" * 1999, "Smith"
-    for spellings, said in (([past_the_rule, one_word], _SPELLING_REFUSED),
-                            ([one_word, past_the_rule], ONE_WORD_SPELLING)):
-        people = [{"kind": "taxpayer", "name": "Jane Smith", "spellings": spellings}]
-        with pytest.raises(ManifestError) as raised:
-            api._people_from_spec(people)
-        assert str(raised.value) == said, spellings
-
-
-def test_a_persons_kind_is_judged_before_their_spellings_are_read():
-    """SPEC-architecture-p2 P2.5 (R2.5.4): a person whose kind nothing knows
-    is refused before their spellings are read at all, so spellings that
-    are not even a list are a refusal in the kind's words, never a crash."""
-    people = [{"kind": "cousin", "name": "Jane Smith", "spellings": 5}]
-    with pytest.raises(ManifestError) as raised:
-        api._people_from_spec(people)
-    assert str(raised.value) == ("'cousin' is not one of taxpayer, spouse, dependent, entity, dba, owner, "
-                                 "decedent, trust, fiduciary")
 
 
 def test_the_firms_name_and_phone_are_held_to_the_one_line_text_rule(capsys, tmp_path, monkeypatch):

@@ -8,6 +8,12 @@ the API with the sample pile dropped in. ``test_api`` wrote them and
 ``test_shell`` and ``test_rollover`` imported them from it; they live here so
 the borrowing names a module that is not a test file (SPEC-architecture E-4, R2.1). Moved with their words from
 ``tests/test_api.py``, with the household, the people and ``where`` they lean on.
+
+``_SPELLING_REFUSED`` came from ``tests/test_api.py`` too, with its words, when
+the people tests that call ``_people_from_spec`` directly left for
+``tests/test_request_edit.py`` (SPEC-architecture-p5 P5.4, P341): the tests
+that stayed and one that moved read it, and a test file may not import
+another (``tests/test_suite_shape.py``).
 """
 
 import json
@@ -38,6 +44,10 @@ PEOPLE = [{"kind": "taxpayer", "name": TEST_CLIENT,
 #: Who the sample pile's documents are addressed to, as a spec sends them.
 SAMPLE_PEOPLE = [{"kind": one.kind, "name": one.name, "spellings": list(one.spellings)}
                  for one in SCRATCH_PEOPLE]
+
+
+_SPELLING_REFUSED = (f"{api.PEOPLE_LABEL}: a spelling of Jane Smith must be one line of text of "
+                     "at most 1000 characters, with no control character")
 
 
 def where(root, return_name, year=None, household=HOUSEHOLD):
