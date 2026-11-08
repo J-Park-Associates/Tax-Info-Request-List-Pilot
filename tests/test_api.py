@@ -33,7 +33,7 @@ from tests.node_harness import RENDERER_SCRIPTS, js_function, read, renderer_tex
 from tests.samples import PRIOR_YEAR, text_pdf
 from tests.source_pins import py_function
 from tests.wording import title_case
-from tracker import layout, ledger, manifest, reasons, reminder, request_edit, screen_words, store, view
+from tracker import household_edit, layout, ledger, manifest, reasons, reminder, request_edit, screen_words, store, view
 from tracker.bounds import (
     COUNT_BOUNDS,
     MAX_EXPECTED_COUNT,
@@ -7602,7 +7602,8 @@ def test_a_root_that_cannot_be_walked_says_so_on_the_feeds_and_the_list(capsys, 
     def cannot_walk(*args, **kwargs):
         raise RegistryError("a fabricated walk failure")
 
-    monkeypatch.setattr(api, "households_named", cannot_walk)
+    for module in (api, household_edit):
+        monkeypatch.setattr(module, "households_named", cannot_walk)
     payload = payload_of_state(capsys, father)
     assert [feed["warning"] for feed in payload["household"]["feeds"]] == [api.PRACTICE_NOT_WALKED]
     assert api.PRACTICE_NOT_WALKED in payload["warnings"]
@@ -10075,11 +10076,11 @@ def test_a_related_list_refuses_itself_a_blank_a_repeat_and_a_household_that_is_
 
     park, _llc, _lee = three_households(capsys, demo_root)
     park_dir = private_household_dir(demo_root, "Park Family")
-    for sent, said in ((["Park Family"], api.RELATED_REFUSED.format(household="Park Family")),
-                       ([""], api.RELATED_REFUSED.format(household="(blank)")),
-                       ("Lee Family", api.RELATED_NOT_A_LIST), ([1], api.RELATED_NOT_A_LIST),
-                       (["Lee Family", "lee family"], api.RELATED_REFUSED.format(household="lee family")),
-                       (["Nobody Here"], api.RELATED_UNKNOWN.format(household="Nobody Here"))):
+    for sent, said in ((["Park Family"], screen_words.RELATED_REFUSED.format(household="Park Family")),
+                       ([""], screen_words.RELATED_REFUSED.format(household="(blank)")),
+                       ("Lee Family", screen_words.RELATED_NOT_A_LIST), ([1], screen_words.RELATED_NOT_A_LIST),
+                       (["Lee Family", "lee family"], screen_words.RELATED_REFUSED.format(household="lee family")),
+                       (["Nobody Here"], screen_words.RELATED_UNKNOWN.format(household="Nobody Here"))):
         code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": sent})
         assert code == 1 and payload["error"] == said, (sent, payload)
     assert load_household_info(park_dir).related == ()
@@ -10174,7 +10175,8 @@ def test_the_other_households_record_is_read_and_written_inside_its_own_lock(cap
                 said.append("refused")
         return info
 
-    monkeypatch.setattr(api, "load_household_info", and_another_writer)
+    for module in (api, household_edit):
+        monkeypatch.setattr(module, "load_household_info", and_another_writer)
     code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})
     assert code == 0, payload
     after = households.load_household_info(lee_dir)
@@ -10764,6 +10766,7 @@ def test_the_last_counts_read_no_record_and_take_no_fingerprint(capsys, demo_roo
     for module, name in ((firm_cache, "fingerprint"), (firm_cache, "fingerprints"), (api, "load_manifest"),
                          (request_edit, "load_manifest"),
                          (api, "read_index"), (api, "_firm_row"), (api, "households_named"),
+                         (household_edit, "households_named"),
                          (api, "discover_engagements"), (registry, "engagement_from"),
                          (store, "connect"), (ledger, "read_with_chain")):
         monkeypatch.setattr(module, name, forbidden)
@@ -11016,6 +11019,7 @@ def _forbid_the_walk(monkeypatch) -> None:
                  "load_engagement_info", "_firm_fresh", "_firm_cached"):
         monkeypatch.setattr(api, name, refuses)
     monkeypatch.setattr(request_edit, "load_manifest", refuses)
+    monkeypatch.setattr(household_edit, "households_named", refuses)
     monkeypatch.setattr(firm_cache, "fingerprint", refuses)
     monkeypatch.setattr(firm_cache, "fingerprints", refuses)
 

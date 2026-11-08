@@ -26,7 +26,7 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of fifty-six modules in six layers.
+`tracker/` is one Python package of fifty-seven modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The scanner never imports the filer; a person's actions
@@ -188,6 +188,15 @@ the package but each other.
   command line could reach them (decision 123's lesson); the API's handlers
   call them by import, and the editor measures its room through the one
   room function without the review folder (Q-F).
+- `household_edit.py`: a household's own edits - a household or return name
+  held to the layout's one name rule, the members, the returns its inbox
+  also feeds and the households a person marked related - and the mirror
+  that makes every other household's record agree with a related list just
+  saved, taking each other household's lock in turn, one at a time, and
+  returning one another pass holds as pending rather than waiting on it
+  (decisions 125, 129, 188, P170, P342). Out of the API so a command line
+  could reach them (decision 123's lesson); the API's handlers call them by
+  import.
 - `scanner.py`: walks the working copies, runs the three tiers, resolves each
   request's status (override- and revert-aware) and records the result.
 - `reminder.py`: drafts the client's chase email in four stages measured
