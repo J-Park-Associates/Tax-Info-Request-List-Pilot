@@ -453,7 +453,7 @@ fi
 if printf '%s\n%s\n' "$frozen" "$source_pass" | grep -q "The reader cannot run"; then
   note_smoke "the reader could not run (a reading child did not start under spawn, or a library is missing)"
 fi
-# The reader is named by the pass's closing summary (runner.append_log), not by
+# The reader is named by the pass's closing summary (run_log.append_log), not by
 # the log's first line, which since decision 189 is "pass started" - so the
 # whole log is read (SPEC-mac-check-fixes 3.1, P258).
 grep -q "reader=processor" "$SMOKE/runs.log" 2>/dev/null || note_smoke "the run log names no processor"

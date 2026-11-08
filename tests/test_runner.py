@@ -22,6 +22,9 @@ import tracker.runner as runner_module
 from tests import passes
 from tests.builders import make_engagement, seed_index, written_elsewhere
 from tests.passes import (
+    FRIDAY,
+    SATURDAY,
+    SUNDAY,
     _a_parked_file,
     _lines,
     _run_now,
@@ -34,7 +37,7 @@ from tests.passes import (
 )
 from tests.samples import DEMO_ITEMS, PRIOR_YEAR, SCRATCH_PEOPLE, YEAR, text_pdf
 from tests.source_pins import PACKAGE, py_function
-from tracker import ledger, store
+from tracker import ledger, run_log, store
 from tracker.index import NEEDS_REVIEW, read_index
 from tracker.layout import household_of, inbox_of, originals_of, root_of
 from tracker.manifest import (
@@ -63,6 +66,7 @@ from tracker.reminder import (
     NEW_DRAFT_FILENAME,
     is_unedited,
 )
+from tracker.run_log import log_path
 from tracker.runner import (
     CODE_PAGE_NOT_WRITTEN,
     CODE_PASS_DID_NOT_FINISH,
@@ -86,7 +90,6 @@ from tracker.runner import (
     format_report,
     is_draft_day,
     last_drafted,
-    log_path,
     main,
     run_household,
     run_registry,
@@ -100,12 +103,6 @@ from tracker.scaffold import (
 from tracker.settings import product_name
 
 DRAFT_DAY = WEEKDAY_NAMES[DRAFT_WEEKDAY]
-
-# The draft day is whatever the runner says it is; the dates follow it.
-_WEEK_START = dt.date(2026, 3, 9)                      # a Monday
-SATURDAY = _WEEK_START + dt.timedelta(days=DRAFT_WEEKDAY)  # the draft day
-FRIDAY = SATURDAY - dt.timedelta(days=1)                # the day before
-SUNDAY = SATURDAY + dt.timedelta(days=1)                # the day after
 
 #: The sample pile, built once per session: a fixture of ``tests/passes.py``, named here
 #: so every claim below can ask for it.
@@ -771,23 +768,6 @@ def test_a_weekday_report_says_why_there_are_no_drafts(tmp_path, samples):
     ))
     assert "no reminders today" in text
     assert "0 draft(s) written" in text
-
-
-def test_a_name_utf8_cannot_hold_never_reaches_the_log(tmp_path, samples):
-    # The eleventh reading: a lone surrogate in a client's file name is
-    # reported every pass by name, and the run log - the unattended run's
-    # only trace - died on it. Since decision 186 no name reaches the log
-    # at all: the failure is counted and coded, and the entry is whole.
-    engagement = build_engagement(tmp_path, samples)
-    run = EngagementRun(engagement=engagement)
-    run.error = "bank statement \ud83d.pdf: cannot be handled under this name"
-    run.code = "crashed:UnicodeEncodeError"
-    report = RunReport(today=FRIDAY, reminders=REMINDERS_AUTO, dry_run=False, runs=[run])
-    log = tmp_path / LOG_FILENAME
-    append_log(log, report)
-    text = log.read_text(encoding="utf-8")
-    assert "bank statement" not in text and "cannot be handled" not in text
-    assert " failed=1 " in text and "codes crashed:UnicodeEncodeError=1" in text
 
 
 def test_the_log_appends_rather_than_replaces(tmp_path, samples):
@@ -1867,12 +1847,12 @@ def test_in_a_household_a_slow_reading_is_said_once_on_the_first_own_returns_lin
     from tests.samples import photo
     from tracker.index import FILED
     from tracker.records import entry_to_json
-    from tracker.runner import SLOW_READING_NOTE
+    from tracker.run_log import SLOW_READING_NOTE
 
     personal, business = a_household(tmp_path, samples,
                                       drops=(f"W-2 John Smith {YEAR}.pdf",))
     photo(inbox_of(personal.path) / "A photo.png", words="Trial balance")
-    monkeypatch.setattr(runner_module, "SLOW_READING_SECONDS", 0.05)
+    monkeypatch.setattr(run_log, "SLOW_READING_SECONDS", 0.05)
     # The business's own name is on the page, as it is on a real trial
     # balance: the request is named (decision 128).
     [entity] = load_engagement_info(business.path).people
@@ -2328,7 +2308,8 @@ def test_run_now_leaves_the_schedules_log_line_and_page(tmp_path, tmp_path_facto
     both - and so do the practice pages' rows."""
     import re
 
-    from tracker.runner import LOG_FLAG, log_path
+    from tracker.run_log import log_path
+    from tracker.runner import LOG_FLAG
 
     # The second tree outside ``tmp_path``: the same household by name is a
     # second practice, with a store of its own, which the checks made after
@@ -2427,7 +2408,8 @@ def test_a_pass_whose_watcher_is_gone_stops_at_the_next_file(tmp_path, samples, 
 
     import tracker.runner as runner
     from tracker.locking import lock_status
-    from tracker.runner import PASS_APP_CLOSED, log_path, run_now_arguments
+    from tracker.run_log import log_path
+    from tracker.runner import PASS_APP_CLOSED, run_now_arguments
 
     root = tmp_path / "root"
     engagement = build_engagement(root, samples, drops=(f"W-2 John Smith {YEAR}.pdf",
@@ -2472,7 +2454,8 @@ def test_a_pass_whose_app_closed_says_so_in_the_run_log_and_on_the_page_and_leav
     log, which names no client (decision 186), and its sentence on the
     page. The next pass files what waited."""
     import tracker.runner as runner
-    from tracker.runner import CODE_PASS_APP_CLOSED, PASS_APP_CLOSED, log_path, run_now_arguments
+    from tracker.run_log import log_path
+    from tracker.runner import CODE_PASS_APP_CLOSED, PASS_APP_CLOSED, run_now_arguments
 
     root = tmp_path / "root"
     drops = (f"W-2 John Smith {YEAR}.pdf", "1099-INT First National.pdf", "Form 1098 Mortgage Interest.pdf")
@@ -2776,15 +2759,6 @@ def test_a_page_that_cannot_be_written_is_said_in_the_log_and_fails_the_run(
     assert "a client's folder" not in log_text
     assert PAGE_NOT_WRITTEN.format(kind="PermissionError (EACCES)") in capsys.readouterr().out
     capsys.readouterr()
-
-
-def test_the_run_log_carries_a_count_of_warnings_never_their_words(tmp_path, samples):
-    engagement = build_engagement(tmp_path, samples)
-    run = EngagementRun(engagement=engagement, warnings=["a sentence naming W-2 Client.pdf"] * 3)
-    log_path = append_log(tmp_path / LOG_FILENAME, RunReport(today=SATURDAY, runs=[run]))
-    text = log_path.read_text(encoding="utf-8")
-    assert " warnings=3" in text
-    assert "W-2 Client.pdf" not in text
 
 
 def test_a_first_draft_missed_on_its_day_is_drafted_on_the_next_run():
@@ -3753,93 +3727,6 @@ def test_a_failure_before_the_root_is_written_to_the_last_pass_file(tmp_path, mo
     capsys.readouterr()
 
 
-@pytest.mark.parametrize(("every", "hours"), [
-    (30, 4), (60, 4), (120, 4),            # never under the floor of four hours
-    (240, 8), (480, 16),                   # two missed runs of the saved interval
-    (0, 48),                               # once a day: two days
-])
-def test_the_amber_threshold_is_two_missed_runs_of_the_saved_interval(tmp_path, every, hours):
-    """Pilot P21: the line turns amber after two missed runs of the interval
-    the person chose - four hours at the two-hour default - and says the
-    wait it assumed."""
-    from tracker import settings
-
-    settings.set_schedule(True, "07:00", every)
-    assert runner_module.amber_hours(every) == hours
-    now = dt.datetime(2026, 3, 2, 12, 0)
-    path = tmp_path / runner_module.LAST_PASS_FILENAME
-
-    inside = now - dt.timedelta(hours=hours) + dt.timedelta(minutes=1)
-    runner_module.write_last_pass(path, started=inside, ended=inside, root="R",
-                                  result=runner_module.PASS_SUCCEEDED)
-    assert runner_module.last_pass_line(path, now=now)["level"] == runner_module.LEVEL_OK
-
-    outside = now - dt.timedelta(hours=hours, minutes=1)
-    runner_module.write_last_pass(path, started=outside, ended=outside, root="R",
-                                  result=runner_module.PASS_SUCCEEDED)
-    line = runner_module.last_pass_line(path, now=now)
-    assert line["level"] == runner_module.LEVEL_WARN
-    assert line["text"].endswith(runner_module.LAST_PASS_OLD.format(hours=str(hours)))
-
-
-def test_the_last_pass_line_says_the_schedule_is_off_instead_of_turning_amber(tmp_path):
-    from tracker import settings
-
-    settings.set_schedule(False, "07:00", 120)
-    now = dt.datetime(2026, 3, 2, 12, 0)
-    path = tmp_path / runner_module.LAST_PASS_FILENAME
-    long_ago = now - dt.timedelta(days=30)
-    runner_module.write_last_pass(path, started=long_ago, ended=long_ago, root="R",
-                                  result=runner_module.PASS_SUCCEEDED)
-    assert runner_module.last_pass_line(path, now=now) == {
-        "text": runner_module.LAST_PASS_OFF, "level": runner_module.LEVEL_OK}
-    assert runner_module.last_pass_line(tmp_path / "missing.json", now=now)["text"] == runner_module.LAST_PASS_OFF
-
-
-def test_a_saved_choice_that_will_not_read_turns_the_line_red_and_names_no_guess(tmp_path):
-    from tracker import settings
-
-    settings.settings_path().parent.mkdir(parents=True, exist_ok=True)
-    settings.settings_path().write_text('{"schedule_every": 45}', encoding="utf-8")
-    line = runner_module.last_pass_line(tmp_path / runner_module.LAST_PASS_FILENAME)
-    assert line["level"] == runner_module.LEVEL_ERR
-    assert settings.EVERY_REFUSED.format(value=45) in line["text"]      # the refusal's own sentence
-    assert line["text"] != runner_module.LAST_PASS_UNREADABLE.format(error="ScheduleChoiceError")
-
-
-def test_the_last_pass_line_is_amber_when_old_and_red_when_failed(tmp_path):
-    """The app's one line: plain when recent, amber after
-    LAST_PASS_AMBER_HOURS or when no pass has run, red on a failure or a
-    file that does not read - every word the runner's."""
-    now = dt.datetime(2026, 3, 2, 12, 0)
-    path = tmp_path / runner_module.LAST_PASS_FILENAME
-    assert runner_module.last_pass_line(path, now=now) == {
-        "text": runner_module.LAST_PASS_NEVER, "level": runner_module.LEVEL_WARN}
-
-    recent = now - dt.timedelta(hours=1)
-    runner_module.write_last_pass(path, started=recent, ended=recent, root="R",
-                                  result=runner_module.PASS_SUCCEEDED)
-    line = runner_module.last_pass_line(path, now=now)
-    assert line["level"] == runner_module.LEVEL_OK and "2026-03-02 11:00" in line["text"]
-
-    old = now - dt.timedelta(hours=runner_module.LAST_PASS_AMBER_HOURS, minutes=1)
-    runner_module.write_last_pass(path, started=old, ended=old, root="R",
-                                  result=runner_module.PASS_SUCCEEDED)
-    line = runner_module.last_pass_line(path, now=now)
-    assert line["level"] == runner_module.LEVEL_WARN
-    assert line["text"].endswith(runner_module.LAST_PASS_OLD.format(hours="4"))
-
-    runner_module.write_last_pass(path, started=recent, ended=recent, root="",
-                                  result=runner_module.PASS_FAILED,
-                                  reason_code=runner_module.PASS_SETTINGS)
-    line = runner_module.last_pass_line(path, now=now)
-    assert line["level"] == runner_module.LEVEL_ERR
-    assert runner_module.PASS_REASONS[runner_module.PASS_SETTINGS] in line["text"]
-
-    path.write_text("{not json", encoding="utf-8")
-    assert runner_module.last_pass_line(path, now=now)["level"] == runner_module.LEVEL_ERR
-
-
 def test_a_pass_over_a_root_the_checkpoint_does_not_belong_to_is_refused_however_the_root_is_given(
         tmp_path, samples, monkeypatch):
     """The review's S2 (probe C7): a copy of the root typed on the command
@@ -3996,7 +3883,7 @@ def test_a_household_not_served_twice_is_the_last_pass_files_reason(tmp_path, mo
     written = json.loads(runner_module.last_pass_path().read_text(encoding="utf-8"))
     assert written["result"] == runner_module.PASS_FAILED
     assert written["reason_code"] == runner_module.PASS_NOT_SERVED
-    line = runner_module.last_pass_line()
+    line = run_log.last_pass_line()
     assert runner_module.PASS_REASONS[runner_module.PASS_NOT_SERVED] in line["text"]
 
 
@@ -4022,7 +3909,7 @@ def test_a_pass_that_stops_after_its_root_logs_the_kind_never_the_words(tmp_path
 
     with pytest.raises(RuntimeError):
         _a_scheduled_main(tmp_path, monkeypatch, stopped)
-    said = runner_module.log_path().read_text(encoding="utf-8")      # the data home's (decision 186)
+    said = run_log.log_path().read_text(encoding="utf-8")      # the data home's (decision 186)
     assert f"pass failed ({runner_module.PASS_ENDED_EARLY})" in said and "(RuntimeError)" in said
     assert "Fabricated" not in said
     assert not (clients / LOG_FILENAME).exists()
@@ -4036,23 +3923,9 @@ def test_a_pass_that_stops_before_its_root_is_logged_in_the_data_home(tmp_path, 
 
     with pytest.raises(SystemExit):
         _a_scheduled_main(tmp_path, monkeypatch, stopped)
-    said = runner_module.log_path().read_text(encoding="utf-8")
+    said = run_log.log_path().read_text(encoding="utf-8")
     assert f"pass failed ({runner_module.PASS_NO_ROOT})" in said and "(PassFailed)" in said
     assert "Fabricated" not in said
-
-
-@pytest.mark.parametrize("text", [
-    '{"started": "2026-03-02T11:00:00", "result": "Fabricated Client says hello"}',
-    "[" * 100_000,
-    '{"started": "2026-03-02T11:00:00+05:00", "result": "succeeded"}',
-], ids=["a-result-not-written-here", "nested-past-the-limit", "an-aware-time"])
-def test_the_last_pass_line_echoes_nothing_the_file_holds(tmp_path, text):
-    """Read as 189 reads its hint: bounded, never raising, and a result or
-    a reason is said only when it is one this module writes."""
-    path = tmp_path / runner_module.LAST_PASS_FILENAME
-    path.write_text(text, encoding="utf-8")
-    line = runner_module.last_pass_line(path, now=dt.datetime(2026, 3, 2, 12, 0))
-    assert line["level"] == runner_module.LEVEL_ERR and "Fabricated" not in line["text"]
 
 
 # ------------- a checkpoint that cannot be asked (the rebase review's MF1-SF3) ----
@@ -4080,7 +3953,7 @@ def _the_scheduled_pass_with(tmp_path, monkeypatch, spoil):
     with spoil(where):
         code = main([SETTINGS_FLAG, str(settings), "--reminders", "never", "--log"])
     page = html.unescape((clients / STATUS_PAGE_FILENAME).read_text(encoding="utf-8"))
-    logged = runner_module.log_path().read_text(encoding="utf-8")   # the data home's (decision 186)
+    logged = run_log.log_path().read_text(encoding="utf-8")   # the data home's (decision 186)
     written = json.loads(runner_module.last_pass_path().read_text(encoding="utf-8"))
     return code, page, logged, written
 
@@ -4111,7 +3984,7 @@ def test_a_damaged_checkpoint_ends_the_pass_named_with_its_page_and_log_written(
     assert "No household was served this pass" not in logged and "Traceback" not in logged
     assert written["reason_code"] == runner_module.PASS_CHECKPOINT_UNREADABLE
     assert runner_module.PASS_REASONS[runner_module.PASS_CHECKPOINT_UNREADABLE] in \
-        runner_module.last_pass_line()["text"]
+        run_log.last_pass_line()["text"]
 
 
 def test_a_busy_checkpoint_is_never_called_another_root(tmp_path, monkeypatch):
@@ -4135,7 +4008,7 @@ def test_a_busy_checkpoint_is_never_called_another_root(tmp_path, monkeypatch):
     assert code == 1
     assert written["reason_code"] == runner_module.PASS_CHECKPOINT_BUSY
     assert "the next pass tries again" in page and "Set the file aside" not in page
-    assert "belongs to" not in runner_module.last_pass_line()["text"]
+    assert "belongs to" not in run_log.last_pass_line()["text"]
 
 
 def test_lines_from_other_machines_that_cannot_be_listed_are_said_where_they_would_be(
@@ -4792,7 +4665,7 @@ def test_a_pass_serves_no_household_while_the_old_checkpoint_sits_beside_the_pro
     page = html.unescape((clients / STATUS_PAGE_FILENAME).read_text(encoding="utf-8"))
     first = page[page.index(runner_module.STATUS_RECORDS_HEADING):].split("<li>", 2)[1]
     assert first.startswith("No household was served this pass") and "No record checkpoint was made" in first
-    logged = runner_module.log_path().read_text(encoding="utf-8")
+    logged = run_log.log_path().read_text(encoding="utf-8")
     assert f"{runner_module.CODE_CHECKPOINT_NOT_PROVED}=1" in logged
     assert "No record checkpoint was made" not in logged
     written = json.loads(runner_module.last_pass_path().read_text(encoding="utf-8"))
@@ -4853,7 +4726,7 @@ def test_no_run_log_line_contains_a_client_file_name(tmp_path, samples, monkeypa
 
     monkeypatch.setattr(runner_module, "_sort_step", sort_step)
     monkeypatch.setattr(runner_module, "file_household_drops", file_drops)
-    monkeypatch.setattr(runner_module, "SLOW_READING_SECONDS", 0)
+    monkeypatch.setattr(run_log, "SLOW_READING_SECONDS", 0)
 
     capsys.readouterr()
     assert _the_scheduled_job(root, monkeypatch, "--reminders", "always", "--log") == 1
@@ -4985,7 +4858,7 @@ def test_a_pass_warning_is_added_only_with_its_code():
     ``_warn`` is found by its name and every module of the package is read
     (R3.1), so a part of the pass that leaves runner.py is still held."""
     adds = re.compile(r"\b(?:report|result)\.warnings\.(?:append|extend|insert)\(")
-    warn = py_function("_warn", "runner")
+    warn = py_function("_warn", "run_log")
     found = sum(len(adds.findall(path.read_text(encoding="utf-8"))) for path in sorted(PACKAGE.rglob("*.py")))
     assert found == len(adds.findall(warn))                     # every one of them is inside _warn
     assert re.search(r"report\.warnings\.append\(", warn)
@@ -5634,13 +5507,13 @@ def test_a_scheduled_pass_off_windows_stops_itself_before_the_run_limit(tmp_path
     its locks - and the next pass files the rest."""
     from tracker import settings
     from tracker.locking import RUN_TIME_LIMIT_SECONDS, lock_status
+    from tracker.run_log import log_path
     from tracker.runner import (
         CODE_PASS_RUN_LIMIT,
         HOUSEHOLD_BUDGET_SECONDS,
         PASS_RUN_LIMIT,
         SELF_STOP_AFTER_SECONDS,
         SelfLimitedWatch,
-        log_path,
     )
 
     assert SELF_STOP_AFTER_SECONDS == RUN_TIME_LIMIT_SECONDS - HOUSEHOLD_BUDGET_SECONDS
@@ -5671,7 +5544,7 @@ def test_a_scheduled_pass_off_windows_stops_itself_before_the_run_limit(tmp_path
     assert said not in log_path().read_text(encoding="utf-8"), "the log keeps the code, never a sentence"
     assert len([p for p in inbox_of(engagement.path).iterdir() if p.name in THREE_DROPS]) == 2, "two wait"
     assert lock_status(engagement.path) is None, "its locks are let go"
-    assert "succeeded" in runner_module.last_pass_line(runner_module.last_pass_path())["text"]
+    assert "succeeded" in run_log.last_pass_line(runner_module.last_pass_path())["text"]
     capsys.readouterr()
 
     monkeypatch.setattr(SelfLimitedWatch, "say", real_say)
@@ -5802,9 +5675,9 @@ def test_a_mac_pass_refused_the_root_says_macos_did_not_allow_it(tmp_path, sampl
     assert str(stopped.value) == f"Clients folder problem: {PASS_REASONS[PASS_ROOT_NOT_PERMITTED]}"
     path = runner_module.last_pass_path()
     assert json.loads(path.read_text(encoding="utf-8"))["reason_code"] == PASS_ROOT_NOT_PERMITTED
-    line = runner_module.last_pass_line(path)
-    assert line["level"] == runner_module.LEVEL_ERR and PASS_REASONS[PASS_ROOT_NOT_PERMITTED] in line["text"]
-    assert PASS_REASONS[PASS_ROOT_NOT_PERMITTED] in runner_module.log_path().read_text(encoding="utf-8")
+    line = run_log.last_pass_line(path)
+    assert line["level"] == run_log.LEVEL_ERR and PASS_REASONS[PASS_ROOT_NOT_PERMITTED] in line["text"]
+    assert PASS_REASONS[PASS_ROOT_NOT_PERMITTED] in run_log.log_path().read_text(encoding="utf-8")
 
 
 def test_a_root_that_lists_is_walked_on_a_mac_and_a_refusal_off_a_mac_is_the_walks_own(

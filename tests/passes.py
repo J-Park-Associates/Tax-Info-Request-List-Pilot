@@ -8,8 +8,13 @@ waiting in its one inbox, an edit of its rows as a person makes it in the app,
 and the scheduled job and the app's Run now called as they call ``main``.
 
 Moved with their words from ``tests/test_runner.py``; nothing here is new.
+The draft week's dates (``FRIDAY``, ``SATURDAY``, ``SUNDAY``) joined them,
+one block as it was, when ``tests/test_run_log.py`` was split out of
+``test_runner`` (SPEC-architecture-p5 R5.8.7, P345): both files tell a pass
+or its report a day of that week, and a test file may not import another.
 """
 
+import datetime as dt
 from pathlib import Path
 
 import pytest
@@ -21,8 +26,14 @@ from tracker.index import NEEDS_REVIEW
 from tracker.manifest import EngagementInfo, RequestItem, load_engagement_info, save_rules
 from tracker.records import IndexEntry, rule_from_json
 from tracker.registry import engagement_from
-from tracker.runner import SETTINGS_FLAG, main
+from tracker.runner import DRAFT_WEEKDAY, SETTINGS_FLAG, main
 from tracker.scaffold import scaffold_engagement
+
+# The draft day is whatever the runner says it is; the dates follow it.
+_WEEK_START = dt.date(2026, 3, 9)                      # a Monday
+SATURDAY = _WEEK_START + dt.timedelta(days=DRAFT_WEEKDAY)  # the draft day
+FRIDAY = SATURDAY - dt.timedelta(days=1)                # the day before
+SUNDAY = SATURDAY + dt.timedelta(days=1)                # the day after
 
 
 @pytest.fixture(scope="session")

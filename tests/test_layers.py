@@ -263,17 +263,23 @@ LAYERS: dict[int, frozenset[str]] = {
     # which imports them back - ``household_edit`` (in-layer), ``copies`` (L2),
     # ``households``, ``ledger``, ``manifest``, ``store`` and ``screen_words``
     # (L1), ``errors`` and ``layout`` (L0).
+    # ``run_log`` joins L3 with P345 (SPEC-architecture-p5 P5.8): the pass's
+    # report, its codes, the run log and the last-pass file, out of ``runner``,
+    # which imports them back - ``registry`` and ``reminder`` (in-layer),
+    # ``ocr`` (L2), ``store``, ``records``, ``ledger`` (L1), ``checkpoint`` and
+    # L0; never ``scheduling`` or ``api``.
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review",
                   "verify", "intents", "inbox", "readme_ack", "actions", "request_edit",
-                  "household_edit", "creation"}),
+                  "household_edit", "creation", "run_log"}),
     # ``after_install`` joins L4 with decision 209, beside the scheduler it
     # drives: it imports ``scheduling`` (L4), ``store`` (L1), ``registry``
     # (L3) and L0; the API imports it, and nothing lower may.
     # ``firm_view`` joins L4 with P344 (SPEC-architecture-p5 P5.7): the
     # Overview's rows, their cache and the group rule, out of ``api``, which
     # imports them back - ``runner`` (in-layer, the draft-day rule),
-    # ``reminder``, ``review``, ``registry`` and ``view`` (L3), ``containers``
-    # (L2), L1 and L0; never ``screen_words``.
+    # ``reminder``, ``review``, ``registry``, ``run_log`` (``why_skipped``,
+    # since P345) and ``view`` (L3), ``containers`` (L2), L1 and L0; never
+    # ``screen_words``.
     4: frozenset({"runner", "scheduling", "after_install", "firm_view"}),
     # ``resident`` joins L5 with P276: the engine's loop over ``api.main``; it
     # imports ``api``, ``errlog``, ``locking``, ``reader_child`` and the
@@ -306,9 +312,10 @@ DOMAINS: dict[str, frozenset[str]] = {
     "sorting": frozenset({"reasons", "router", "names", "filer", "copies", "intents", "inbox",
                           "readme_ack", "actions", "keywords", "scanner", "review"}),
     # The scheduled run and what it drives: the engagements it finds, the
-    # year it rolls over, the reminder it drafts and how it is watched.
+    # year it rolls over, the reminder it drafts, what it reports and how it
+    # is watched.
     "pass": frozenset({"progress", "registry", "rollover", "reminder", "runner", "scheduling",
-                       "after_install"}),
+                       "after_install", "run_log"}),
     # The one way the app reaches the rest, the engine that answers it, what
     # an error is called, where its words are kept, the words it sends the
     # screen and the shape of every reply it prints.

@@ -158,7 +158,7 @@ PIXEL_BUDGET = 40_000_000
 #: minute and a document ten, rendering included. A reading that reaches
 #: either is **abandoned**: a kept verdict, ``reasons.READING_STOPPED``,
 #: not read again until the file changes. Under the stop nothing changes:
-#: a slow reading is finished and named (``runner.SLOW_READING_SECONDS``).
+#: a slow reading is finished and named (``run_log.SLOW_READING_SECONDS``).
 #: Before this, the only stop was Task Scheduler's two-hour kill, which
 #: ended the whole pass and met the same file again next time. Since
 #: decision 150 the same two numbers bound the **whole** reading as well -

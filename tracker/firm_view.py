@@ -64,10 +64,10 @@ import this module: this module imports the runner, so an import back
 would be a cycle.
 
 **Why it sits at layer 4.** It reads the draft-day rule
-(``DRAFT_WEEKDAY``, ``last_draft_day``, ``last_drafted``) and
-``why_skipped`` from :mod:`tracker.runner`, in its own layer; the
-reminder's stage and hold, the review shortlist, the registry's walk and
-the view's file name (layer 3); ``containers`` (layer 2); the index, the
+(``DRAFT_WEEKDAY``, ``last_draft_day``, ``last_drafted``) from
+:mod:`tracker.runner`, in its own layer; ``why_skipped`` from
+:mod:`tracker.run_log` (since P345), the reminder's stage and hold, the
+review shortlist, the registry's walk and the view's file name (layer 3); ``containers`` (layer 2); the index, the
 request list, the record types, the household record and ``validators``
 (layer 1); and ``firm_cache``, ``layout``, ``reasons``, ``progress``,
 ``settings`` and ``errors`` (layer 0). It imports neither the API nor
@@ -92,7 +92,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import cast
 
-from tracker import errors, firm_cache, layout, progress, reasons, reminder, review, runner
+from tracker import errors, firm_cache, layout, progress, reasons, reminder, review, run_log
 from tracker.containers import is_container
 from tracker.households import open_years
 from tracker.index import FILE_MOVED, NEEDS_REVIEW, NOT_REQUESTED, marked_missing, moved_to, read_index
@@ -503,7 +503,7 @@ def _firm_from_cache(root: Path, today: dt.date) -> _FirmRead:
     3. Work out the practice-wide facts from every household's facts, kept
        or fresh, with the registry's own rules: which prior a Roll Forward
        retired (:func:`mark_superseded`), which return is skipped
-       (``runner.why_skipped``) and which household has two open years
+       (``run_log.why_skipped``) and which household has two open years
        (``open_years``).
     4. Build each shown return's row that is not kept (:func:`_firm_row`),
        keep every household that read without a problem, and answer.
@@ -544,7 +544,7 @@ def _firm_from_cache(root: Path, today: dt.date) -> _FirmRead:
         batch_facts = [(folder, one) for folder, (entry, _ones) in batch.items() for one in entry["returns"]]
         batch_marked = mark_superseded([_fact_engagement(one) for _folder, one in batch_facts])
         for (folder, one), engagement in zip(batch_facts, batch_marked, strict=True):
-            if not runner.why_skipped(engagement)[0]:
+            if not run_log.why_skipped(engagement)[0]:
                 early[(folder, one["path"])] = _firm_row(batch[folder][1][one["path"]], batch[folder][0]["name"],
                                                          today)
         _say_count(min(start + FIRM_READ_BATCH, len(unread)), len(unread))
@@ -614,7 +614,7 @@ def _firm_order(folders: list[Path], entries: dict[Path, dict]) -> list[Path]:
 
 def _fact_engagement(one: dict) -> Engagement:
     """A kept return's facts as the :class:`Engagement` the registry's rules
-    (:func:`mark_superseded`, ``runner.why_skipped``) judge."""
+    (:func:`mark_superseded`, ``run_log.why_skipped``) judge."""
     return Engagement(path=Path(one["path"]), household_path=Path(one["household"]),
                       problem=one["problem"],
                       info=EngagementInfo(active=one["active"], tax_year=one["tax_year"],
@@ -627,7 +627,7 @@ def _firm_marks(root: Path, order: list[Path], entries: dict[Path, dict]) \
     deciding: the practice-wide facts worked out from every household's
     facts, kept or fresh, with the registry's own rules - which prior a Roll
     Forward retired (:func:`mark_superseded`), which household has two open
-    years (``open_years``) and which return is shown (``runner.why_skipped``).
+    years (``open_years``) and which return is shown (``run_log.why_skipped``).
     Returns each return's facts in the walk's order, the returns marked,
     the paused households and whether each return is shown."""
     facts = [(folder, one) for folder in order for one in entries[folder]["returns"]]
@@ -636,7 +636,7 @@ def _firm_marks(root: Path, order: list[Path], entries: dict[Path, dict]) \
     paused = {path for path, theirs in
               Registry(source=root, engagements=marked, households=households).by_household().items()
               if len(open_years(theirs)) > 1}
-    showing = [not runner.why_skipped(one)[0] for one in marked]
+    showing = [not run_log.why_skipped(one)[0] for one in marked]
     return facts, marked, paused, showing
 
 

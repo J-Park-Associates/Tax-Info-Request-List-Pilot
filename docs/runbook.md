@@ -1430,7 +1430,7 @@ household and cannot clear it. Notices (a failure, a warning) sit in a panel at 
    every parked file across the practice, newest first. A return the pass
    did not run is shown as its record stood when the pass began. The app's
    **Open Status** button opens it. The run log
-   (`tracker.runner.LOG_FILENAME`), in the app's data folder on the
+   (`tracker.run_log.LOG_FILENAME`), in the app's data folder on the
    machine that runs the schedule (`%LOCALAPPDATA%\tax-document-tracker-pilot\logs`,
    decision 186), says of every pass — the app's button's included — when it
    ran and how many returns it filed, parked, failed, skipped or held, with a
@@ -2727,7 +2727,7 @@ the same way.
   [ROADMAP.md](ROADMAP.md). The odd choice is usually load-bearing.
 - **What every pass did**, engagement by engagement, with the failures:
   the practice page (`tracker.runner.STATUS_PAGE_FILENAME`) in the clients
-  root; the run log (`tracker.runner.LOG_FILENAME`), in the app's data
+  root; the run log (`tracker.run_log.LOG_FILENAME`), in the app's data
   folder on the machine that runs the schedule, counts them by code.
 - **What happened to one document**: the Index section of that
   engagement's **Status Report.html**. Every move and every rename is in

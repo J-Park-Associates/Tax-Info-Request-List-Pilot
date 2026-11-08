@@ -26,7 +26,7 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of fifty-nine modules in six layers.
+`tracker/` is one Python package of sixty modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The scanner never imports the filer; a person's actions
@@ -205,6 +205,13 @@ the package but each other.
   a folder it owns whole, a level above one only when empty (decisions 125,
   131, 137, 188, P343). Out of the API so a command line could reach them
   (decision 123's lesson); `create` and `rollover` call them by import.
+- `run_log.py`: what one pass reports - the records of each return's pass
+  and of the whole pass that the console, the practice page and the run log
+  are drawn from, the run log's codes beside the page's sentences, the run
+  log itself with its rotation, and the last-pass file the app's one line
+  about the schedule is read from (decisions 159, 186, 189, P345). Out of
+  the runner, which imports back what it reads, so the practice page and
+  the order hint can leave the runner too and still read the same records.
 - `scanner.py`: walks the working copies, runs the three tiers, resolves each
   request's status (override- and revert-aware) and records the result.
 - `reminder.py`: drafts the client's chase email in four stages measured
@@ -223,7 +230,7 @@ the package but each other.
 
 - `runner.py`: the whole scheduled task: for every engagement, file, scan,
   and on the draft day draft; the status page over the whole practice; the
-  run log of counts and codes.
+  run log of counts and codes, written through `run_log.py`.
 - `scheduling.py`: the Task Scheduler XML, or on a Mac the launchd agent.
 - `after_install.py`: every one-time step after installing or upgrading, run
   by the installer, by the app at its first start after the program changed,

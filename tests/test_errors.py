@@ -242,7 +242,7 @@ def test_a_child_keeps_a_short_list_and_says_how_many_it_dropped(monkeypatch):
 THE_ONE_LOG = "errlog.py"
 #: Files a module names that are not a logger's file, each with why.
 NOT_A_LOGGERS_FILE = {
-    ("runner.py", "runs.log"): "the run log: counts and codes appended by fsio, never a logger's (186)",
+    ("run_log.py", "runs.log"): "the run log: counts and codes appended by fsio, never a logger's (186)",
 }
 _FILE_HANDLERS = {"FileHandler", "RotatingFileHandler", "TimedRotatingFileHandler",
                   "WatchedFileHandler"}

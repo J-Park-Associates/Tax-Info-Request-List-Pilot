@@ -244,14 +244,14 @@ def test_a_slow_reading_is_said_and_never_cut_short(tmp_path, monkeypatch):
     import time as clock
 
     from tracker.content_check import extract
-    from tracker.runner import SLOW_READING_NOTE, SLOW_READING_SECONDS
+    from tracker.run_log import SLOW_READING_NOTE, SLOW_READING_SECONDS
 
     def a_slow_reader(path):
         clock.sleep(0.05)
         return "Chase Bank December 2025, every word of it"
 
     monkeypatch.setattr("tracker.content_check._ocr_image", a_slow_reader)
-    monkeypatch.setattr("tracker.runner.SLOW_READING_SECONDS", 0.01)
+    monkeypatch.setattr("tracker.run_log.SLOW_READING_SECONDS", 0.01)
 
     reading = extract(photo(tmp_path / "slow.png"))
     assert reading.seconds >= 0.05                             # timed

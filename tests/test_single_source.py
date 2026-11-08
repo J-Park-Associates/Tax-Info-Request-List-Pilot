@@ -4456,7 +4456,7 @@ def test_the_runbook_describes_the_saved_schedule_and_the_interval_aware_amber_r
     per-computer saved choice, no passage still assumes the fixed two-hour
     default, the last-pass rule states the two-missed-runs threshold from
     the runner, and the move step keeps the saved choice."""
-    from tracker.runner import LAST_PASS_AMBER_HOURS, LAST_PASS_AMBER_HOURS_DAILY
+    from tracker.run_log import LAST_PASS_AMBER_HOURS, LAST_PASS_AMBER_HOURS_DAILY
 
     runbook = read("docs/runbook.md")
     assert "**Schedule** button" in runbook and "`settings.json`" in runbook

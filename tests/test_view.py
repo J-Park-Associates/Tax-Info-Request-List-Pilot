@@ -649,7 +649,7 @@ def test_a_view_whose_replace_fails_is_reported_stale_and_the_pass_succeeds(
 def test_a_pass_whose_view_cannot_be_replaced_reports_it_and_still_succeeds(
     tmp_path, engagement, monkeypatch
 ):
-    from tracker import runner
+    from tracker import run_log
     from tracker.registry import engagement_from
 
     view.write_view(engagement)
@@ -667,7 +667,7 @@ def test_a_pass_whose_view_cannot_be_replaced_reports_it_and_still_succeeds(
     assert run.ok and not run.error
     assert run.view_stale
     assert run.filed == 1
-    assert runner.VIEW_NOT_REGENERATED in run.summary()
+    assert run_log.VIEW_NOT_REGENERATED in run.summary()
 
 
 def test_a_page_somebody_is_reading_is_still_read_and_says_what_each_system_does(engagement):

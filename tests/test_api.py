@@ -377,7 +377,7 @@ def test_the_apps_pass_appends_the_line_the_scheduled_run_appends(capsys, demo_r
     command line's, and the button makes the same pass, so it writes the same
     line - appended, never replacing what earlier passes wrote. Since
     decision 186 it is the data home's run log, and it names no client."""
-    from tracker.runner import log_path
+    from tracker.run_log import log_path
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
 
@@ -1957,13 +1957,13 @@ def test_the_app_state_reports_the_last_pass(capsys, tmp_path, monkeypatch):
     after a failed one."""
     import datetime as dt
 
-    from tracker import runner
+    from tracker import run_log, runner
     from tracker.settings import ENV_SETTINGS_DIR
 
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
     code, payload = run(capsys, "list")
     assert code == 0 and payload["needs_root"] is True
-    assert payload["last_pass"] == {"text": runner.LAST_PASS_NEVER, "level": runner.LEVEL_WARN,
+    assert payload["last_pass"] == {"text": run_log.LAST_PASS_NEVER, "level": run_log.LEVEL_WARN,
                                     "ok": False, "running": False, "when": None}
 
     now = dt.datetime.now()
@@ -1974,7 +1974,7 @@ def test_the_app_state_reports_the_last_pass(capsys, tmp_path, monkeypatch):
     assert run(capsys, "set-root", stdin={"root": str(clients)})[0] == 0
     code, payload = run(capsys, "list")
     assert code == 0 and payload["needs_root"] is False
-    assert payload["last_pass"]["level"] == runner.LEVEL_ERR
+    assert payload["last_pass"]["level"] == run_log.LEVEL_ERR
     assert runner.PASS_REASONS[runner.PASS_ROOT_REFUSED] in payload["last_pass"]["text"]
     # The last-sort line needs no parsing of the runner's words: a failed
     # pass is not ok and says when it started (SPEC-shell 9.3).
@@ -1999,13 +1999,13 @@ def test_the_app_state_reports_the_last_pass(capsys, tmp_path, monkeypatch):
 
 def test_the_last_pass_reply_and_its_line_agree_on_an_oversized_file(tmp_path, monkeypatch):
     """The reply's ``ok`` and ``when`` read the last-pass file under the cap
-    its line reads it under (``runner.LAST_PASS_MAX_BYTES``): a file past
+    its line reads it under (``run_log.LAST_PASS_MAX_BYTES``): a file past
     it is "could not be read" in the line and neither ok nor dated in the
     reply, never a red line beside a green tick."""
     import datetime as dt
     import json
 
-    from tracker import api, runner
+    from tracker import api, run_log, runner
     from tracker.settings import ENV_SETTINGS_DIR
 
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
@@ -2013,11 +2013,11 @@ def test_the_last_pass_reply_and_its_line_agree_on_an_oversized_file(tmp_path, m
     runner.write_last_pass(runner.last_pass_path(), started=now, ended=now, root="",
                            result=runner.PASS_SUCCEEDED)
     data = json.loads(runner.last_pass_path().read_text(encoding="utf-8"))
-    padded = json.dumps(data) + " " * runner.LAST_PASS_MAX_BYTES
+    padded = json.dumps(data) + " " * run_log.LAST_PASS_MAX_BYTES
     assert len(padded) < runner.PASS_ORDER_MAX_BYTES
     runner.last_pass_path().write_text(padded, encoding="utf-8")
     reply = api._last_pass()
-    assert reply["level"] == runner.LEVEL_ERR
+    assert reply["level"] == run_log.LEVEL_ERR
     assert reply["ok"] is False and reply["running"] is False and reply["when"] is None
 
 

@@ -31,6 +31,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - registry      : finds every engagement under the clients root (no registry file)
 - verify        : the read-only proof, firm-wide - every record held to this machine's checkpoint and the store, every recorded file to its bytes; it changes nothing
 - runner        : the unattended pass (file -> scan -> weekly draft)
+- run_log       : what one pass reports - the records the console, the page and the run log are drawn from, the run log's codes, the run log and its rotation, and the last-pass file the app reads
 - scheduling    : generate the Task Scheduler job
 - after_install : every one-time step after installing or upgrading - the schedule on the computer that runs it, the record check - run by Setup, the app's launch and the first root saved
 - templates     : the per-form request catalog, the one place the checklists live

@@ -134,6 +134,7 @@ from tracker import (
     records,
     reminder,
     review,
+    run_log,
     runner,
     settings,
     store,
@@ -353,6 +354,7 @@ from tracker.rollover import (
     roll_household,
     with_default_dates,
 )
+from tracker.run_log import last_pass_line
 from tracker.runner import (
     DRAFT_WEEKDAY,
     LEFT_BEHIND_TO_MOVE,
@@ -362,7 +364,6 @@ from tracker.runner import (
     created_on,
     last_draft_day,
     last_drafted,
-    last_pass_line,
     left_behind_warnings,
 )
 from tracker.scaffold import (
@@ -2395,7 +2396,7 @@ def _last_pass_file() -> str | None:
     word), and never reads the file: it learns only that the file's folder
     changed, and the page then asks :func:`_cmd_last_pass`."""
     try:
-        return str(runner.last_pass_path())
+        return str(run_log.last_pass_path())
     except (SettingsError, OSError):
         return None
 
@@ -2839,10 +2840,10 @@ def _list_paths(root: Path | None) -> dict:
 
 
 def _last_pass() -> dict:
-    """:func:`runner.last_pass_line` with the three facts the last-sort line
+    """:func:`run_log.last_pass_line` with the three facts the last-sort line
     needs beside its sentence, so the page never parses the runner's words:
     ``ok`` (the last pass ended well), ``running`` (it started and has not
-    ended: the file's result is :data:`runner.PASS_RUNNING`) and ``when``
+    ended: the file's result is :data:`run_log.PASS_RUNNING`) and ``when``
     (its start, ISO). The file records three results, and flattening them to
     ``ok`` alone drew a pass still running as a failure (pilot P256): ``ok``
     is false while one runs, and ``running`` is what tells that from a pass
@@ -2852,13 +2853,13 @@ def _last_pass() -> dict:
     line = last_pass_line()
     ok, running, when = False, False, None
     try:
-        with runner.last_pass_path().open("rb") as handle:
-            raw = handle.read(runner.LAST_PASS_MAX_BYTES + 1)
-        if len(raw) <= runner.LAST_PASS_MAX_BYTES:
+        with run_log.last_pass_path().open("rb") as handle:
+            raw = handle.read(run_log.LAST_PASS_MAX_BYTES + 1)
+        if len(raw) <= run_log.LAST_PASS_MAX_BYTES:
             data = json.loads(raw.decode("utf-8"))
             when = dt.datetime.fromisoformat(data["started"]).isoformat(timespec="seconds")
-            ok = data["result"] == runner.PASS_SUCCEEDED
-            running = data["result"] == runner.PASS_RUNNING
+            ok = data["result"] == run_log.PASS_SUCCEEDED
+            running = data["result"] == run_log.PASS_RUNNING
     except Exception:            # the line above already says what could not be read
         ok, running, when = False, False, None
     return {**line, "ok": ok, "running": running, "when": when}
@@ -4706,7 +4707,7 @@ def _firm_fresh(root: Path, today: dt.date) -> _FirmRead:
     shown = []
     walk: dict = {"returns": {}, "households": []}
     for one in registry.engagements:
-        if runner.why_skipped(one)[0]:
+        if run_log.why_skipped(one)[0]:
             continue
         row, files, own = _firm_row(one, names.get(one.household_path, ""), today)
         shown.append(_firm_marked(row, files, own, one, paused, links))
