@@ -55,6 +55,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - request_edit  : the request-list editor's save rules - the details and people a spec sends, a row as saved, and the refusals a save meets before anything is recorded
 - household_edit : a household's own edits - its name, its members, the returns its inbox also feeds and the households marked related - and the mirror that writes a related mark onto every other household's record
 - creation      : creating a return - the folder it takes, the refusals it meets before anything is written - and the undo that removes only the folders a failed create or rollover made
+- firm_view     : the Overview's rows and their cache - one builder of each return's counts, files and draft, the group rule the return's page shares, and the last counts at launch
 - replies       : the shape of every reply the API prints, written down once - the one error envelope and each command's reply
 - resident      : the app's engine - one process for the session that answers the commands the app hands it, one after another, and ends itself when anything about it is in doubt
 - firm_cache    : the firm view's cache in the data folder - its head, each household's fingerprint, and a damaged or stale file never used

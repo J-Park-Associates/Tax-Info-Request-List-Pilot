@@ -644,9 +644,10 @@ def fill_firm_cache(root: str, *, product: str = "") -> str:
     "" when it left the cache filled for ``root`` - or why not, by kind.
 
     **Why a child and not a call.** The rows the cache keeps are built by
-    the API (``api._firm_from_cache``), and this module may not import it
-    (``tests/test_layers.py``: the runner never imports ``api`` or
-    ``scheduling``). A second builder of those rows down here would be a
+    :func:`tracker.firm_view._firm_from_cache`, and this module does not
+    import it: ``firm_view`` imports this module (the draft-day rule), so an
+    import back would be a cycle, and the child stayed by P313's answer to
+    Q-C (SPEC-architecture-p5 section 7). A second builder of those rows down here would be a
     second place a status is decided, which P120 refused; so the pass runs
     exactly what Overview runs, as its own process: ``python -m tracker.api
     firm`` from a checkout, the packaged executable given ``firm`` in the

@@ -35,6 +35,7 @@ from tests.source_pins import py_function
 from tests.wording import title_case
 from tracker import (
     creation,
+    firm_view,
     household_edit,
     layout,
     ledger,
@@ -938,7 +939,7 @@ def test_the_review_card_has_three_buckets_and_opens_only_a_documents_copy(capsy
     assert rows["W-2 2025.pdf.exe"]["open_key"] == "" and rows["scans.zip"]["open_key"] == ""
     assert rows["vacation photo.bmp"]["code"] == reasons.NO_REQUEST_ACCEPTS_CODE
     assert rows["vacation photo.bmp"]["open_key"] == "", "never read, so never opened here"
-    assert rows["a letter.pdf"]["code"] in api.READ_AND_PARKED_CODES, rows["a letter.pdf"]["code"]
+    assert rows["a letter.pdf"]["code"] in reasons.READ_AND_PARKED_CODES, rows["a letter.pdf"]["code"]
     opened = Path(state["paths"][rows["a letter.pdf"]["open_key"]])
     assert opened.is_file() and opened.parent.name == REVIEW_DIR_NAME
     assert {t["original_name"]: t["bucket"] for t in state["review"]} == {
@@ -954,8 +955,8 @@ def _parked_row(name: str, code: str) -> IndexEntry:
 
 
 @pytest.mark.parametrize("name, code", [
-    *(("statement.pdf", code) for code in sorted(reasons.NO_OPEN_CODES - api._CONTAINER_CODES)),
-    *(("mail.eml", code) for code in sorted(api._CONTAINER_CODES)),
+    *(("statement.pdf", code) for code in sorted(reasons.NO_OPEN_CODES - firm_view._CONTAINER_CODES)),
+    *(("mail.eml", code) for code in sorted(firm_view._CONTAINER_CODES)),
     ("scans.zip", reasons.AMBIGUOUS_CODE),
 ])
 def test_a_refused_file_has_no_open_on_the_designated_machine(name, code):
@@ -979,7 +980,7 @@ def test_a_code_nobody_has_placed_gets_no_open(code):
     assert payload["bucket"] == api.BUCKET_DOCUMENT and payload["open_key"] == "", payload
 
 
-@pytest.mark.parametrize("code", sorted(api.READ_AND_PARKED_CODES))
+@pytest.mark.parametrize("code", sorted(reasons.READ_AND_PARKED_CODES))
 def test_a_read_and_parked_document_opens_its_marked_copy(code):
     """The other half of the rule: a document the tracker read and parked
     for a filing reason carries the key of its review copy - the firm's
@@ -4768,7 +4769,7 @@ def test_a_waiting_row_keeps_its_one_click_in_the_document_bucket_with_open_and_
     assert code == 0, state
     [row] = [e for e in state["index"] if e["decision"] == NEEDS_REVIEW]
 
-    assert row["code"] == reasons.NAMED_ACROSS_HOUSEHOLDS.code in api.READ_AND_PARKED_CODES
+    assert row["code"] == reasons.NAMED_ACROSS_HOUSEHOLDS.code in reasons.READ_AND_PARKED_CODES
     assert row["bucket"] == waiting["bucket"] == api.BUCKET_DOCUMENT
     assert row["open_key"] and Path(state["paths"][row["open_key"]]).is_file()
     assert waiting["handle"] == row["handle"]
@@ -7592,7 +7593,7 @@ def test_a_root_that_cannot_be_walked_says_so_on_the_feeds_and_the_list(capsys, 
     def cannot_walk(*args, **kwargs):
         raise RegistryError("a fabricated walk failure")
 
-    for module in (api, household_edit):
+    for module in (api, firm_view, household_edit):
         monkeypatch.setattr(module, "households_named", cannot_walk)
     payload = payload_of_state(capsys, father)
     assert [feed["warning"] for feed in payload["household"]["feeds"]] == [api.PRACTICE_NOT_WALKED]
@@ -8474,6 +8475,8 @@ def test_a_blank_issuer_name_is_refused_before_anything_is_read(capsys, demo_roo
 
     for name in ("load_engagement_info", "load_manifest", "read_index", "assign_review_file"):
         monkeypatch.setattr(api, name, unread)
+    for name in ("load_engagement_info", "load_manifest", "read_index"):
+        monkeypatch.setattr(firm_view, name, unread)
     monkeypatch.setattr(request_edit, "load_manifest", unread)
     code, payload = _add_issuer(capsys, engagement, row, issuer=" , . ")
     assert code == 1 and payload["error"] == "an issuer row needs the name of the entity that issued the K-1"
@@ -8676,8 +8679,8 @@ def _tally(state: dict) -> dict:
     """What the return's page draws under each group: the request rows and the
     files that are not filed (a filed file is the Received row it answered)."""
     return {group: sum(1 for item in state["items"] if item["group"] == group)
-            + sum(1 for file in state["index"] if file["group"] == group and group != api.GROUP_RECEIVED)
-            for group in api.GROUPS}
+            + sum(1 for file in state["index"] if file["group"] == group and group != firm_view.GROUP_RECEIVED)
+            for group in firm_view.GROUPS}
 
 
 def test_firm_counts_match_the_return_pages_groups(capsys, demo_root):
@@ -8687,7 +8690,7 @@ def test_firm_counts_match_the_return_pages_groups(capsys, demo_root):
     counted = {one["path"]: one["counts"] for one in firm["returns"]}
     for folder in (mixed, quiet):
         assert counted[str(folder)] == _tally(payload_of_state(capsys, folder))
-    assert counted[str(quiet)][api.GROUP_RECEIVED] == 2
+    assert counted[str(quiet)][firm_view.GROUP_RECEIVED] == 2
     # A parked program is a file waiting for a person, with its reason's code.
     [row] = [one for one in firm["returns"] if one["path"] == str(mixed)]
     assert row["files"] == 1 and row["oldest"] == "2026-02-01"
@@ -8918,8 +8921,9 @@ def test_firm_says_a_reminder_draft_ready_only_until_it_is_approved_and_counts_t
     from tracker import reminder
 
     folder = chased_engagement(capsys, demo_root, name="Drafted")
-    monkeypatch.setattr(api, "last_drafted", lambda _path: dt.date.today())
-    monkeypatch.setattr(api, "last_draft_day", lambda today, _weekday: today - dt.timedelta(days=1))
+    for module in (api, firm_view):
+        monkeypatch.setattr(module, "last_drafted", lambda _path: dt.date.today())
+        monkeypatch.setattr(module, "last_draft_day", lambda today, _weekday: today - dt.timedelta(days=1))
     monkeypatch.setattr(reminder, "unsorted_in_inbox", lambda _path: 2)
     monkeypatch.setattr(reminder, "approval_state", lambda *_a, **_k: "")
 
@@ -9008,13 +9012,13 @@ def test_firm_says_an_unreadable_record_as_its_own_row(capsys, demo_root, monkey
             raise api.ManifestError("the record is not readable")
         return real(path, **kwargs)
 
-    for module in (api, request_edit):
+    for module in (api, firm_view, request_edit):
         monkeypatch.setattr(module, "load_manifest", broken)
     code, firm = run(capsys, "firm")
     assert code == 0, firm
     rows = {one["path"]: one for one in firm["returns"]}
-    assert rows[str(mixed)]["problem"] == api.FIRM_UNREADABLE == "Could Not Be Read"
-    assert "record" not in api.FIRM_UNREADABLE.lower() and len(api.FIRM_UNREADABLE.split()) <= 5
+    assert rows[str(mixed)]["problem"] == firm_view.FIRM_UNREADABLE == "Could Not Be Read"
+    assert "record" not in firm_view.FIRM_UNREADABLE.lower() and len(firm_view.FIRM_UNREADABLE.split()) <= 5
     assert set(rows[str(mixed)]["counts"].values()) == {0}
     assert rows[str(quiet)]["problem"] == ""
     # A return nobody can read needs a person; it is never counted as complete.
@@ -9061,7 +9065,8 @@ def _rows_read(monkeypatch) -> list[str]:
         read.append(str(one.path))
         return real(one, household, today)
 
-    monkeypatch.setattr(api, "_firm_row", counted)
+    for module in (api, firm_view):
+        monkeypatch.setattr(module, "_firm_row", counted)
     return read
 
 
@@ -9195,11 +9200,11 @@ def test_a_household_with_a_problem_is_never_kept_so_its_detail_is_logged_every_
             raise api.ManifestError("the record is not readable")
         return real(path, **kwargs)
 
-    for module in (api, request_edit):
+    for module in (api, firm_view, request_edit):
         monkeypatch.setattr(module, "load_manifest", broken)
     for _ in range(2):
         rows = {one["path"]: one for one in _cached_firm(capsys)["returns"]}
-        assert rows[str(mixed)]["problem"] == api.FIRM_UNREADABLE
+        assert rows[str(mixed)]["problem"] == firm_view.FIRM_UNREADABLE
     assert len(kept) == 2, "read, and said, on every reply"
     households = json.loads(firm_cache.cache_path().read_text(encoding="utf-8"))["households"] \
         if firm_cache.cache_path().exists() else {}
@@ -9222,7 +9227,7 @@ def test_the_firm_view_answers_whole_when_its_cache_is_unsure(capsys, demo_root,
     with caplog.at_level(logging.WARNING, logger="tracker.api"):
         assert _cached_firm(capsys) == whole
     assert "cache was set aside (RuntimeError)" in caplog.text
-    monkeypatch.setattr(api, "household_positions", lambda root: None)       # no one private tree
+    monkeypatch.setattr(firm_view, "household_positions", lambda root: None)       # no one private tree
     assert _cached_firm(capsys) == whole
 
 
@@ -9387,44 +9392,6 @@ def test_firm_says_a_root_it_cannot_walk_and_answers_an_empty_root_as_nothing(ca
     monkeypatch.setattr(api, "discover_engagements", not_walked)
     code, payload = run(capsys, "firm")
     assert code == 1 and payload["error"] == api.PRACTICE_NOT_WALKED
-
-
-def test_item_group_follows_its_table():
-    from types import SimpleNamespace
-
-    from tracker.manifest import Override
-    from tracker.reminder import SIDE_CLIENT, SIDE_DECIDE, SIDE_US
-
-    def row(status=Status.MISSING, asked=True, override="", identifier="A01"):
-        return SimpleNamespace(identifier=identifier, status=status, asked=asked,
-                               manual_override=override)
-
-    assert api.item_group(row(override=Override.NOT_APPLICABLE), {}) == "set_aside"
-    assert api.item_group(row(status="", asked=False), {}) == "set_aside"       # nothing in
-    assert api.item_group(row(), {"A01": (SIDE_CLIENT, "")}) == "waiting"
-    assert api.item_group(row(), {"A01": (SIDE_US, "")}) == "needs_you"
-    assert api.item_group(row(), {"A01": (SIDE_DECIDE, "")}) == "needs_you"
-    assert api.item_group(row(status=Status.RECEIVED), {}) == "received"
-    assert api.item_group(row(override=Override.ACCEPTED), {}) == "received"
-    assert api.item_group(row(), {}) == "waiting"                                # not yet checked
-    # The order of the table: an override beats a side; a side beats Received.
-    assert api.item_group(row(override=Override.NOT_APPLICABLE), {"A01": (SIDE_US, "")}) == "set_aside"
-    assert api.item_group(row(status=Status.RECEIVED), {"A01": (SIDE_US, "")}) == "needs_you"
-
-
-def test_a_file_falls_in_the_group_its_decision_says():
-    from tracker.index import FILE_MOVED, NOT_REQUESTED
-
-    def entry(decision, home="A01/a.pdf"):
-        return IndexEntry(received="2026-02-01", original_name="a.pdf", size_kb=1.0, digest="1" * 64,
-                          identifier="A01", prepared_location=home, pbc_location="pbc/a.pdf",
-                          decision=decision, reason="")
-
-    assert api.file_group(entry(NEEDS_REVIEW)) == "needs_you"
-    assert api.file_group(entry(FILE_MOVED)) == "needs_you"
-    assert api.file_group(entry(FILE_MOVED, home="")) == "set_aside"      # marked missing
-    assert api.file_group(entry(NOT_REQUESTED)) == "set_aside"
-    assert api.file_group(entry(api.FILED)) == "received"
 
 
 def test_list_reports_the_clients_root_and_the_firm_report_as_openable(capsys, demo_root):
@@ -9897,9 +9864,9 @@ def test_a_record_rewritten_at_its_own_size_and_time_is_seen_the_next_day(capsys
             return dt.date.fromordinal(dt.date.today().toordinal() + 1)
 
     # Tomorrow for the API, which hands the day to every firm row - and
-    # for request_edit, which reads the same ``dt`` (a stand-in follows the
-    # name's readers) - and for nothing else.
-    for module in (api, request_edit):
+    # for firm_view and request_edit, which read the same ``dt`` (a stand-in
+    # follows the name's readers) - and for nothing else.
+    for module in (api, firm_view, request_edit):
         monkeypatch.setattr(module, "dt", types.SimpleNamespace(**{**vars(dt), "date": Tomorrow}))
     tomorrow = _firm_whole(capsys, monkeypatch)
     assert _cached_firm(capsys) == tomorrow and tomorrow != before
@@ -9922,7 +9889,7 @@ def _a_record_rewritten_with_its_size_and_time_put_back(capsys, demo_root, monke
     os.utime(record, ns=(kept.st_atime_ns, kept.st_mtime_ns))
     assert record.stat().st_size == kept.st_size
     whole = _firm_whole(capsys, monkeypatch)
-    assert {one["path"]: one["problem"] for one in whole["returns"]}[str(mixed)] == api.FIRM_UNREADABLE
+    assert {one["path"]: one["problem"] for one in whole["returns"]}[str(mixed)] == firm_view.FIRM_UNREADABLE
     return mixed, before, whole
 
 
@@ -9947,7 +9914,7 @@ def test_the_first_overview_after_a_pass_reads_no_household_again(capsys, demo_r
 
 def test_every_file_a_firm_reply_opens_is_in_the_fingerprint_and_never_the_status_page(
         capsys, demo_root, monkeypatch):
-    """What the fingerprint leaves out (``api.FIRM_JUDGED``) is pinned to
+    """What the fingerprint leaves out (``firm_view.FIRM_JUDGED``) is pinned to
     what the firm view opens: a page it leaves out must be one it never
     opens, and every file it does open is judged by its size and time
     (P212), inside the household's two folders."""
@@ -9977,7 +9944,7 @@ def test_every_file_a_firm_reply_opens_is_in_the_fingerprint_and_never_the_statu
     from tracker import firm_cache
     from tracker.layout import CLIENTS_TREE
 
-    judged = api.FIRM_JUDGED
+    judged = firm_view.FIRM_JUDGED
     for place in opened:
         assert place.name != VIEW_FILENAME
         # Its names below its household's folder, in the tree it is in: the
@@ -10495,7 +10462,7 @@ def test_a_cold_overview_says_each_batch_of_households_it_reads(capsys, demo_roo
 
     households = _a_practice_of_five_households(capsys, demo_root)
     firm_cache.cache_path().unlink(missing_ok=True)
-    monkeypatch.setattr(api, "FIRM_READ_BATCH", 2)
+    monkeypatch.setattr(firm_view, "FIRM_READ_BATCH", 2)
     *counts, reply = _firm_lines(capsys)
     assert progress.PROGRESS_KEY not in reply and reply["returns"]
     said = [line[progress.PROGRESS_KEY] for line in counts]
@@ -10524,7 +10491,7 @@ def test_an_overview_read_in_batches_is_the_whole_walks_answer(capsys, demo_root
     whole = _firm_whole(capsys, monkeypatch)
     for batch in (1, 2):
         firm_cache.cache_path().unlink(missing_ok=True)
-        monkeypatch.setattr(api, "FIRM_READ_BATCH", batch)
+        monkeypatch.setattr(firm_view, "FIRM_READ_BATCH", batch)
         assert _firm_lines(capsys)[-1] == whole, batch
         assert _firm_lines(capsys)[-1] == whole, batch          # and kept, the same
 
@@ -10686,7 +10653,7 @@ def test_every_last_counts_refusal_is_said_by_its_own_name_and_only_the_unusual_
         firm_cache.save(where, head, households)
 
     with monkeypatch.context() as patch:
-        patch.setattr(api, "household_positions", lambda root: None)
+        patch.setattr(firm_view, "household_positions", lambda root: None)
         refused("no_positions")
     firm_cache.save(where, {**head, "day": "2020-01-01"}, households)
     refused("no_kept_practice")
@@ -10713,7 +10680,7 @@ def test_every_last_counts_refusal_is_said_by_its_own_name_and_only_the_unusual_
     refused("row_not_kept")
     assert _firm_last(capsys)["last"] is True
 
-    assert said == api.FIRM_LAST_REFUSALS
+    assert said == firm_view.FIRM_LAST_REFUSALS
     assert {name for name, level in said.items() if level >= logging.WARNING} == \
         {"households_differ", "household_problem", "row_not_kept"}
 
@@ -10754,8 +10721,9 @@ def test_the_last_counts_read_no_record_and_take_no_fingerprint(capsys, demo_roo
         raise AssertionError("firm-last read what it must not")
 
     for module, name in ((firm_cache, "fingerprint"), (firm_cache, "fingerprints"), (api, "load_manifest"),
-                         (request_edit, "load_manifest"),
-                         (api, "read_index"), (api, "_firm_row"), (api, "households_named"),
+                         (firm_view, "load_manifest"), (request_edit, "load_manifest"),
+                         (api, "read_index"), (firm_view, "read_index"), (api, "_firm_row"),
+                         (firm_view, "_firm_row"), (api, "households_named"), (firm_view, "households_named"),
                          (household_edit, "households_named"),
                          (api, "discover_engagements"), (registry, "engagement_from"),
                          (store, "connect"), (ledger, "read_with_chain")):
@@ -10839,9 +10807,9 @@ def test_a_mac_says_protected_view_does_not_exist_each_time_a_macro_copy_opens(
     }
     for name, content in copies.items():
         (review / name).write_bytes(content)
-    code = sorted(api.READ_AND_PARKED_CODES)[0]
+    code = sorted(reasons.READ_AND_PARKED_CODES)[0]
     rows = [_parked_row(name, code) for name in copies]
-    rows.append(_parked_row("mail.eml", sorted(api._CONTAINER_CODES)[0]))     # never opens, so never named
+    rows.append(_parked_row("mail.eml", sorted(firm_view._CONTAINER_CODES)[0]))     # never opens, so never named
     (review / "mail.eml").write_bytes(b"made-up")
 
     monkeypatch.setattr(settings, "host_system", lambda: "darwin")
@@ -11005,9 +10973,12 @@ def _forbid_the_walk(monkeypatch) -> None:
     def refuses(*args, **kwargs):
         raise AssertionError("the view was to be read, not the firm")
 
-    for name in ("discover_engagements", "household_positions", "households_named", "_firm_row", "load_manifest", "read_index",
+    for name in ("discover_engagements", "households_named", "_firm_row", "load_manifest", "read_index",
                  "load_engagement_info", "_firm_fresh", "_firm_cached"):
         monkeypatch.setattr(api, name, refuses)
+    for name in ("household_positions", "households_named", "_firm_row", "load_manifest", "read_index",
+                 "load_engagement_info"):
+        monkeypatch.setattr(firm_view, name, refuses)
     monkeypatch.setattr(request_edit, "load_manifest", refuses)
     monkeypatch.setattr(household_edit, "households_named", refuses)
     monkeypatch.setattr(firm_cache, "fingerprint", refuses)
@@ -11211,7 +11182,7 @@ def test_the_walk_the_pages_are_cut_from_is_the_same_from_the_cache_and_from_the
 
     _a_practice_kept_whole(capsys, demo_root, monkeypatch)
     root, today = api._saved_root(), dt.date.today()
-    cached = api._firm_from_cache(root, today)
+    cached = firm_view._firm_from_cache(root, today)
     fresh = api._firm_fresh(root, today)
     assert cached[1]["returns"] == fresh[1]["returns"] and cached[1]["returns"]
     ordered = lambda walk: sorted(walk["households"], key=lambda one: one["path"])      # noqa: E731

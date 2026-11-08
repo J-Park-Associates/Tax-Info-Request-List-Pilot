@@ -26,7 +26,7 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of fifty-eight modules in six layers.
+`tracker/` is one Python package of fifty-nine modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The scanner never imports the filer; a person's actions
@@ -229,6 +229,12 @@ the package but each other.
   by the installer, by the app at its first start after the program changed,
   and by saving the clients root, so none depends on a person remembering it
   (decision 209).
+- `firm_view.py`: the Overview's rows and their cache: one builder of each
+  return's counts by group, the files waiting for a person and the draft's
+  state, the group rule the return's page shares, and the last counts shown
+  at launch (P344). It sits beside the runner, whose draft-day rule it
+  reads; the API's `firm` and `firm-last` call it and shape the reply, and
+  the pass fills the cache through that same `firm`, in a child.
 
 **Layer 5: the door the shell knocks on.**
 

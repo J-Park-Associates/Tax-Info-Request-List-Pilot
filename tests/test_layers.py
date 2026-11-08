@@ -269,7 +269,12 @@ LAYERS: dict[int, frozenset[str]] = {
     # ``after_install`` joins L4 with decision 209, beside the scheduler it
     # drives: it imports ``scheduling`` (L4), ``store`` (L1), ``registry``
     # (L3) and L0; the API imports it, and nothing lower may.
-    4: frozenset({"runner", "scheduling", "after_install"}),
+    # ``firm_view`` joins L4 with P344 (SPEC-architecture-p5 P5.7): the
+    # Overview's rows, their cache and the group rule, out of ``api``, which
+    # imports them back - ``runner`` (in-layer, the draft-day rule),
+    # ``reminder``, ``review``, ``registry`` and ``view`` (L3), ``containers``
+    # (L2), L1 and L0; never ``screen_words``.
+    4: frozenset({"runner", "scheduling", "after_install", "firm_view"}),
     # ``resident`` joins L5 with P276: the engine's loop over ``api.main``; it
     # imports ``api``, ``errlog``, ``locking``, ``reader_child`` and the
     # standard library; nothing imports it but ``api_entry.py``, at call time.
@@ -309,7 +314,7 @@ DOMAINS: dict[str, frozenset[str]] = {
     # screen and the shape of every reply it prints.
     "door": frozenset({"errors", "errlog", "api", "resident", "replies", "screen_words"}),
     # What a person opens: the pages, their kept rows and the firm's view.
-    "shell": frozenset({"page", "page_rows", "firm_cache", "firm_pages", "view"}),
+    "shell": frozenset({"page", "page_rows", "firm_cache", "firm_pages", "view", "firm_view"}),
 }
 
 #: Load-time edges that may point upward. None today; an entry here is a
@@ -678,16 +683,21 @@ def test_nothing_the_scheduled_pass_loads_reads_the_products_name_at_import():
     both - so none of them may be in what the runner loads. The test above
     checks the runner's own imports; this one follows its load-time imports
     to every module they load in turn, so a word module imported two steps
-    down would still be caught before it stopped the scheduled pass."""
+    down would still be caught before it stopped the scheduled pass.
+
+    SPEC-architecture-p5 R5.7.9 (P344): it walks ``firm_view``'s load-time
+    closure too, so the pass could call the builder in-process (Q-C) without
+    reading the product's name."""
     load, _ = import_edges()
-    loaded: set[str] = set()
-    waiting = ["runner"]
-    while waiting:
-        for module in load[waiting.pop()] - loaded:
-            loaded.add(module)
-            waiting.append(module)
-    reached = {"screen_words", "scheduling", "api"} & loaded
-    assert reached == set(), sorted(reached)
+    for start in ("runner", "firm_view"):
+        loaded: set[str] = set()
+        waiting = [start]
+        while waiting:
+            for module in load[waiting.pop()] - loaded:
+                loaded.add(module)
+                waiting.append(module)
+        reached = {"screen_words", "scheduling", "api"} & loaded
+        assert reached == set(), (start, sorted(reached))
 
 
 def test_the_scanner_never_imports_the_filer_or_a_persons_actions_and_they_reach_it_only_at_call_time():

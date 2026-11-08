@@ -4389,12 +4389,14 @@ def test_the_practice_page_is_written_after_its_readings_end(tmp_path, samples, 
 def test_only_the_practice_page_reads_the_store_without_following_the_journal():
     """R6: a writer or a card that read without following could act on
     rows behind the journal, so ``follow=False`` is passed in the runner's
-    page and in the API's read-only ``firm`` command (SPEC-shell 9.2, which
-    counts what the page counts) and nowhere else in the package."""
+    page and in the firm view that the API's read-only ``firm`` command
+    builds its rows with (``tracker/firm_view.py`` since P344; SPEC-shell
+    9.2, which counts what the page counts) and nowhere else in the
+    package."""
     package = Path(runner_module.__file__).parent
     passing = sorted(one.name for one in package.glob("*.py")
                      if "follow=False" in one.read_text(encoding="utf-8"))
-    assert passing == ["api.py", "runner.py"]
+    assert passing == ["firm_view.py", "runner.py"]
 
 
 # ------------------------------------ watched, and stoppable (decision 193) ----

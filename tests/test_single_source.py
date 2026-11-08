@@ -2820,7 +2820,7 @@ def test_the_runbook_opens_nothing_where_it_sits_and_drops_nothing_in_the_client
 
 def test_the_runbook_opens_no_container_or_refused_file_on_this_machine():
     """Open follows 184 (decision 190) and is an allow-list: no row for a
-    cause outside ``api.READ_AND_PARKED_CODES`` - an email or a zip, a file
+    cause outside ``reasons.READ_AND_PARKED_CODES`` - an email or a zip, a file
     whose reading was refused or never made - sends a person to **Open** on
     this machine - it is opened, if at all, on a machine with no Drive
     sign-in and no client folder - and no sentence about a container

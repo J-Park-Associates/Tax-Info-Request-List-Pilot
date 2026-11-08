@@ -27,13 +27,15 @@ same objects under the same names, and no reply changed.
 not a word. ``ENGAGEMENT_FLAG`` is the door's command-line flag; the review
 buckets' keys (with ``BUCKET_HEADINGS``, which is keyed by them), the group
 keys and ``GROUPS``, the link keys and ``_CONTAINER_CODES`` are codes a
-reply carries, and they go with the rules that decide them; ``COMMANDS``,
-the command sets and ``PASS_COMMAND`` are the door itself; the pilot
-record's block and the firm page refusal's are each a word read beside the
-file name, the bound or the envelope key it is said with. And
-``FIRM_UNREADABLE`` goes with the practice's rows to ``firm_view``
-(SPEC-architecture-p5 P5.7), which the pass could load to fill the firm
-cache in its own process (Q-C), so that word must not live here (below).
+reply carries, and they went with the rules that decide them - to
+:mod:`tracker.firm_view` (P344), all but ``BUCKET_HEADINGS``, which the
+API's vocabulary sends; ``COMMANDS``, the command sets and
+``PASS_COMMAND`` are the door itself; the pilot record's block and the firm
+page refusal's are each a word read beside the file name, the bound or the
+envelope key it is said with. And ``FIRM_UNREADABLE`` went with the
+practice's rows to ``firm_view`` (SPEC-architecture-p5 P5.7, P344), which
+the pass could load to fill the firm cache in its own process (Q-C), so
+that word must not live here (below).
 
 **Why layer 1.** It reads two labels of the request list (``COLUMNS``,
 ``COL_ISSUER``) from ``manifest`` and the record's ``NO`` from ``records``,
@@ -54,7 +56,8 @@ scheduled pass before it started. Only the API, the editor's save rules
 (:mod:`tracker.creation`, P343) import it, and the runner imports none of
 them (P313). A guard in ``tests/test_layers.py``,
 ``test_nothing_the_scheduled_pass_loads_reads_the_products_name_at_import``,
-holds every module the runner loads to that.
+holds every module the runner loads, and every module the firm view
+loads, to that.
 """
 
 from __future__ import annotations
