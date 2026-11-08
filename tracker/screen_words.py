@@ -11,7 +11,11 @@ values the vocabulary carries beside them (``LOCK_WATCH_SECONDS``,
 them to the request list's columns). The renderer types none of them:
 :func:`tracker.api.vocab` hands them over (decision 42), and a command's
 reply or refusal says them by these names. A wording change is an edit here
-and nowhere else (P66: wording only, no behaviour).
+and nowhere else (P66: wording only, no behaviour). One heading is not
+here: the one over the folders the app leaves alone is the practice page's
+own word (``tracker.status_page.STATUS_MISFITS_HEADING``), which the API
+imports and sends, so the screen and the page say it from one typing
+(SPEC-architecture-p5 P5.9, P346; C-6).
 
 **Where it came from** (SPEC-architecture-p5 P5.3, P340; the architecture
 audit's C-1 item 1 and C-6). The words sat among the API's handlers, in
@@ -306,7 +310,6 @@ CLIENT_TYPE_FORMS = {
     "nonprofits": ["990"],
 }
 
-MISFITS_HEADING = "Folders the App Leaves Alone"
 MISFITS_NOTE = ("Each is listed with the one reason it does not fit the layout; nothing in it "
                 "is ever read, moved or renamed.")
 TWO_OPEN_YEARS_NOTE = "Two Years Open; Sorting Paused"

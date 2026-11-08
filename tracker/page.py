@@ -1,7 +1,7 @@
 """The markup both of the firm's pages are drawn with, owned once.
 
 The tracker writes two pages a person opens in a browser: the practice-wide
-one :mod:`tracker.runner` writes into the clients root (decision 75) and the
+one :mod:`tracker.status_page` writes into the clients root (decision 75) and the
 per-engagement one :mod:`tracker.view` writes beside the manifest (decision
 91). They show different things and they share the parts that are easy to
 get subtly wrong, so those parts live here and nowhere else:

@@ -12,7 +12,7 @@ people side.
   record as the engagement's details; nothing else needs registering). Owns
   the household too — its members, its contact and its inbox link, saved in
   the app's household card. Starts the
-  morning on `tracker.runner.STATUS_PAGE_FILENAME` — the whole practice on one
+  morning on `tracker.status_page.STATUS_PAGE_FILENAME` — the whole practice on one
   page, written into the clients folder by every pass and opened by the app's
   **Open Status** button: what each engagement still owes, what is waiting for
   a person across all of them, what failed overnight, and which folders the

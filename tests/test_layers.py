@@ -160,7 +160,7 @@ LAYERS: dict[int, frozenset[str]] = {
     # ``fsio`` and ``errors``; the API does the reading and decides what is kept.
     # ``page_rows`` joins L0 with P227: the practice page's kept rows - the
     # standard library, ``settings``, ``fsio``, ``errors`` and ``firm_cache``'s
-    # head; the runner reads the records and asks the store for the tokens.
+    # head; the status page reads the records and asks the store for the tokens.
     # ``firm_pages`` joins L0 with P278: a firm reply cut into one page, and
     # the view file - the standard library, ``settings``, ``fsio``, ``errors``,
     # ``layout`` (the return naming pattern) and ``firm_cache``'s head and file
@@ -268,9 +268,13 @@ LAYERS: dict[int, frozenset[str]] = {
     # which imports them back - ``registry`` and ``reminder`` (in-layer),
     # ``ocr`` (L2), ``store``, ``records``, ``ledger`` (L1), ``checkpoint`` and
     # L0; never ``scheduling`` or ``api``.
+    # ``status_page`` joins L3 with P346 (SPEC-architecture-p5 P5.9): the
+    # practice status page, out of ``runner`` - ``run_log``, ``registry`` and
+    # ``reminder`` (in-layer), ``store``, ``index``, ``manifest`` (L1) and
+    # ``page``, ``page_rows``, ``hold`` (L0); never ``scheduling`` or ``api``.
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review",
                   "verify", "intents", "inbox", "readme_ack", "actions", "request_edit",
-                  "household_edit", "creation", "run_log"}),
+                  "household_edit", "creation", "run_log", "status_page"}),
     # ``after_install`` joins L4 with decision 209, beside the scheduler it
     # drives: it imports ``scheduling`` (L4), ``store`` (L1), ``registry``
     # (L3) and L0; the API imports it, and nothing lower may.
@@ -321,7 +325,8 @@ DOMAINS: dict[str, frozenset[str]] = {
     # screen and the shape of every reply it prints.
     "door": frozenset({"errors", "errlog", "api", "resident", "replies", "screen_words"}),
     # What a person opens: the pages, their kept rows and the firm's view.
-    "shell": frozenset({"page", "page_rows", "firm_cache", "firm_pages", "view", "firm_view"}),
+    "shell": frozenset({"page", "page_rows", "firm_cache", "firm_pages", "view", "firm_view",
+                        "status_page"}),
 }
 
 #: Load-time edges that may point upward. None today; an entry here is a

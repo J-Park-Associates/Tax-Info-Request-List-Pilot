@@ -32,6 +32,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - verify        : the read-only proof, firm-wide - every record held to this machine's checkpoint and the store, every recorded file to its bytes; it changes nothing
 - runner        : the unattended pass (file -> scan -> weekly draft)
 - run_log       : what one pass reports - the records the console, the page and the run log are drawn from, the run log's codes, the run log and its rotation, and the last-pass file the app reads
+- status_page   : the practice status page in the clients root - every return with what it owes, every file waiting for a person, every failure and every folder left alone, drawn from the pass's report and the store, and written whole
 - scheduling    : generate the Task Scheduler job
 - after_install : every one-time step after installing or upgrading - the schedule on the computer that runs it, the record check - run by Setup, the app's launch and the first root saved
 - templates     : the per-form request catalog, the one place the checklists live

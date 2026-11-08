@@ -26,7 +26,7 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of sixty modules in six layers.
+`tracker/` is one Python package of sixty-one modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The scanner never imports the filer; a person's actions
@@ -212,6 +212,14 @@ the package but each other.
   about the schedule is read from (decisions 159, 186, 189, P345). Out of
   the runner, which imports back what it reads, so the practice page and
   the order hint can leave the runner too and still read the same records.
+- `status_page.py`: the practice status page in the clients root - every
+  engagement with what it owes, every file waiting for a person newest
+  first, everything that failed and every folder the walk left alone -
+  drawn from the pass's report and from each record as the store holds it
+  after the walk, with no lock, nothing fetched and written whole
+  (decisions 75, 91, 159, 190, 192, P346). Out of the runner, which imports
+  back what it reads; its heading over the folders left alone is also the
+  app's.
 - `scanner.py`: walks the working copies, runs the three tiers, resolves each
   request's status (override- and revert-aware) and records the result.
 - `reminder.py`: drafts the client's chase email in four stages measured
@@ -229,8 +237,9 @@ the package but each other.
 **Layer 4: the unattended run.**
 
 - `runner.py`: the whole scheduled task: for every engagement, file, scan,
-  and on the draft day draft; the status page over the whole practice; the
-  run log of counts and codes, written through `run_log.py`.
+  and on the draft day draft; the status page over the whole practice,
+  drawn by `status_page.py`; the run log of counts and codes, written
+  through `run_log.py`.
 - `scheduling.py`: the Task Scheduler XML, or on a Mac the launchd agent.
 - `after_install.py`: every one-time step after installing or upgrading, run
   by the installer, by the app at its first start after the program changed,

@@ -12,9 +12,15 @@ The draft week's dates (``FRIDAY``, ``SATURDAY``, ``SUNDAY``) joined them,
 one block as it was, when ``tests/test_run_log.py`` was split out of
 ``test_runner`` (SPEC-architecture-p5 R5.8.7, P345): both files tell a pass
 or its report a day of that week, and a test file may not import another.
+Two households with a W-2 in each inbox (``_two_households``) and the
+practice page's text as a person reads it (``_page``) joined them when
+``tests/test_status_page.py`` was split out of ``test_runner``
+(SPEC-architecture-p5 R5.9.8, P346), for the same reason: both files draw
+the page and read it back.
 """
 
 import datetime as dt
+import html
 from pathlib import Path
 
 import pytest
@@ -28,6 +34,7 @@ from tracker.records import IndexEntry, rule_from_json
 from tracker.registry import engagement_from
 from tracker.runner import DRAFT_WEEKDAY, SETTINGS_FLAG, main
 from tracker.scaffold import scaffold_engagement
+from tracker.status_page import STATUS_PAGE_FILENAME
 
 # The draft day is whatever the runner says it is; the dates follow it.
 _WEEK_START = dt.date(2026, 3, 9)                      # a Monday
@@ -135,3 +142,14 @@ def _a_parked_file(engagement_dir) -> str:
         identifier="", prepared_location="", pbc_location="unclear scan.pdf",
         decision=NEEDS_REVIEW, reason="no request matched")])
     return "unclear scan.pdf"
+
+
+def _two_households(tmp_path, samples):
+    """Two households, each with a W-2 waiting in its inbox."""
+    first = build_engagement(tmp_path, samples, household="Alder Household", name="Alder TY2025")
+    second = build_engagement(tmp_path, samples, household="Birch Household", name="Birch TY2025")
+    return first, second
+
+
+def _page(root) -> str:
+    return html.unescape((root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8"))

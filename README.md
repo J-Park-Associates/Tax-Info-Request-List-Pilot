@@ -376,7 +376,7 @@ Creating an engagement in the app is all it takes for the next run to include it
 `python -m tracker.registry "G:\Shared drives\Clients"` lists what the run would
 find and flags any manifest it cannot read.
 
-Every real pass also writes `tracker.runner.STATUS_PAGE_FILENAME` into that
+Every real pass also writes `tracker.status_page.STATUS_PAGE_FILENAME` into that
 same clients folder: the whole practice on one page — every engagement with
 what it still owes and what is still syncing, every file waiting for a person
 across all of them (newest first, with the reason it was parked), and

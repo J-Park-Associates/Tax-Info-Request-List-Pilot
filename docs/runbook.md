@@ -1425,7 +1425,7 @@ clears when the next scheduled sort succeeds - the app's own Sort names one
 household and cannot clear it. Notices (a failure, a warning) sit in a panel at the right of the page while there is one, or above the page in a narrow window; each stays until you dismiss it. **Unfile** asks for an optional reason first.
 
 1. **Read what the last pass did.** The status page every pass writes into
-   the clients root (`tracker.runner.STATUS_PAGE_FILENAME`) is the one-screen
+   the clients root (`tracker.status_page.STATUS_PAGE_FILENAME`) is the one-screen
    version — which engagements ran, which need a person, which failed, and
    every parked file across the practice, newest first. A return the pass
    did not run is shown as its record stood when the pass began. The app's
@@ -2726,7 +2726,7 @@ the same way.
 - **Why something odd is the way it is**: the decision log in
   [ROADMAP.md](ROADMAP.md). The odd choice is usually load-bearing.
 - **What every pass did**, engagement by engagement, with the failures:
-  the practice page (`tracker.runner.STATUS_PAGE_FILENAME`) in the clients
+  the practice page (`tracker.status_page.STATUS_PAGE_FILENAME`) in the clients
   root; the run log (`tracker.run_log.LOG_FILENAME`), in the app's data
   folder on the machine that runs the schedule, counts them by code.
 - **What happened to one document**: the Index section of that

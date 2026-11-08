@@ -95,7 +95,10 @@ create or rollover made - lives in ``tracker/creation.py`` (P343), and
 cache and the group rule the return's page shares live in
 ``tracker/firm_view.py`` (P344): ``firm``, ``firm-last``, ``state`` and
 ``list`` call them by import, and ``firm`` and ``firm-last`` still shape
-and page their replies here.
+and page their replies here. The heading over the folders the app leaves
+alone and the practice page's file name are the status page's own
+(``tracker/status_page.py``, P346), imported by name, so the household
+screen and the page say that heading from one typing.
 """
 
 from __future__ import annotations
@@ -359,7 +362,6 @@ from tracker.runner import (
     DRAFT_WEEKDAY,
     LEFT_BEHIND_TO_MOVE,
     NOTHING_OUTSTANDING,
-    STATUS_PAGE_FILENAME,
     WEEKDAY_NAMES,
     created_on,
     last_draft_day,
@@ -492,7 +494,6 @@ from tracker.screen_words import (
     MEMBERS_HELP,
     MEMBERS_LABEL,
     MENU,
-    MISFITS_HEADING,
     MISFITS_NOTE,
     MOVED_HEADING,
     MOVED_NOWHERE,
@@ -661,6 +662,11 @@ from tracker.settings import (
     settings_dir,
     settings_path,
 )
+
+# The heading over the folders the app leaves alone is the practice page's own
+# word (C-6, P346): the household screen and status.html say it from one typing.
+from tracker.status_page import STATUS_MISFITS_HEADING as MISFITS_HEADING
+from tracker.status_page import STATUS_PAGE_FILENAME
 from tracker.templates import (  # the catalog; re-exported for the dialog
     FORM_TEMPLATES,
     FORM_TYPES,

@@ -50,8 +50,9 @@ program's: set aside by :func:`load`, said on the error log by its class or
 reason, never a client's words. Deleting it is always safe.
 
 Layer 0: the standard library, ``settings``, ``fsio``, ``errors`` and
-``firm_cache``'s head. The runner reads the records and asks the store for
-the tokens; this module only keeps what it is handed.
+``firm_cache``'s head. The status page (:mod:`tracker.status_page`) reads the
+records and asks the store for the tokens; this module only keeps what it
+is handed.
 """
 
 from __future__ import annotations
@@ -179,7 +180,7 @@ class Kept:
         self.entries = entries
         self.changed = False
         #: The store's tokens of every record, by stored path, as this page
-        #: first asked them; the runner fills it, once a report, and empties
+        #: first asked them; the status page fills it, once a report, and empties
         #: it before the next (a failed fill's redraw asks again).
         self.tokens: dict[str, tuple] | None = None
 

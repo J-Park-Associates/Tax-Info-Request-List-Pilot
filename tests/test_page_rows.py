@@ -26,7 +26,7 @@ from tests.passes import (  # noqa: F401 - ``samples`` is a fixture
     edit_rows,
     samples,
 )
-from tracker import ledger, page_rows, store
+from tracker import ledger, page_rows, status_page, store
 from tracker.hold import one_reading
 from tracker.layout import household_of
 from tracker.manifest import Override, load_manifest
@@ -68,7 +68,7 @@ def reads(monkeypatch):
     """Every record the page reads, by folder: the list and the index, each
     read without following the journal - the page's reads alone."""
     seen = {"list": [], "index": []}
-    real_list, real_index = runner_module.load_manifest, runner_module.read_index
+    real_list, real_index = runner_module.load_manifest, status_page.read_index
 
     def listed(folder, *args, **kwargs):
         if kwargs.get("follow") is False:
@@ -80,8 +80,9 @@ def reads(monkeypatch):
             seen["index"].append(folder)
         return real_index(folder, *args, **kwargs)
 
-    monkeypatch.setattr(runner_module, "load_manifest", listed)
-    monkeypatch.setattr(runner_module, "read_index", indexed)
+    for module in (runner_module, status_page):
+        monkeypatch.setattr(module, "load_manifest", listed)
+    monkeypatch.setattr(status_page, "read_index", indexed)
     return seen
 
 
@@ -280,7 +281,8 @@ def test_a_return_whose_record_cannot_be_read_is_never_kept(firm, monkeypatch, r
             raise OSError("refused")
         return real(folder, *args, **kwargs)
 
-    monkeypatch.setattr(runner_module, "load_manifest", refused)
+    for module in (runner_module, status_page):
+        monkeypatch.setattr(module, "load_manifest", refused)
     first = _draw(root, _kept(root))
     entries = page_rows.load(page_rows.rows_path(), _kept(root).head)
     assert "statuses" not in entries.get(str(broken), {})

@@ -77,8 +77,8 @@ file names, statuses, reasons - and not one word of a client's document.
 
 **Imports downwards only.** This module reads the record, the request
 list, the index, the triage and the engagement's file names, and nothing in the
-package imports it but :mod:`tracker.runner` and :mod:`tracker.api`, which
-sit above all of them. Writing the view is the last thing a pass does.
+package imports it but :mod:`tracker.runner`, :mod:`tracker.firm_view` and
+:mod:`tracker.api`, which sit above all of them. Writing the view is the last thing a pass does.
 """
 
 from __future__ import annotations

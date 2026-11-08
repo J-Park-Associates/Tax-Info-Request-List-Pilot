@@ -3850,6 +3850,18 @@ def test_the_app_lists_misfits_and_households_from_the_same_walk_the_pass_uses(c
     assert said["Old"] == MISFIT_NOT_A_YEAR
 
 
+def test_the_screens_misfits_heading_is_the_practice_pages_own_word_typed_once():
+    """C-6 (P346): the household screen's heading over the folders the app
+    leaves alone is the one the practice page draws over the same folders.
+    The API sends the status page's word rather than a copy of it, so the
+    two cannot drift apart, and the screen's words hold no second typing."""
+    from tracker import status_page
+
+    assert api.vocab()["household"]["misfits_heading"] == status_page.STATUS_MISFITS_HEADING
+    assert api.MISFITS_HEADING is status_page.STATUS_MISFITS_HEADING
+    assert not hasattr(screen_words, "MISFITS_HEADING")
+
+
 def test_create_makes_a_household_and_its_first_return_and_undoes_both_on_failure(
         capsys, demo_root):
     """The household is written first, so a return never exists under one
