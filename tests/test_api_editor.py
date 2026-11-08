@@ -17,6 +17,8 @@ from pathlib import Path
 import pytest
 
 import tracker.api as api
+import tracker.household_edit as household_edit
+import tracker.request_edit as request_edit
 from tests import api_driver
 from tests.api_driver import (
     _SPELLING_REFUSED,
@@ -430,7 +432,8 @@ def test_the_editor_shows_the_persons_rows_and_never_a_taught_keyword_as_a_typed
 
 def test_state_carries_the_warnings_the_pass_reports(capsys, demo_root):
     from tracker.registry import engagement_from
-    from tracker.runner import REMINDERS_NEVER, run_engagement
+    from tracker.run_log import REMINDERS_NEVER
+    from tracker.runner import run_engagement
 
     spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [
         {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"},
@@ -678,12 +681,12 @@ def test_the_editor_refuses_a_list_nobody_is_asked_for_in_creations_words(capsys
 
     code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"items": [{**row, "asked": False} for row in rows], "engagement": {}})
-    assert code == 1 and payload["error"] == api.NOTHING_ASKED
+    assert code == 1 and payload["error"] == screen_words.NOTHING_ASKED
     assert ledger.path_for(engagement).read_bytes() == before
 
     code, payload = run(capsys, "create", stdin={**spec, "return_name": "Asks Nothing", "items": [
         {**one, "asked": False} for one in spec["items"]]})
-    assert code == 1 and payload["error"] == api.NOTHING_ASKED
+    assert code == 1 and payload["error"] == screen_words.NOTHING_ASKED
 
 
 def test_the_returning_client_page_picks_the_returns_recorded_form_by_default(capsys, demo_root):
@@ -1263,7 +1266,7 @@ def test_a_filing_racing_a_save_is_seen_under_the_lock(capsys, demo_root, tmp_pa
     state = payload["state"]
     assert not [e for e in state["index"] if e["identifier"] == "C01"]
     samples = tmp_path / "samples"
-    before_the_lock = api._refuse_a_changed_row_past_the_limit
+    before_the_lock = request_edit._refuse_a_changed_row_past_the_limit
 
     def a_pass_files_first(folder, items):
         # Outside the lock: the 1098 arrives and the household's sort files it.
@@ -1275,7 +1278,7 @@ def test_a_filing_racing_a_save_is_seen_under_the_lock(capsys, demo_root, tmp_pa
         return before_the_lock(folder, items)
 
     seen_under = []
-    real_check = api._refuse_taking_away_documents
+    real_check = request_edit._refuse_taking_away_documents
 
     def the_check(folder, recorded, items):
         seen_under.append(lock_is_held(folder))
@@ -1352,7 +1355,7 @@ def test_create_reads_a_members_string_as_lines_and_never_as_letters(capsys, dem
     # nothing is written: no household folder for the household it named.
     code, payload = run(capsys, "create", stdin={**spec, "household": "Roe Family",
                                                  "return_name": "1040 - Roe", "members": 7})
-    assert code == 1 and payload["error"] == f"{api.MEMBERS_LABEL} must be a list of names"
+    assert code == 1 and payload["error"] == f"{screen_words.MEMBERS_LABEL} must be a list of names"
     assert not private_household_dir(demo_root, "Roe Family").exists()
 
 
@@ -1375,11 +1378,11 @@ def test_create_and_edit_household_parse_members_through_one_helper(capsys, demo
     assert code == 0, payload
     edited = load_household_info(private_household_dir(demo_root, "Doe Family")).members
     assert created == edited == ("Jane Doe", "John Doe")
-    assert api._members_from_spec(["Jane  Doe", " ", "John Doe"]) == ("Jane Doe", "John Doe")
-    assert api._members_from_spec(None) == api._members_from_spec("") == ()
+    assert household_edit._members_from_spec(["Jane  Doe", " ", "John Doe"]) == ("Jane Doe", "John Doe")
+    assert household_edit._members_from_spec(None) == household_edit._members_from_spec("") == ()
     for odd in (7, {"a": "b"}, True):
         with pytest.raises(ManifestError, match="must be a list of names"):
-            api._members_from_spec(odd)
+            household_edit._members_from_spec(odd)
 
 
 def test_a_persons_name_longer_than_the_text_rule_is_refused_by_name(capsys, demo_root):
@@ -1474,9 +1477,9 @@ def test_the_firms_name_and_phone_are_held_to_the_one_line_text_rule(capsys, tmp
     clients = tmp_path / "Clients"
     clients.mkdir()
     refused = [
-        ({"firm": "F" * 1001}, f"{api.FIRM_NAME_LABEL} must be one line"),
-        ({"phone": "555-0100\n555-0101"}, f"{api.FIRM_PHONE_LABEL} must be one line"),
-        ({"firm": "Park\x00 CPA"}, f"{api.FIRM_NAME_LABEL} must be one line"),
+        ({"firm": "F" * 1001}, f"{screen_words.FIRM_NAME_LABEL} must be one line"),
+        ({"phone": "555-0100\n555-0101"}, f"{screen_words.FIRM_PHONE_LABEL} must be one line"),
+        ({"firm": "Park\x00 CPA"}, f"{screen_words.FIRM_NAME_LABEL} must be one line"),
     ]
     for extra, start in refused:
         code, payload = run(capsys, "set-root", stdin={"root": str(clients), **extra})
@@ -1713,7 +1716,7 @@ def test_stdin_that_is_not_json_is_refused_like_a_non_object_and_logs_nothing(
     monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(b"not json"), encoding="utf-8"))
     code = api.main(["set-schedule"])
     payload = one_reply(capsys.readouterr().out)
-    assert code == 1 and payload["error"] == api.NOT_A_SPEC
+    assert code == 1 and payload["error"] == screen_words.NOT_A_SPEC
     log = error_log_path()
     assert not log.exists() or log.read_text(encoding="utf-8") == ""
 
@@ -1727,6 +1730,6 @@ def test_stdin_that_is_not_utf8_is_refused_like_a_non_object_and_logs_nothing(
     monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(b"\xff\xfe{"), encoding="utf-8"))
     code = api.main(["set-schedule"])
     payload = one_reply(capsys.readouterr().out)
-    assert code == 1 and payload["error"] == api.NOT_A_SPEC
+    assert code == 1 and payload["error"] == screen_words.NOT_A_SPEC
     log = error_log_path()
     assert not log.exists() or log.read_text(encoding="utf-8") == ""

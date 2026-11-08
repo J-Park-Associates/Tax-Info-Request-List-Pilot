@@ -23,7 +23,7 @@ from tests.samples import text_pdf
 from tracker import ledger, reasons
 from tracker import reminder as reminder_module
 from tracker.layout import inbox_of
-from tracker.letter_render import HOLD_COLOUR, LETTER_INK, STAGE_COLOURS
+from tracker.letter_render import HOLD_COLOUR, LETTER_INK, STAGE_COLOURS, stage_colour
 from tracker.manifest import (
     EXPECTED_PATTERN,
     NOT_ASKED_LABEL,
@@ -81,7 +81,6 @@ from tracker.reminder import (
     render_html,
     set_aside_other_draft,
     sides,
-    stage_colour,
     stage_for,
     stage_named,
     triage,
@@ -2038,12 +2037,12 @@ def test_no_client_facing_text_carries_a_reason_sentence(tmp_path):
     import string
 
     from tests.builders import parked_row, seed_index
-    from tracker.api import CAME_FROM_SUBFOLDER
     from tracker.filer import CONTESTED_BETWEEN_RETURNS
     from tracker.layout import household_of
     from tracker.readme_ack import refresh_household_readme
     from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
     from tracker.scaffold import README_NAME, scaffold_engagement
+    from tracker.screen_words import CAME_FROM_SUBFOLDER
 
     folder = engagement(tmp_path, DROPPED, name="Every Kind TY2025")
     scaffold_engagement(folder)

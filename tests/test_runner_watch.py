@@ -40,22 +40,17 @@ from tracker.layout import household_of, inbox_of, originals_of
 from tracker.manifest import EngagementInfo, RequestItem
 from tracker.registry import Engagement, discover_engagements, engagement_from
 from tracker.reminder import DRAFT_FILENAME
-from tracker.run_log import log_path
-from tracker.runner import (
+from tracker.run_log import (
     CODE_PAGE_NOT_WRITTEN,
     CODE_PASS_STOPPED,
     LOG_FILENAME,
-    RECORD_UNREADABLE,
     REMINDERS_ALWAYS,
     REMINDERS_AUTO,
     REMINDERS_NEVER,
-    SETTINGS_FLAG,
-    STATUS_PAGE_FILENAME,
-    main,
-    run_household,
-    run_registry,
-    should_draft,
+    log_path,
 )
+from tracker.runner import SETTINGS_FLAG, main, run_household, run_registry, should_draft
+from tracker.status_page import RECORD_UNREADABLE, STATUS_PAGE_FILENAME
 
 #: The sample pile, built once per session: a fixture of ``tests/passes.py``, named here
 #: so every claim below can ask for it.
@@ -281,8 +276,8 @@ def test_a_pass_whose_app_closed_says_so_in_the_run_log_and_on_the_page_and_leav
     log, which names no client (decision 186), and its sentence on the
     page. The next pass files what waited."""
     import tracker.runner as runner
-    from tracker.run_log import log_path
-    from tracker.runner import CODE_PASS_APP_CLOSED, PASS_APP_CLOSED, run_now_arguments
+    from tracker.run_log import CODE_PASS_APP_CLOSED, log_path
+    from tracker.runner import PASS_APP_CLOSED, run_now_arguments
 
     root = tmp_path / "root"
     drops = (f"W-2 John Smith {YEAR}.pdf", "1099-INT First National.pdf", "Form 1098 Mortgage Interest.pdf")
@@ -759,7 +754,8 @@ def test_a_hold_older_than_seven_days_is_on_the_page(tmp_path, samples, monkeypa
     from tracker.locking import engagement_lock
     from tracker.manifest import Status, StatusUpdate
     from tracker.reminder import HELD_TOO_LONG, HELD_WARN_DAYS
-    from tracker.runner import EngagementRun, RunReport, _draft_step, format_report
+    from tracker.run_log import EngagementRun, RunReport
+    from tracker.runner import _draft_step, format_report
 
     engagement = build_engagement(tmp_path, samples, drops=())
     identifier = DEMO_ITEMS[0].identifier
@@ -785,7 +781,8 @@ def test_a_hold_older_than_seven_days_is_on_the_page(tmp_path, samples, monkeypa
 
 def test_a_rolled_from_naming_nothing_is_on_the_page(tmp_path, samples):
     from tracker.registry import ROLLED_FROM_UNMATCHED, mark_superseded
-    from tracker.runner import RunReport, format_report
+    from tracker.run_log import RunReport
+    from tracker.runner import format_report
 
     engagement = build_engagement(tmp_path, samples, drops=(), rolled_from="1040 - Nobody Sample")
     runs = run_household(household_of(engagement.path), mark_superseded([engagement]),
@@ -833,14 +830,8 @@ def test_a_scheduled_pass_off_windows_stops_itself_before_the_run_limit(tmp_path
     its locks - and the next pass files the rest."""
     from tracker import settings
     from tracker.locking import RUN_TIME_LIMIT_SECONDS, lock_status
-    from tracker.run_log import log_path
-    from tracker.runner import (
-        CODE_PASS_RUN_LIMIT,
-        HOUSEHOLD_BUDGET_SECONDS,
-        PASS_RUN_LIMIT,
-        SELF_STOP_AFTER_SECONDS,
-        SelfLimitedWatch,
-    )
+    from tracker.run_log import CODE_PASS_RUN_LIMIT, log_path
+    from tracker.runner import HOUSEHOLD_BUDGET_SECONDS, PASS_RUN_LIMIT, SELF_STOP_AFTER_SECONDS, SelfLimitedWatch
 
     assert SELF_STOP_AFTER_SECONDS == RUN_TIME_LIMIT_SECONDS - HOUSEHOLD_BUDGET_SECONDS
     monkeypatch.setattr(settings, "host_system", lambda: "posix")       # off Windows, on any runner
@@ -870,7 +861,7 @@ def test_a_scheduled_pass_off_windows_stops_itself_before_the_run_limit(tmp_path
     assert said not in log_path().read_text(encoding="utf-8"), "the log keeps the code, never a sentence"
     assert len([p for p in inbox_of(engagement.path).iterdir() if p.name in THREE_DROPS]) == 2, "two wait"
     assert lock_status(engagement.path) is None, "its locks are let go"
-    assert "succeeded" in run_log.last_pass_line(runner_module.last_pass_path())["text"]
+    assert "succeeded" in run_log.last_pass_line(run_log.last_pass_path())["text"]
     capsys.readouterr()
 
     monkeypatch.setattr(SelfLimitedWatch, "say", real_say)
@@ -962,7 +953,7 @@ def test_a_mac_pass_refused_the_root_says_macos_did_not_allow_it(tmp_path, sampl
     ``root-not-permitted``, not "could not be walked": the permission is the
     program's own, and for the pass launchd starts that is the API."""
     from tracker import settings
-    from tracker.runner import PASS_REASONS, PASS_ROOT_NOT_PERMITTED, PASS_ROOT_UNREADABLE
+    from tracker.run_log import PASS_REASONS, PASS_ROOT_NOT_PERMITTED, PASS_ROOT_UNREADABLE
 
     assert PASS_ROOT_NOT_PERMITTED == "root-not-permitted" != PASS_ROOT_UNREADABLE
     assert PASS_REASONS[PASS_ROOT_NOT_PERMITTED] == (
@@ -987,7 +978,7 @@ def test_a_mac_pass_refused_the_root_says_macos_did_not_allow_it(tmp_path, sampl
 
     assert stopped.value.reason_code == PASS_ROOT_NOT_PERMITTED and listed and not walked, "nothing was walked"
     assert str(stopped.value) == f"Clients folder problem: {PASS_REASONS[PASS_ROOT_NOT_PERMITTED]}"
-    path = runner_module.last_pass_path()
+    path = run_log.last_pass_path()
     assert json.loads(path.read_text(encoding="utf-8"))["reason_code"] == PASS_ROOT_NOT_PERMITTED
     line = run_log.last_pass_line(path)
     assert line["level"] == run_log.LEVEL_ERR and PASS_REASONS[PASS_ROOT_NOT_PERMITTED] in line["text"]

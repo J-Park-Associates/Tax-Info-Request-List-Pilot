@@ -1141,7 +1141,8 @@ def test_a_pass_and_the_command_line_key_one_engagement_the_same_way(root, engag
     on its command line, so ``state`` said current and ``check`` said the
     store did not hold it. One folder is one row, however it is named."""
     from tracker.manifest import Status, load_manifest
-    from tracker.runner import REMINDERS_NEVER, main
+    from tracker.run_log import REMINDERS_NEVER
+    from tracker.runner import main
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     assert main([str(root), "--reminders", REMINDERS_NEVER]) == 0
@@ -1217,7 +1218,8 @@ def test_a_pass_keys_one_return_the_same_way_whichever_root_is_named(recorded_ro
     app and the scheduled pass do - one folder, one row, whichever root
     was named - because under the recorded root nothing but the exact key
     answers, and two spellings of one folder must never be two rows."""
-    from tracker.runner import REMINDERS_NEVER, main
+    from tracker.run_log import REMINDERS_NEVER
+    from tracker.runner import main
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     assert main([str(recorded_root), "--reminders", REMINDERS_NEVER]) == 0

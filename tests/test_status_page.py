@@ -23,7 +23,6 @@ name (SPEC-architecture-p5 section 4.0). Made-up households only.
 
 import html
 
-import tracker.runner as runner_module
 from tests import passes
 from tests.builders import make_engagement, seed_index
 from tests.passes import FRIDAY, _page, _two_households, build_engagement
@@ -106,7 +105,7 @@ def test_the_practice_page_says_approved_where_it_would_say_the_stage(tmp_path, 
 def test_one_unreadable_record_costs_one_row_of_the_page(tmp_path, samples, monkeypatch):
     import tracker.runner as runner
     from tracker.ledger import RecordNotWritten
-    from tracker.runner import status_report
+    from tracker.status_page import status_report
 
     first, second = _two_households(tmp_path, samples)
     real = runner.load_manifest
@@ -136,7 +135,7 @@ def test_a_record_the_disk_refuses_is_said_by_its_class_and_code_never_its_path(
     import errno
 
     import tracker.runner as runner
-    from tracker.runner import status_report
+    from tracker.status_page import status_report
 
     engagement = build_engagement(tmp_path, samples)
     where = str(engagement.path / "journal.jsonl")
@@ -167,7 +166,7 @@ def test_lines_from_other_machines_that_cannot_be_listed_are_said_where_they_wou
         raise checkpoint.CheckpointUnavailable("record-heads.db", "SQLITE_IOERR_READ")
 
     monkeypatch.setattr(store, "foreign_lines", unlisted)
-    report = runner_module.status_report(discover_engagements(clients))
+    report = status_page.status_report(discover_engagements(clients))
     page = html.unescape(write_status_page(clients, report).read_text(encoding="utf-8"))
     assert "Lines from other machines could not be listed this pass: record-heads.db" in page
     assert "SQLITE_IOERR_READ" in page
@@ -187,7 +186,7 @@ def test_an_index_the_page_cannot_read_is_said_by_its_class_never_its_message(
         raise PermissionError(errno.EACCES, "Permission denied", where)
 
     monkeypatch.setattr(status_page, "read_index", refused)
-    write_status_page(tmp_path, runner_module.status_report(discover_engagements(tmp_path)))
+    write_status_page(tmp_path, status_page.status_report(discover_engagements(tmp_path)))
 
     page = _page(tmp_path)
     assert status_page.STATUS_INDEX_UNREADABLE.format(

@@ -64,8 +64,10 @@ def real_places(repo: Path) -> tuple[tuple[str, Path], ...]:
     from tracker.checkpoint import CHECKPOINT_FILENAME, CHECKPOINT_SHM_FILENAME, CHECKPOINT_WAL_FILENAME
     from tracker.progress import PASSES_DIRNAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
-    from tracker.runner import AFTER_INSTALL_FILENAME, LAST_PASS_FILENAME, LOG_FILENAME, STATUS_PAGE_FILENAME
+    from tracker.run_log import LAST_PASS_FILENAME, LOG_FILENAME
+    from tracker.runner import AFTER_INSTALL_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
+    from tracker.status_page import STATUS_PAGE_FILENAME
 
     named = settings.settings_path()                     # the shell's, if it sets one
     with pytest.MonkeyPatch.context() as bare:
@@ -402,7 +404,7 @@ def office_shaped_copy(tmp_path_factory):
     store.open(copy / store.STORE_FILENAME).close()
     (copy / settings.OCR_SCRATCH_DIRNAME).mkdir()
     (copy / settings.OCR_SCRATCH_DIRNAME / "page-1.png").write_bytes(b"fabricated")
-    from tracker.runner import LOG_FILENAME
+    from tracker.run_log import LOG_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     (copy / SCHEDULE_XML_FILENAME).write_text("<Task/>", encoding="utf-8")
     (copy / CLIENTS_TREE / TEST_HOUSEHOLD).mkdir(parents=True)

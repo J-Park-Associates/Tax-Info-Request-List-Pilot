@@ -552,7 +552,8 @@ def test_an_unwritable_folder_is_a_run_error_not_another_run(tmp_path, monkeypat
     from tests.builders import make_engagement
     from tests.samples import DEMO_ITEMS
     from tracker.registry import engagement_from
-    from tracker.runner import REMINDERS_NEVER, run_engagement
+    from tracker.run_log import REMINDERS_NEVER
+    from tracker.runner import run_engagement
 
     folder = make_engagement(tmp_path, DEMO_ITEMS)
     lock = folder / LOCK_FILENAME

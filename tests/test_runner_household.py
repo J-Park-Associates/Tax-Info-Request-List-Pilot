@@ -41,23 +41,10 @@ from tracker.manifest import EngagementInfo, RequestItem, load_engagement_info
 from tracker.records import IndexEntry
 from tracker.registry import discover_engagements, engagement_from
 from tracker.reminder import DRAFT_FILENAME
-from tracker.run_log import log_path
-from tracker.runner import (
-    CODE_PASS_DID_NOT_FINISH,
-    LOG_FILENAME,
-    REMINDERS_NEVER,
-    SETTINGS_FLAG,
-    STATUS_PAGE_FILENAME,
-    RunReport,
-    append_log,
-    last_drafted,
-    main,
-    run_household,
-    run_registry,
-    write_status_page,
-)
+from tracker.run_log import CODE_PASS_DID_NOT_FINISH, LOG_FILENAME, REMINDERS_NEVER, RunReport, append_log, log_path
+from tracker.runner import SETTINGS_FLAG, last_drafted, main, run_household, run_registry
 from tracker.scaffold import PREPARED_DIR_NAME
-from tracker.status_page import STATUS_HELD
+from tracker.status_page import STATUS_HELD, STATUS_PAGE_FILENAME, write_status_page
 
 #: The sample pile, built once per session: a fixture of ``tests/passes.py``, named here
 #: so every claim below can ask for it.
@@ -901,7 +888,7 @@ def test_the_old_scheduled_job_naming_another_root_is_refused_and_says_install_s
     with pytest.raises(SystemExit) as refused:
         main([str(old), LOG_FLAG, "--reminders", "never"])
     assert str(refused.value) == OLD_JOB_ROOT.format(root=str(old))
-    from tracker.api import SCHEDULE_REPAIR_LABEL
+    from tracker.screen_words import SCHEDULE_REPAIR_LABEL
 
     assert SCHEDULE_REPAIR_LABEL in str(refused.value)
     assert not (old / STATUS_PAGE_FILENAME).exists()
@@ -1176,7 +1163,7 @@ def test_the_household_killed_every_pass_goes_last_and_the_others_are_served(
 
 
 def test_households_run_least_recently_completed_first(tmp_path, samples, monkeypatch):
-    from tracker.runner import PASS_ORDER_FILENAME
+    from tracker.pass_order import PASS_ORDER_FILENAME
 
     _three_households(tmp_path, samples)
     hint = store.store_path().parent / PASS_ORDER_FILENAME
@@ -1193,8 +1180,7 @@ def test_households_run_least_recently_completed_first(tmp_path, samples, monkey
 
 
 def test_a_missing_or_broken_pass_order_file_falls_back_to_folder_order(tmp_path, samples, monkeypatch):
-    from tracker.pass_order import ORDER_HINT_UNREADABLE
-    from tracker.runner import PASS_ORDER_FILENAME
+    from tracker.pass_order import ORDER_HINT_UNREADABLE, PASS_ORDER_FILENAME
 
     _three_households(tmp_path, samples)
     walk = ["Alder Household", "Birch Household", "Cedar Household"]
@@ -1294,7 +1280,8 @@ def test_a_dry_run_never_names_a_household_not_served_nor_exits_three(
     it was."""
     import json
 
-    from tracker.runner import HOUSEHOLD_BUDGET_SECONDS, PASS_ORDER_FILENAME
+    from tracker.pass_order import PASS_ORDER_FILENAME
+    from tracker.runner import HOUSEHOLD_BUDGET_SECONDS
 
     build_engagement(tmp_path, samples, household="Alder Household",
                      drops=(f"W-2 John Smith {YEAR}.pdf", "Form 1098 Mortgage Interest.pdf"))
@@ -1319,8 +1306,7 @@ def test_a_nested_pass_order_file_is_only_a_hint(tmp_path, samples, monkeypatch)
     runs out of memory each give the walk's order and the one sentence -
     none stops the pass before its first household."""
     import tracker.runner as runner
-    from tracker.pass_order import ORDER_HINT_UNREADABLE, PASS_ORDER_MAX_BYTES
-    from tracker.runner import PASS_ORDER_FILENAME
+    from tracker.pass_order import ORDER_HINT_UNREADABLE, PASS_ORDER_FILENAME, PASS_ORDER_MAX_BYTES
 
     _three_households(tmp_path, samples)
     walk = ["Alder Household", "Birch Household", "Cedar Household"]
@@ -1347,7 +1333,7 @@ def test_a_nested_pass_order_file_is_only_a_hint(tmp_path, samples, monkeypatch)
 def test_a_served_household_resets_its_count(tmp_path, samples):
     import json
 
-    from tracker.runner import PASS_ORDER_FILENAME
+    from tracker.pass_order import PASS_ORDER_FILENAME
 
     engagement = build_engagement(tmp_path, samples, household="Alder Household")
     hint = store.store_path().parent / PASS_ORDER_FILENAME
@@ -1464,7 +1450,7 @@ def test_a_shared_household_whose_record_cannot_be_read_is_held_back_and_its_cli
     from tracker.households import CLIENT_SIDE_UNKNOWN
     from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
     from tracker.locking import engagement_lock
-    from tracker.runner import CODE_RECORD_UNREADABLE
+    from tracker.run_log import CODE_RECORD_UNREADABLE
 
     root = tmp_path / "root"
     engagement = build_engagement(root, samples)
@@ -1535,7 +1521,7 @@ def test_a_household_without_its_record_fails_the_pass_and_says_restore(tmp_path
     the end of the pass."""
     from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
     from tracker.registry import HOUSEHOLD_RECORD_MISSING
-    from tracker.runner import STATUS_MISFITS_HEADING
+    from tracker.status_page import STATUS_MISFITS_HEADING
 
     # The clients root is a folder of its own, not tmp_path: the suite's
     # settings folder is tmp_path/app, and a root holding it is refused (decision 185).

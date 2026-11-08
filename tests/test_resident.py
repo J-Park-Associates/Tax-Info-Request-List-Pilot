@@ -25,6 +25,7 @@ import threading
 import pytest
 
 import tracker.api as api
+import tracker.screen_words as screen_words
 from tests.builders import make_engagement
 from tests.plugin_session import REPO, child_env
 from tracker import errlog, hold, locking, resident, settings, store
@@ -161,7 +162,7 @@ def test_an_error_that_escapes_main_is_said_as_the_envelope_and_the_engine_retir
     [(printed, end)] = replies(out)
     said = json.loads(printed)
     assert said["failure"]["kind"] == "failed"
-    assert said["error"] == api.FAILED.format(kind=type(escape).__name__, log=api.ERROR_LOG_FILENAME)
+    assert said["error"] == screen_words.FAILED.format(kind=type(escape).__name__, log=api.ERROR_LOG_FILENAME)
     assert MARKER not in printed, "the reply says the class, never the words"
     assert MARKER in error_log_text() and type(escape).__name__ in error_log_text(), \
         "the words and the trace the reply promises are in the error log, not on stderr alone"

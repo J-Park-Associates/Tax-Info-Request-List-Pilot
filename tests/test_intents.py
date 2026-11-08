@@ -247,7 +247,8 @@ def test_a_forged_step_is_carried_out_nowhere(engagement, tmp_path, which):
     from tracker.intents import OP_OUTSIDE, _do_op
     from tracker.layout import CLIENTS_TREE, INBOX_DIR_NAME
     from tracker.registry import discover_engagements
-    from tracker.runner import RECORD_UNREADABLE, run_registry
+    from tracker.runner import run_registry
+    from tracker.status_page import RECORD_UNREADABLE
     from tracker.validators import sha256_of
 
     secret = _elsewhere(tmp_path, "outside") / "x.pdf"
@@ -278,7 +279,7 @@ def test_a_forged_step_is_carried_out_nowhere(engagement, tmp_path, which):
                                                      location=location_of(engagement, original),
                                                      reason="client-tree")),
     }[which]
-    from tracker.runner import PASS_ORDER_FILENAME
+    from tracker.pass_order import PASS_ORDER_FILENAME
 
     def _tree() -> list:
         # The pass's own order hint (decision 189) is its bookkeeping, not a step.

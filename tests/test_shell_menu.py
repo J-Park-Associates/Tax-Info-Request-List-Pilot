@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 import tracker.api as api
+import tracker.screen_words as screen_words
 from tests.node_harness import run_menu
 
 REPO = Path(__file__).resolve().parent.parent
@@ -49,8 +50,8 @@ def test_the_menus_default_words_are_the_apis_word_for_word(monkeypatch):
     from tracker import settings
 
     monkeypatch.setattr(settings, "host_system", lambda: "posix")
-    assert _menu_words_in_main() == api.MENU
-    assert api.vocab()["menu"] == api.MENU
+    assert _menu_words_in_main() == screen_words.MENU
+    assert api.vocab()["menu"] == screen_words.MENU
 
 
 def test_the_menu_has_no_reload_zoom_or_developer_tools():
@@ -90,8 +91,8 @@ def test_every_menu_id_is_in_the_apis_words_and_every_word_is_placed():
     labels = set(re.findall(r'\["(file|edit|client|view|tools|help)",', main_js))
     assert labels == {"file", "edit", "client", "view", "tools", "help"}
     placed = set(ids) | popup_ids | labels
-    assert placed <= set(api.MENU), placed - set(api.MENU)
-    assert set(api.MENU) <= placed, set(api.MENU) - placed
+    assert placed <= set(screen_words.MENU), placed - set(screen_words.MENU)
+    assert set(screen_words.MENU) <= placed, set(screen_words.MENU) - placed
     # The six right-click menus of 5.2, by name.
     assert set(re.findall(r'^\s*\["([a-z]+)", \[', popups, flags=re.M)) == {
         "household", "return", "file", "moved", "request", "received"}
@@ -110,7 +111,7 @@ def test_the_four_row_menus_offer_exactly_the_items_the_renderer_templates_can_a
         "request": ["edit_request"],
         "received": ["unfile", "mark_missing", "show_in_explorer"],
     }
-    assert api.MENU["show_in_explorer"] == api.SCREEN["show_in_explorer"] == "Show in File Explorer"
+    assert screen_words.MENU["show_in_explorer"] == screen_words.SCREEN["show_in_explorer"] == "Show in File Explorer"
 
 
 def test_the_preload_exposes_one_menu_channel():
@@ -142,7 +143,7 @@ def test_the_window_colours_main_reads_are_the_pages():
 
 
 def _word(key: str) -> str:
-    return api.MENU[key]
+    return screen_words.MENU[key]
 
 
 def _flat(menu: list[dict]) -> dict[str, dict]:
@@ -230,7 +231,7 @@ def test_only_a_mac_has_remove_the_schedule_from_this_mac_and_it_needs_no_client
     the first frame (it needs no clients folder) and answered by the page; no other
     system's menu has it."""
     assert _menu_words_in_main()["remove_schedule_here"] == "Remove the Schedule From This Mac…"
-    assert _word("remove_schedule_here") == "Remove the Schedule From This Mac…" == api.MENU["remove_schedule_here"]
+    assert _word("remove_schedule_here") == "Remove the Schedule From This Mac…" == screen_words.MENU["remove_schedule_here"]
     [mac] = run_menu(tmp_path, [], **MAC)["menus"]
     tools = [top for top in mac if top.get("label") == "Tools"][0]
     labels = [i.get("label") for i in tools["submenu"]]
@@ -273,9 +274,9 @@ def test_a_mac_learns_finder_where_windows_says_file_explorer(tmp_path):
     Windows program; the right-click menus then say it."""
     assert _menu_words_in_main()["show_in_explorer"] == "Show in File Explorer"
     steps = [{"tracker": ["list"]}, {"menu": {"popup": "file", "enable": ["show_in_explorer"]}}]
-    ran = run_menu(tmp_path, steps, vocabMenu={**api.MENU, **api.MAC_MENU}, **MAC)
+    ran = run_menu(tmp_path, steps, vocabMenu={**screen_words.MENU, **screen_words.MAC_MENU}, **MAC)
     assert [i["label"] for i in ran["popups"][0]["items"]][-1] == "Show in Finder"
-    ran = run_menu(tmp_path, steps, vocabMenu=dict(api.MENU), platform="linux")
+    ran = run_menu(tmp_path, steps, vocabMenu=dict(screen_words.MENU), platform="linux")
     assert [i["label"] for i in ran["popups"][0]["items"]][-1] == "Show in File Explorer"
 
 
@@ -547,9 +548,9 @@ def test_open_error_log_refuses_a_symbolic_link(tmp_path):
 
 
 def test_a_word_from_the_api_rebuilds_the_menu_only_when_it_differs(tmp_path):
-    same = run_menu(tmp_path, [{"tracker": ["list"]}], vocabMenu=dict(api.MENU))
+    same = run_menu(tmp_path, [{"tracker": ["list"]}], vocabMenu=dict(screen_words.MENU))
     assert len(same["menus"]) == 1
-    changed = {**api.MENU, "sort_now": "Sort here", "file": "&Files", "not_a_key": "x", "find": 5}
+    changed = {**screen_words.MENU, "sort_now": "Sort here", "file": "&Files", "not_a_key": "x", "find": 5}
     ran = run_menu(tmp_path, [{"tracker": ["list"]}], vocabMenu=changed)
     assert len(ran["menus"]) == 2
     menu = ran["menus"][-1]

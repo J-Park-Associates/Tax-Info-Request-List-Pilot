@@ -941,13 +941,13 @@ def test_no_byte_of_what_a_reading_child_raised_crosses_into_the_reading(tmp_pat
 
 def test_the_app_names_an_unexpected_error_by_its_class_and_keeps_a_firm_errors_words(
         monkeypatch, capsys, kept):
-    from tracker import api
+    from tracker import api, screen_words
     from tracker.manifest import ManifestError
 
     monkeypatch.setitem(api.COMMANDS, "state", quotes_the_document)
     assert api.main(["state"]) == 1
     said = json.loads(capsys.readouterr().out)["error"]
-    assert said == api.FAILED.format(kind="ValueError", log=api.ERROR_LOG_FILENAME)
+    assert said == screen_words.FAILED.format(kind="ValueError", log=api.ERROR_LOG_FILENAME)
     assert any(QUOTED in one for one in kept)
 
     def the_firm_says(*_args):

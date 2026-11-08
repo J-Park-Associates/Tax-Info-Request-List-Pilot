@@ -1010,15 +1010,11 @@ def test_the_readme_is_still_written_after_the_clients_root_moves(short_root, tm
     from tracker.layout import README_NAME, inbox_dir_for, originals_dir_for, private_household_dir
     from tracker.registry import SKIP_ROLLED_FORWARD, discover_engagements
     from tracker.rollover import ReturnPlan, roll_household
-    from tracker.runner import (
-        REMINDERS_NEVER,
-        TWO_OPEN_YEARS,
-        run_household,
-        status_report,
-        write_status_page,
-    )
+    from tracker.run_log import REMINDERS_NEVER
+    from tracker.runner import TWO_OPEN_YEARS, run_household
     from tracker.scaffold import scaffold_household
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+    from tracker.status_page import status_report, write_status_page
 
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
     (tmp_path / "app").mkdir(exist_ok=True)
@@ -1070,7 +1066,7 @@ def test_windows_reserved_device_names_are_never_folder_names(tmp_path):
     name the sanitiser gives back is made as a real folder."""
     import os
 
-    import tracker.api as api
+    import tracker.household_edit as household_edit
     from tracker.manifest import ManifestError, identifier_problem, is_reserved_name
     from tracker.scaffold import sanitize_component
 
@@ -1082,18 +1078,18 @@ def test_windows_reserved_device_names_are_never_folder_names(tmp_path):
         assert cleaned != name and not is_reserved_name(cleaned), (name, cleaned)
         assert "device" in identifier_problem(name.split(".")[0].strip()), name
         with pytest.raises(ManifestError, match="is not a household name"):
-            api._folder_name(name, "household")
+            household_edit._folder_name(name, "household")
         with pytest.raises(ManifestError):
-            api._feeds_from_spec([{"household": name, "return_name": "1040 - John"}],
-                                 tmp_path / "Park Family")
+            household_edit._feeds_from_spec([{"household": name, "return_name": "1040 - John"}],
+                                            tmp_path / "Park Family")
         if os.name == "nt":
             made = tmp_path / cleaned
             made.mkdir()
             assert made.is_dir() and cleaned in os.listdir(tmp_path)
     for name in ordinary:
         assert not is_reserved_name(name) and sanitize_component(name) == name, name
-    assert api._feeds_from_spec([{"household": "Smith", "return_name": "1040 - John"}],
-                                tmp_path / "Park Family")
+    assert household_edit._feeds_from_spec([{"household": "Smith", "return_name": "1040 - John"}],
+                                           tmp_path / "Park Family")
 
 
 def test_superscript_ports_and_the_console_devices_are_reserved_too():

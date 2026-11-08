@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 import tracker.api as api
+import tracker.screen_words as screen_words
 from tests import api_driver
 from tests.api_driver import (
     HOUSEHOLD,
@@ -195,8 +196,8 @@ def test_the_firms_paths_name_each_path_under_one_key_and_one_kind(capsys, demo_
     _engagement, _scanned_state, firm = _firm_of_a_scanned_pile(capsys, demo_root, tmp_path)
     kinds_of = {}
     for key, path in firm["paths"].items():
-        assert api.PATH_KINDS[key.split(" ", 1)[0]] in ("file", "reveal"), key
-        kinds_of.setdefault(path, set()).add(api.PATH_KINDS[key.split(" ", 1)[0]])
+        assert screen_words.PATH_KINDS[key.split(" ", 1)[0]] in ("file", "reveal"), key
+        kinds_of.setdefault(path, set()).add(screen_words.PATH_KINDS[key.split(" ", 1)[0]])
     assert all(len(kinds) == 1 for kinds in kinds_of.values()), kinds_of
     assert len(firm["paths"]) == len(kinds_of), "one key per path"
 
@@ -213,7 +214,7 @@ def test_a_real_firm_replys_paths_reveal_a_firm_file_and_refuse_an_unreported_on
     stranger = str(engagement / "Prepared" / "never reported.pdf")
     steps = [{"tracker": ["list"]}, {"open": [path, "reveal"]}, {"open": [path]},
              {"open": [stranger, "reveal"]}]
-    ran = run_menu(tmp_path, steps, pathKinds=api.PATH_KINDS, paths=firm["paths"])
+    ran = run_menu(tmp_path, steps, pathKinds=screen_words.PATH_KINDS, paths=firm["paths"])
     assert ran["revealed"] == [path] and ran["opened"] == []
     assert ran["answers"][0] == "" and ran["answers"][1] != "" and ran["answers"][2] != ""
 
@@ -251,7 +252,7 @@ def test_list_state_and_firm_agree_on_a_returns_year(capsys, demo_root):
 
 
 def test_the_after_install_heading_is_the_specs_words():
-    assert api.AFTER_INSTALL_HEADING == "Setup Needs Attention"
+    assert screen_words.AFTER_INSTALL_HEADING == "Setup Needs Attention"
     assert api.vocab()["after_install"]["heading"] == "Setup Needs Attention"
 
 
@@ -728,23 +729,23 @@ def test_firm_says_a_root_it_cannot_walk_and_answers_an_empty_root_as_nothing(ca
 
     monkeypatch.setattr(api, "discover_engagements", not_walked)
     code, payload = run(capsys, "firm")
-    assert code == 1 and payload["error"] == api.PRACTICE_NOT_WALKED
+    assert code == 1 and payload["error"] == screen_words.PRACTICE_NOT_WALKED
 
 
 def test_list_reports_the_clients_root_and_the_firm_report_as_openable(capsys, demo_root):
-    from tracker.runner import STATUS_PAGE_FILENAME
+    from tracker.status_page import STATUS_PAGE_FILENAME
 
     _code, payload = run(capsys, "list")
     assert payload["paths"] == {"clients_root": str(demo_root),
                                 "status": str(demo_root / STATUS_PAGE_FILENAME)}
-    assert api.PATH_KINDS["clients_root"] == "folder"
-    assert set(payload["paths"]) <= set(api.PATH_KINDS)
+    assert screen_words.PATH_KINDS["clients_root"] == "folder"
+    assert set(payload["paths"]) <= set(screen_words.PATH_KINDS)
     assert payload["vocab"]["path_kinds"]["clients_root"] == "folder"
 
 
 def test_the_vocabulary_carries_the_menu_the_screen_and_the_short_words(capsys):
     words = api.vocab()
-    assert words["menu"] == api.MENU and words["screen"] == api.SCREEN
+    assert words["menu"] == screen_words.MENU and words["screen"] == screen_words.SCREEN
     # The key shape of SPEC-shell 11.4, flat: the harness and the renderer read these.
     assert set(words["screen"]["sort"]) == {"now", "stop", "locked", "stopping", "tip"}
     assert words["screen"]["sort"]["stop"] == "Stop Sorting"
@@ -774,11 +775,11 @@ def test_every_short_word_the_engine_adds_is_five_words_or_fewer():
     #: Words that are longer on purpose, with why. SPEC-mac R29 names this
     #: menu item, and the Mac check kit's walk (step 14) chooses it by those words.
     longer_on_purpose = {"menu.remove_schedule_here": "SPEC-mac R29's own label, chosen by the kit's walk"}
-    for path, text in [*walk(api.MENU, "menu"), *walk(api.SCREEN, "screen"),
+    for path, text in [*walk(screen_words.MENU, "menu"), *walk(screen_words.SCREEN, "screen"),
                        *walk(reasons.SHORT_REASONS, "reasons"), *walk(reasons.REASON_TIPS, "reason_tips")]:
         counted = re.sub(r"\{[a-z_]+\}", "x", text.replace("&", "")).split()
         assert 1 <= len(counted) <= (6 if path in longer_on_purpose else 5), (path, text)
-    assert api.MENU["remove_schedule_here"] == "Remove the Schedule From This Mac…"
+    assert screen_words.MENU["remove_schedule_here"] == "Remove the Schedule From This Mac…"
 
 
 # ------------------------------------------- a wait says what it shows (P222) ----
@@ -1155,8 +1156,8 @@ def test_a_mac_says_protected_view_does_not_exist_each_time_a_macro_copy_opens(
 
     assert fsio.mark_from_internet(tmp_path / "budget.xlsm", _opener=lambda *a, **k: None) is False
     # The sentence is learned from the API, as the shell's others are.
-    assert api.vocab()["shell"]["protected_view_mac"] == api.PROTECTED_VIEW_MAC
-    assert api.PROTECTED_VIEW_MAC.startswith("Protected View does not exist on a Mac")
+    assert api.vocab()["shell"]["protected_view_mac"] == screen_words.PROTECTED_VIEW_MAC
+    assert screen_words.PROTECTED_VIEW_MAC.startswith("Protected View does not exist on a Mac")
 
     engagement = tmp_path / "return"
     review = engagement / REVIEW_DIR_NAME
@@ -1243,10 +1244,10 @@ def test_a_mac_is_never_shown_a_windows_word(monkeypatch):
 
 
 def test_the_apis_mac_words_replace_only_what_names_windows():
-    assert set(api.MAC_MENU) <= set(api.MENU) and set(api.MAC_SCREEN) <= set(api.SCREEN)
-    assert set(api.MAC_SCAN_REASONS) <= set(api.SCAN_REASONS)
-    for table, windows in ((api.MAC_MENU, api.MENU), (api.MAC_SCREEN, api.SCREEN),
-                           (api.MAC_SCAN_REASONS, api.SCAN_REASONS)):
+    assert set(screen_words.MAC_MENU) <= set(screen_words.MENU) and set(screen_words.MAC_SCREEN) <= set(screen_words.SCREEN)
+    assert set(screen_words.MAC_SCAN_REASONS) <= set(screen_words.SCAN_REASONS)
+    for table, windows in ((screen_words.MAC_MENU, screen_words.MENU), (screen_words.MAC_SCREEN, screen_words.SCREEN),
+                           (screen_words.MAC_SCAN_REASONS, screen_words.SCAN_REASONS)):
         for key, word in table.items():
             assert WINDOWS_WORDS.search(windows[key]) and not WINDOWS_WORDS.search(word), key
 
@@ -1443,7 +1444,7 @@ def test_the_page_refusal_alone_carries_the_mark_firm_page_refused(capsys, demo_
     monkeypatch.setattr(api, "_firm_cached", lambda root, today: None)
     monkeypatch.setattr(api, "discover_engagements", cannot_walk)
     code, reply = run(capsys, "firm", stdin=_a_page("overview"))
-    assert code == 1 and reply["failure"]["kind"] == "refused" and reply["error"] == api.PRACTICE_NOT_WALKED
+    assert code == 1 and reply["failure"]["kind"] == "refused" and reply["error"] == screen_words.PRACTICE_NOT_WALKED
     assert "key" not in reply["failure"], "only the page refusal is marked: this one keeps Retry"
 
 

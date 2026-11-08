@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 import tracker.api as api
+import tracker.screen_words as screen_words
 from tests import api_driver
 from tests.api_driver import (
     HOUSEHOLD,
@@ -79,7 +80,7 @@ def test_the_app_state_reports_the_last_pass(capsys, tmp_path, monkeypatch):
     after a failed one."""
     import datetime as dt
 
-    from tracker import run_log, runner
+    from tracker import run_log
     from tracker.settings import ENV_SETTINGS_DIR
 
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
@@ -89,32 +90,32 @@ def test_the_app_state_reports_the_last_pass(capsys, tmp_path, monkeypatch):
                                     "ok": False, "running": False, "when": None}
 
     now = dt.datetime.now()
-    runner.write_last_pass(runner.last_pass_path(), started=now, ended=now, root="",
-                           result=runner.PASS_FAILED, reason_code=runner.PASS_ROOT_REFUSED)
+    run_log.write_last_pass(run_log.last_pass_path(), started=now, ended=now, root="",
+                            result=run_log.PASS_FAILED, reason_code=run_log.PASS_ROOT_REFUSED)
     clients = tmp_path / "Clients"
     clients.mkdir()
     assert run(capsys, "set-root", stdin={"root": str(clients)})[0] == 0
     code, payload = run(capsys, "list")
     assert code == 0 and payload["needs_root"] is False
     assert payload["last_pass"]["level"] == run_log.LEVEL_ERR
-    assert runner.PASS_REASONS[runner.PASS_ROOT_REFUSED] in payload["last_pass"]["text"]
+    assert run_log.PASS_REASONS[run_log.PASS_ROOT_REFUSED] in payload["last_pass"]["text"]
     # The last-sort line needs no parsing of the runner's words: a failed
     # pass is not ok and says when it started (SPEC-shell 9.3).
     assert payload["last_pass"]["ok"] is False and payload["last_pass"]["running"] is False
     assert payload["last_pass"]["when"] == now.isoformat(timespec="seconds")
-    runner.write_last_pass(runner.last_pass_path(), started=now, ended=now, root="",
-                           result=runner.PASS_SUCCEEDED)
+    run_log.write_last_pass(run_log.last_pass_path(), started=now, ended=now, root="",
+                            result=run_log.PASS_SUCCEEDED)
     succeeded = run(capsys, "list")[1]["last_pass"]
     assert succeeded["ok"] is True and succeeded["running"] is False
     # A pass still running is neither well nor failed (pilot P256): the file
     # records three results, and ``running`` is what tells a pass in progress
     # from a failed one, both ``ok: false``.
-    runner.write_last_pass(runner.last_pass_path(), started=now, ended=None, root="",
-                           result=runner.PASS_RUNNING)
+    run_log.write_last_pass(run_log.last_pass_path(), started=now, ended=None, root="",
+                            result=run_log.PASS_RUNNING)
     running = run(capsys, "list")[1]["last_pass"]
     assert running["running"] is True and running["ok"] is False
     assert running["when"] == now.isoformat(timespec="seconds")
-    runner.last_pass_path().write_bytes(b"not json")
+    run_log.last_pass_path().write_bytes(b"not json")
     unreadable = run(capsys, "list")[1]["last_pass"]
     assert unreadable["running"] is False and unreadable["ok"] is False and unreadable["when"] is None
 
@@ -127,17 +128,17 @@ def test_the_last_pass_reply_and_its_line_agree_on_an_oversized_file(tmp_path, m
     import datetime as dt
     import json
 
-    from tracker import api, pass_order, run_log, runner
+    from tracker import api, pass_order, run_log
     from tracker.settings import ENV_SETTINGS_DIR
 
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
     now = dt.datetime.now()
-    runner.write_last_pass(runner.last_pass_path(), started=now, ended=now, root="",
-                           result=runner.PASS_SUCCEEDED)
-    data = json.loads(runner.last_pass_path().read_text(encoding="utf-8"))
+    run_log.write_last_pass(run_log.last_pass_path(), started=now, ended=now, root="",
+                            result=run_log.PASS_SUCCEEDED)
+    data = json.loads(run_log.last_pass_path().read_text(encoding="utf-8"))
     padded = json.dumps(data) + " " * run_log.LAST_PASS_MAX_BYTES
     assert len(padded) < pass_order.PASS_ORDER_MAX_BYTES
-    runner.last_pass_path().write_text(padded, encoding="utf-8")
+    run_log.last_pass_path().write_text(padded, encoding="utf-8")
     reply = api._last_pass()
     assert reply["level"] == run_log.LEVEL_ERR
     assert reply["ok"] is False and reply["running"] is False and reply["when"] is None
@@ -148,7 +149,7 @@ def test_last_pass_is_answered_without_a_root_or_a_store(capsys, tmp_path, monke
     on a timer before), so it reads the settings and the last-pass file and
     nothing else - no clients root chosen, no store opened - and answers the
     dict ``list`` carries. It is not a writing command."""
-    from tracker import runner
+    from tracker import run_log
     from tracker.settings import ENV_SETTINGS_DIR
 
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
@@ -168,8 +169,8 @@ def test_last_pass_is_answered_without_a_root_or_a_store(capsys, tmp_path, monke
     assert code == 0 and listed["needs_root"] is True
     assert asked["last_pass"] == listed["last_pass"]
     now = dt.datetime.now()
-    runner.write_last_pass(runner.last_pass_path(), started=now, ended=None, root="",
-                           result=runner.PASS_RUNNING)
+    run_log.write_last_pass(run_log.last_pass_path(), started=now, ended=None, root="",
+                            result=run_log.PASS_RUNNING)
     code, asked = run(capsys, "last-pass")
     assert code == 0 and asked["last_pass"]["running"] is True
     assert asked["last_pass"] == run(capsys, "list")[1]["last_pass"]
@@ -183,9 +184,9 @@ def test_last_pass_is_answered_without_a_root_or_a_store(capsys, tmp_path, monke
 
 def test_the_list_names_the_last_pass_file_the_runner_writes(capsys, tmp_path, monkeypatch):
     """P277: ``vocab.shell.last_pass_file`` is the very path the runner writes
-    (``runner.last_pass_path()``), so ``main.js`` watches its folder and never
+    (``run_log.last_pass_path()``), so ``main.js`` watches its folder and never
     builds the path itself."""
-    from tracker import runner
+    from tracker import run_log
     from tracker.settings import ENV_DATA_HOME, ENV_SETTINGS_DIR
 
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
@@ -194,8 +195,8 @@ def test_the_list_names_the_last_pass_file_the_runner_writes(capsys, tmp_path, m
     code, listed = run(capsys, "list")
     assert code == 0
     named = listed["vocab"]["shell"]["last_pass_file"]
-    assert named == str(runner.last_pass_path())
-    assert Path(named).parent == tmp_path / "home" and Path(named).name == runner.LAST_PASS_FILENAME
+    assert named == str(run_log.last_pass_path())
+    assert Path(named).parent == tmp_path / "home" and Path(named).name == run_log.LAST_PASS_FILENAME
 
 
 def test_the_list_names_no_last_pass_file_when_the_data_home_cannot_be_had(capsys, tmp_path, monkeypatch):
@@ -525,9 +526,9 @@ def test_the_schedule_dialog_uses_only_the_apis_words(capsys):
                  "words.save", "words.cancel"):
         assert word in js, word
     assert "words.note" not in js and "words.loading" not in js and "shellSkeleton(3)" in js
-    for literal in (api.SCHEDULE_BUTTON, api.SCHEDULE_TITLE, api.SCHEDULE_ENABLED_LABEL,
-                    api.SCHEDULE_START_LABEL, api.SCHEDULE_EVERY_LABEL, api.SCHEDULE_NOTE,
-                    api.SCHEDULE_LOADING, *api.SCHEDULE_EVERY_LABELS.values()):
+    for literal in (screen_words.SCHEDULE_BUTTON, screen_words.SCHEDULE_TITLE, screen_words.SCHEDULE_ENABLED_LABEL,
+                    screen_words.SCHEDULE_START_LABEL, screen_words.SCHEDULE_EVERY_LABEL, screen_words.SCHEDULE_NOTE,
+                    screen_words.SCHEDULE_LOADING, *screen_words.SCHEDULE_EVERY_LABELS.values()):
         assert f'"{literal}"' not in js and f">{literal}<" not in html, literal
     assert "DEFAULT_START" not in js
     assert "set-schedule" in api.COMMANDS and "set-schedule" in api.WRITING_COMMANDS
@@ -593,7 +594,8 @@ def test_the_app_names_what_an_earlier_version_left_on_its_first_screen(capsys, 
     earlier version left beside the app in ``machine_warnings`` - a banner
     that stays until the files are gone - and nothing when nothing is there."""
     from tracker import store
-    from tracker.runner import CODE_LEFT_BEHIND, LEFT_BEHIND, left_behind_warnings
+    from tracker.run_log import CODE_LEFT_BEHIND
+    from tracker.runner import LEFT_BEHIND, left_behind_warnings
     from tracker.settings import ENV_SETTINGS_DIR, data_home
 
     app = tmp_path / "app"
@@ -705,7 +707,8 @@ def test_without_a_data_home_the_pages_error_never_points_at_an_error_log_that_i
     named to the shell; the page's own-error line is the same short line
     either way (SPEC-shell 11.2), and the details are not kept."""
     from tracker import store
-    from tracker.api import PAGE_ERROR, vocab
+    from tracker.api import vocab
+    from tracker.screen_words import PAGE_ERROR
     from tracker.settings import ENV_DATA_HOME
 
     shell = vocab()["shell"]
@@ -788,7 +791,7 @@ def test_move_schedule_here_moves_the_schedule_from_the_packaged_app(capsys, dem
     js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
     assert 'call(["move-schedule-here"]' in js and "vocab.schedule.move_confirm" in js
     assert "confirm(moveScheduleQuestion(result.host))" in js
-    assert "front-desk" not in api.SCHEDULE_MOVE_CONFIRM and "{host}" in api.SCHEDULE_MOVE_CONFIRM
+    assert "front-desk" not in screen_words.SCHEDULE_MOVE_CONFIRM and "{host}" in screen_words.SCHEDULE_MOVE_CONFIRM
 
 
 def test_a_mac_removes_its_schedule_from_the_tools_menu_and_nothing_else(capsys, demo_root, a_mac, monkeypatch):
@@ -819,7 +822,7 @@ def test_a_mac_removes_its_schedule_from_the_tools_menu_and_nothing_else(capsys,
     js, shell = (here / "app.js").read_text(encoding="utf-8"), (here / "shell.js").read_text(encoding="utf-8")
     assert "confirm(vocab.schedule.remove_confirm)" in js and 'call(["remove-schedule-here"]' in js
     assert "remove_schedule_here: () => removeScheduleHere()," in shell
-    for literal in (api.SCHEDULE_REMOVE_CONFIRM, after_install.SCHEDULE_REMOVED_FROM_MAC):
+    for literal in (screen_words.SCHEDULE_REMOVE_CONFIRM, after_install.SCHEDULE_REMOVED_FROM_MAC):
         assert literal not in js, literal
 
 
@@ -876,7 +879,7 @@ def test_state_carries_the_after_install_findings_until_a_clean_run(capsys, tmp_
     assert code == 0 and listed["needs_root"] is True
     assert listed["after_install"] == {"findings": [finding], "failed": [], "ran_at": "2026-09-26T08:00:00",
                                        "wait": after_install.FINDINGS_WAIT}
-    assert listed["vocab"]["after_install"]["heading"] == api.AFTER_INSTALL_HEADING
+    assert listed["vocab"]["after_install"]["heading"] == screen_words.AFTER_INSTALL_HEADING
 
     code, launched = run(capsys, "after-install", stdin={"reason": "launch"})
     assert code == 0 and launched["ran"] is True and launched["findings"] == []
@@ -897,7 +900,7 @@ def test_the_schedule_is_repaired_from_the_tools_menu_in_the_apis_words():
     assert "repair_schedule: () => repairSchedule()," in shell
     assert "confirm(vocab.schedule.repair_confirm)" in js
     assert "outcome(result.sentence," in js
-    for literal in (api.SCHEDULE_REPAIR_LABEL, api.SCHEDULE_REPAIR_HELP, api.AFTER_INSTALL_HEADING):
+    for literal in (screen_words.SCHEDULE_REPAIR_LABEL, screen_words.SCHEDULE_REPAIR_HELP, screen_words.AFTER_INSTALL_HEADING):
         assert literal not in js and literal not in html, literal
     assert "vocab.after_install.heading" in js and 'id="after-install"' not in html
 
@@ -972,9 +975,9 @@ def test_set_root_answers_with_every_return_short_of_room_under_the_new_root(
     reply names every return short of room under the new root, with its
     numbers, in label order - and records the root regardless."""
     from tests.builders import TEST_YEAR
-    from tracker.api import ROOM_SHORT_WORDS as ROOM_SHORT
     from tracker.copies import room_for
     from tracker.manifest import RequestItem
+    from tracker.screen_words import ROOM_SHORT_WORDS as ROOM_SHORT
     from tracker.settings import ENV_SETTINGS_DIR, clients_root
 
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
@@ -1003,11 +1006,11 @@ def test_state_carries_the_returns_room_as_information_and_warns_only_what_canno
     return's page - **not** among the warnings (the lead's L-1: its names
     are cut to fit and everything files). Only requests that cannot
     receive at all are a warning."""
-    from tracker.api import ROOM_PARKS_WORDS as ROOM_PARKS
-    from tracker.api import ROOM_SHORT_WORDS as ROOM_SHORT
     from tracker.copies import room_for
     from tracker.layout import path_limit
     from tracker.manifest import RequestItem
+    from tracker.screen_words import ROOM_PARKS_WORDS as ROOM_PARKS
+    from tracker.screen_words import ROOM_SHORT_WORDS as ROOM_SHORT
 
     root = _a_deeper_root(demo_root)
     engagement = _a_long_row_return(root)

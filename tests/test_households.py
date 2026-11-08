@@ -323,7 +323,7 @@ def test_a_household_cannot_feed_itself_and_a_duplicate_feed_is_refused(tmp_path
     nothing; a line the list already holds is refused rather than folded
     away, so a person sees that the one they picked was already there. Both
     are the API's refusal, in the record's own words."""
-    from tracker.api import _feeds_from_spec
+    from tracker.household_edit import _feeds_from_spec
     from tracker.households import resolve_feeds
     from tracker.records import FEED_REFUSED, Feed
     from tracker.registry import discover_engagements

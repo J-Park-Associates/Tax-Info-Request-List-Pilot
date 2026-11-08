@@ -16,6 +16,8 @@ from pathlib import Path
 import pytest
 
 import tracker.api as api
+import tracker.creation as creation
+import tracker.screen_words as screen_words
 from tests import api_driver
 from tests.api_driver import (
     COUNTS,
@@ -48,8 +50,9 @@ from tracker.manifest import (
     load_manifest,
 )
 from tracker.names import propose_spellings
-from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
+from tracker.run_log import LOG_FILENAME
 from tracker.scaffold import PREPARED_DIR_NAME, REVIEW_DIR_NAME
+from tracker.status_page import STATUS_PAGE_FILENAME
 from tracker.templates import BASE_YEAR, default_tax_year
 
 #: A fixture of ``tests/api_driver.py``, named here so every claim below can ask for it.
@@ -105,7 +108,7 @@ def test_a_payload_that_is_not_one_object_is_refused_before_anything_is_read(cap
     for spec in ([], "1040", 7):
         code, payload = run(capsys, "rollover", stdin=spec)
         assert code == 1
-        assert payload["error"] == api.NOT_A_SPEC
+        assert payload["error"] == screen_words.NOT_A_SPEC
 
 
 def test_create_with_no_name_builds_one_that_stays_under_the_root(capsys, demo_root):
@@ -127,9 +130,9 @@ def test_create_with_no_name_builds_one_that_stays_under_the_root(capsys, demo_r
     # by name, whichever separator a platform reads.
     for outside in ("../outside", "sub/child"):
         with pytest.raises(api.ManifestError, match="is not a return name"):
-            api._new_return_dir(demo_root, HOUSEHOLD, 2025, outside)
+            creation._new_return_dir(demo_root, HOUSEHOLD, 2025, outside)
         with pytest.raises(api.ManifestError, match="is not a household name"):
-            api._new_return_dir(demo_root, outside, 2025, "1040 - Smith")
+            creation._new_return_dir(demo_root, outside, 2025, "1040 - Smith")
 
 
 def test_the_tax_year_is_within_the_bounds_the_wizard_shows(capsys, demo_root):
@@ -569,7 +572,7 @@ def test_a_household_folder_the_tracker_did_not_make_is_refused_and_left_whole(c
         "items": [{"identifier": "A01", "document": "W-2"}]})
 
     assert code == 1
-    assert payload["error"] == api.HOUSEHOLD_NOT_OURS.format(name="Old Smith")
+    assert payload["error"] == screen_words.HOUSEHOLD_NOT_OURS.format(name="Old Smith")
     assert payload["error"].endswith("Nothing was changed.")
     assert sorted(p.relative_to(theirs) for p in theirs.rglob("*")) == before
     assert (theirs / "2019" / "notes.txt").read_text(encoding="utf-8") == "a person's own notes"

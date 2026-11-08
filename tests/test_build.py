@@ -21,7 +21,8 @@ from pathlib import Path
 from tests.node_harness import NODE, RENDERER_SCRIPTS
 from tests.samples import DEMO_ITEMS, SCRATCH_HOUSEHOLD, SCRATCH_RETURN, SCRATCH_SCAN, build_scratch_root
 from tracker.registry import discover_engagements
-from tracker.runner import REMINDER_MODES, RUNNER_MODE_FLAG, main
+from tracker.run_log import REMINDER_MODES
+from tracker.runner import RUNNER_MODE_FLAG, main
 from tracker.settings import ENV_PRODUCT_NAME, ENV_SETTINGS_DIR
 
 REPO = Path(__file__).resolve().parent.parent
@@ -149,8 +150,9 @@ def data_home_names() -> tuple[set[str], set[str]]:
         SET_ASIDE_SUFFIX,
     )
     from tracker.errlog import ERROR_LOG_BACKUPS, ERROR_LOG_FILENAME
+    from tracker.pass_order import PASS_ORDER_FILENAME
     from tracker.progress import PASSES_DIRNAME
-    from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME
+    from tracker.run_log import LAST_PASS_FILENAME, LOG_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import DATA_HOME_NAME, OCR_SCRATCH_DIRNAME, SETTINGS_FILENAME
     from tracker.store import RECOVERED_DIR, STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME

@@ -186,7 +186,7 @@ def test_client_subfolders_are_flattened(engagement):
 def came_from(folder):
     """The sentence a row's Reason ended with, before decision 190, when its
     file came out of a subfolder of the drop (decision 147, ruling 4). It
-    is the card's label now (``api.CAME_FROM_SUBFOLDER``), and no Reason
+    is the card's label now (``screen_words.CAME_FROM_SUBFOLDER``), and no Reason
     carries it."""
     return f"came from the client's subfolder '{folder}'"
 
@@ -2270,7 +2270,8 @@ def a_household_pass(engagement, today):
     """One real pass over the household, as the schedule makes it: the sweep
     first, then the sort, the scan and the page."""
     from tracker.registry import discover_engagements, engagement_from
-    from tracker.runner import REMINDERS_NEVER, run_household
+    from tracker.run_log import REMINDERS_NEVER
+    from tracker.runner import run_household
 
     [run] = run_household(household_of(engagement), [engagement_from(engagement)],
                           today=today, reminders=REMINDERS_NEVER,
@@ -5423,7 +5424,7 @@ def test_an_executable_gets_no_review_copy_shows_its_true_type_and_does_not_hold
     name reaches no request; parked as not a document with no review copy;
     its original moved byte for byte; the card knows it as an .exe and the
     letter holds nothing for it."""
-    from tracker import api, reminder
+    from tracker import api, firm_view, reminder
 
     program = inbox_of(engagement) / "W-2 2025.pdf.exe"
     program.write_bytes(b"MZ Form W-2 Wage and Tax Statement 2025")
@@ -5438,7 +5439,7 @@ def test_an_executable_gets_no_review_copy_shows_its_true_type_and_does_not_hold
     assert (originals(engagement) / "W-2 2025.pdf.exe").read_bytes() == before
     assert _review_folder_files(engagement) == []
     assert report.filed == []
-    assert api.review_bucket(row) == api.BUCKET_NOT_A_DOCUMENT
+    assert firm_view.review_bucket(row) == firm_view.BUCKET_NOT_A_DOCUMENT
     assert api.true_extension(row) == "exe"
     assert reminder._parked_holds(load_manifest(engagement), [row]) == {}
 
@@ -5562,7 +5563,7 @@ def test_a_program_hidden_by_an_invisible_character_is_still_not_a_document(enga
     enough: no review copy, no Open, and the card's type is printed clean."""
     import unicodedata
 
-    from tracker import api
+    from tracker import api, firm_view
 
     (inbox_of(engagement) / raw).write_bytes(b"MZ\x90\x00 a program")
 
@@ -5572,8 +5573,8 @@ def test_a_program_hidden_by_an_invisible_character_is_still_not_a_document(enga
     assert row.code == reasons.NOT_A_DOCUMENT.code, row.reason
     assert row.prepared_location == ""
     assert _review_folder_files(engagement) == []
-    assert api.review_bucket(row) == api.BUCKET_NOT_A_DOCUMENT
-    assert api._review_copy_key(row) == ""
+    assert firm_view.review_bucket(row) == firm_view.BUCKET_NOT_A_DOCUMENT
+    assert firm_view._review_copy_key(row) == ""
     assert not [ch for ch in api.true_extension(row) if unicodedata.category(ch) == "Cf"]
 
 

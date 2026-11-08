@@ -892,13 +892,13 @@ def test_the_kit_reads_the_whole_run_log_for_the_reader_because_the_first_line_i
     processor."""
     import datetime as dt
 
-    from tracker import runner
+    from tracker import run_log, runner
 
     log = tmp_path / "runs.log"
     log.write_text(runner.PASS_STARTED_LINE.format(stamp="2026-10-11T04:00:00") + "\n", encoding="utf-8")
     bare = tmp_path / "bare.log"
     bare.write_bytes(log.read_bytes())
-    runner.append_log(log, runner.RunReport(today=dt.date(2026, 10, 11), dry_run=True))
+    run_log.append_log(log, run_log.RunReport(today=dt.date(2026, 10, 11), dry_run=True))
     lines = log.read_text(encoding="utf-8").splitlines()
     assert lines[0].endswith("pass started") and "reader=" not in lines[0]
     assert "reader=processor" in lines[1]

@@ -17,6 +17,7 @@ import shutil
 from pathlib import Path
 
 import tracker.api as api
+import tracker.firm_view as firm_view
 from tests import api_driver
 from tests.api_driver import (
     PEOPLE,
@@ -45,7 +46,7 @@ from tracker.layout import PRIVATE_TREE, inbox_of
 from tracker.manifest import COL_DATE_PATTERN, load_engagement_info, load_manifest
 from tracker.names import propose_spellings
 from tracker.rollover import next_tax_year
-from tracker.runner import LOG_FILENAME
+from tracker.run_log import LOG_FILENAME
 from tracker.templates import BASE_YEAR, default_tax_year
 
 #: A fixture of ``tests/api_driver.py``, named here so every claim below can ask for it.
@@ -606,13 +607,13 @@ def test_creating_a_households_first_return_hands_back_the_sharing_checklist_and
                    "any_keywords": "w-2"}]})
     assert code == 0, first
     checklist = first["checklist"]
-    assert checklist["heading"] == api.SHARING_HEADING
-    assert checklist["note"] == api.SHARING_NOTE
+    assert checklist["heading"] == screen_words.SHARING_HEADING
+    assert checklist["note"] == screen_words.SHARING_NOTE
     assert str(client_household_dir(demo_root, "Park Family")) in checklist["lines"][0]
     assert "Viewer" in checklist["lines"][0]
     assert str(inbox_dir_for(demo_root, "Park Family")) in checklist["lines"][1]
     assert "Contributor" in checklist["lines"][1]
-    assert api.MARK_SHARED_LABEL in checklist["lines"][2]
+    assert screen_words.MARK_SHARED_LABEL in checklist["lines"][2]
 
     code, second = run(capsys, "create", stdin={
         "household_path": str(private_household_dir(demo_root, "Park Family")),
@@ -640,7 +641,7 @@ def test_mark_shared_refuses_without_a_link_records_one_event_and_the_state_says
     household = private_household_dir(demo_root, "Park Family")
 
     code, payload = run(capsys, "mark-shared", api.ENGAGEMENT_FLAG, str(john))
-    assert code == 1 and payload["error"] == api.SHARE_LINK_FIRST
+    assert code == 1 and payload["error"] == screen_words.SHARE_LINK_FIRST
     assert shared_on(household) is None
 
     assert run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(john),
@@ -667,18 +668,18 @@ def test_the_sharing_words_are_the_apis_and_the_renderer_types_none(capsys, demo
     the sentence about a return left unticked is Python's; the page shows
     what it is handed and types none of it (decision 126)."""
     words = api.vocab()["household"]
-    assert words["sharing_heading"] == api.SHARING_HEADING
-    assert words["sharing_note"] == api.SHARING_NOTE
-    assert words["mark_shared"] == api.MARK_SHARED_LABEL
-    assert words["shared_on_line"] == api.SHARED_ON_LINE
-    assert words["not_yet_shared_line"] == api.NOT_YET_SHARED_LINE
-    assert words["rollover_unticked"] == api.ROLLOVER_UNTICKED_NOTE
+    assert words["sharing_heading"] == screen_words.SHARING_HEADING
+    assert words["sharing_note"] == screen_words.SHARING_NOTE
+    assert words["mark_shared"] == screen_words.MARK_SHARED_LABEL
+    assert words["shared_on_line"] == screen_words.SHARED_ON_LINE
+    assert words["not_yet_shared_line"] == screen_words.NOT_YET_SHARED_LINE
+    assert words["rollover_unticked"] == screen_words.ROLLOVER_UNTICKED_NOTE
 
     js = read("app.js")
     html = read("index.html")
-    for literal in (*api.SHARING_CHECKLIST, api.SHARING_HEADING, api.SHARING_NOTE,
-                    api.MARK_SHARED_LABEL, api.SHARED_ON_LINE, api.NOT_YET_SHARED_LINE,
-                    api.SHARE_LINK_FIRST, api.ROLLOVER_UNTICKED_NOTE):
+    for literal in (*screen_words.SHARING_CHECKLIST, screen_words.SHARING_HEADING, screen_words.SHARING_NOTE,
+                    screen_words.MARK_SHARED_LABEL, screen_words.SHARED_ON_LINE, screen_words.NOT_YET_SHARED_LINE,
+                    screen_words.SHARE_LINK_FIRST, screen_words.ROLLOVER_UNTICKED_NOTE):
         assert literal not in js, literal
         assert literal not in html, literal
 
@@ -806,10 +807,10 @@ def test_propose_spellings_is_a_read_and_the_renderer_types_no_kind_label_or_not
     # the kinds above prove the page reads the list rather than holding one.
     for literal in ("Entity (legal name)", "DBA or abbreviation",
                     "Owner (accounts held so)", "Trust or estate",
-                    api.SPELLINGS_LABEL, api.SPELLINGS_HELP, api.ADD_PERSON_LABEL,
-                    api.OWN_SPELLING_HINT, api.REVIEW_PEOPLE_LABEL,
-                    api.PEOPLE_ROLLED_NOTE, api.TEACH_SPELLING_LABEL,
-                    api.TEACH_SPELLING_HINT, words["one_word"], words["none_yet"],
+                    screen_words.SPELLINGS_LABEL, screen_words.SPELLINGS_HELP, screen_words.ADD_PERSON_LABEL,
+                    screen_words.OWN_SPELLING_HINT, screen_words.REVIEW_PEOPLE_LABEL,
+                    screen_words.PEOPLE_ROLLED_NOTE, screen_words.TEACH_SPELLING_LABEL,
+                    screen_words.TEACH_SPELLING_HINT, words["one_word"], words["none_yet"],
                     review.NAME_CONFIRMED_NOTE, review.NAME_OTHER_NOTE,
                     review.NAME_ABSENT_NOTE):
         assert not _typed_as_a_string(js, literal), literal
@@ -878,8 +879,8 @@ def test_edit_household_saves_feeds_and_the_state_carries_feeds_and_fed_by_with_
     assert other["household"]["feeds"] == []
 
     words = api.vocab()["household"]
-    assert words["feed_warning"] == api.FEED_WARNING
-    assert words["return_warning"] == api.RETURN_WARNING
+    assert words["feed_warning"] == screen_words.FEED_WARNING
+    assert words["return_warning"] == screen_words.RETURN_WARNING
     assert words["feed_warning"] == "Its Members Can Drop Here"   # P84: no placeholder left
 
     # A feed the other household has no active return for this year is
@@ -911,7 +912,7 @@ def test_assign_with_a_target_refuses_an_unfed_return_and_hands_over_to_a_fed_on
     code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(father),
                         stdin={"original": parked, "identifier": "A01", "seq": seq,
                                "target": str(outsider)})
-    assert code == 1 and payload["error"] == api.NOT_FED.format(label=outsider.name)
+    assert code == 1 and payload["error"] == screen_words.NOT_FED.format(label=outsider.name)
     assert read_index(outsider) == []
 
     code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(father),
@@ -1001,7 +1002,7 @@ def test_a_waiting_row_keeps_its_one_click_in_the_document_bucket_with_open_and_
     [row] = [e for e in state["index"] if e["decision"] == NEEDS_REVIEW]
 
     assert row["code"] == reasons.NAMED_ACROSS_HOUSEHOLDS.code in reasons.READ_AND_PARKED_CODES
-    assert row["bucket"] == waiting["bucket"] == api.BUCKET_DOCUMENT
+    assert row["bucket"] == waiting["bucket"] == firm_view.BUCKET_DOCUMENT
     assert row["open_key"] and Path(state["paths"][row["open_key"]]).is_file()
     assert waiting["handle"] == row["handle"]
     assert waiting["waits_for"]["target"] == str(llc) and waiting["waits_for_refused"] == ""
@@ -1027,7 +1028,7 @@ def test_a_waiting_row_whose_feed_was_trimmed_offers_no_click_and_says_not_fed(c
 
     _code, state = run(capsys, "state", api.ENGAGEMENT_FLAG, str(father))
     [card] = state["review"]
-    said = api.NOT_FED.format(label="1120S - Park & Lee LLC")
+    said = screen_words.NOT_FED.format(label="1120S - Park & Lee LLC")
     assert card["waits_for"] is None and card["waits_for_refused"] == said
 
     code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(father),
@@ -1100,33 +1101,33 @@ def test_the_renderer_types_none_of_the_feed_words(capsys, demo_root):
     here = Path(__file__).resolve().parents[1]
     js = (here / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
     html = (here / "app" / "renderer" / "index.html").read_text(encoding="utf-8")
-    for word in (api.FEEDS_LABEL, api.FEEDS_HELP, api.FEEDS_LINE, api.FED_BY_LINE,
-                 api.ADD_FEED_LABEL, api.FEED_WARNING, api.RETURN_WARNING,
-                 api.HAND_OVER_LABEL, api.HAND_OVER_RETURN_LABEL, api.HAND_OVER_REQUEST_LABEL,
-                 api.NOBODY_TYPED, api.NOT_FED, api.HANDED_OVER_LINE,
-                 api.FILE_WHERE_IT_WAITS_LABEL):
+    for word in (screen_words.FEEDS_LABEL, screen_words.FEEDS_HELP, screen_words.FEEDS_LINE, screen_words.FED_BY_LINE,
+                 screen_words.ADD_FEED_LABEL, screen_words.FEED_WARNING, screen_words.RETURN_WARNING,
+                 screen_words.HAND_OVER_LABEL, screen_words.HAND_OVER_RETURN_LABEL, screen_words.HAND_OVER_REQUEST_LABEL,
+                 screen_words.NOBODY_TYPED, screen_words.NOT_FED, screen_words.HANDED_OVER_LINE,
+                 screen_words.FILE_WHERE_IT_WAITS_LABEL):
         assert f'"{word}"' not in js and f"'{word}'" not in js, word
         assert word not in html, word
     words = api.vocab()
-    assert words["household"]["feeds_line"] == api.FEEDS_LINE
-    assert words["household"]["fed_by_line"] == api.FED_BY_LINE
-    assert words["household"]["add_feed"] == api.ADD_FEED_LABEL
-    assert words["household"]["nobody_typed"] == api.NOBODY_TYPED
-    assert words["review_labels"]["hand_over"] == api.HAND_OVER_LABEL
+    assert words["household"]["feeds_line"] == screen_words.FEEDS_LINE
+    assert words["household"]["fed_by_line"] == screen_words.FED_BY_LINE
+    assert words["household"]["add_feed"] == screen_words.ADD_FEED_LABEL
+    assert words["household"]["nobody_typed"] == screen_words.NOBODY_TYPED
+    assert words["review_labels"]["hand_over"] == screen_words.HAND_OVER_LABEL
     # The two boxes of the hand-over have their own words since Fable's
     # review of decision 129: the page borrowed the household heading and
     # the editor's title, which read nearly right and would have drifted
     # the moment either was reworded for its own screen.
-    assert words["review_labels"]["hand_over_return"] == api.HAND_OVER_RETURN_LABEL
-    assert words["review_labels"]["hand_over_request"] == api.HAND_OVER_REQUEST_LABEL
+    assert words["review_labels"]["hand_over_return"] == screen_words.HAND_OVER_RETURN_LABEL
+    assert words["review_labels"]["hand_over_request"] == screen_words.HAND_OVER_REQUEST_LABEL
     # And what the page says once a document has gone (decision 132): the
     # row here is released, in the API's words, filled with the reply's
     # label and request.
-    assert words["review_labels"]["handed_over"] == api.HANDED_OVER_LINE
+    assert words["review_labels"]["handed_over"] == screen_words.HANDED_OVER_LINE
     assert "vocab.review_labels.handed_over" in js
     # And decision 204's one click, labelled by the API and filled by the
     # page with the label the card carries.
-    assert words["review_labels"]["file_where_it_waits"] == api.FILE_WHERE_IT_WAITS_LABEL
+    assert words["review_labels"]["file_where_it_waits"] == screen_words.FILE_WHERE_IT_WAITS_LABEL
     assert "vocab.review_labels.file_where_it_waits" in js
 
 
@@ -1447,7 +1448,7 @@ def test_a_stale_seq_is_refused(capsys, demo_root):
     lines = len(ledger.read_events(household))
     code, payload = run(capsys, "accept-folder-name", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"seq": lines - 1, "scope": "household"})
-    assert code == 1 and payload["error"] == api.ACCEPT_STALE
+    assert code == 1 and payload["error"] == screen_words.ACCEPT_STALE
     assert len(ledger.read_events(household)) == lines
 
 
@@ -1474,7 +1475,7 @@ def test_a_year_disagreement_is_not_accepted(capsys, demo_root):
     for scope in ("household", "return"):
         code, payload = run(capsys, "accept-folder-name", api.ENGAGEMENT_FLAG, str(moved),
                             stdin={"seq": seq, "scope": scope})
-        assert code == 1 and payload["error"] == api.YEAR_NOT_ACCEPTED
+        assert code == 1 and payload["error"] == screen_words.YEAR_NOT_ACCEPTED
     assert ledger.path_for(moved).read_bytes() == journal
 
 
@@ -1491,7 +1492,7 @@ def test_accepting_a_household_whose_originals_rest_under_the_old_name_is_refuse
     lines = len(ledger.read_events(household))
     code, payload = run(capsys, "accept-folder-name", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"seq": pause["seq"], "scope": "household"})
-    assert code == 1 and payload["error"] == api.ORIGINALS_UNDER_OLD_NAME
+    assert code == 1 and payload["error"] == screen_words.ORIGINALS_UNDER_OLD_NAME
     assert len(ledger.read_events(household)) == lines
 
 
@@ -1509,7 +1510,7 @@ def test_accepting_one_return_never_renames_a_household_that_has_received_a_docu
     lines = (len(ledger.read_events(household)), len(ledger.read_events(engagement)))
     code, payload = run(capsys, "accept-folder-name", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"seq": lines[0], "scope": "return"})
-    assert code == 1 and payload["error"] == api.ORIGINALS_UNDER_OLD_NAME
+    assert code == 1 and payload["error"] == screen_words.ORIGINALS_UNDER_OLD_NAME
     assert (len(ledger.read_events(household)), len(ledger.read_events(engagement))) == lines
     assert household_pause(household) == HOUSEHOLD_PAUSED
 
@@ -1811,7 +1812,7 @@ def test_a_link_to_a_household_being_sorted_saves_here_says_so_and_a_later_save_
     assert load_household_info(park_dir).related == ("Lee Family",)
     assert load_household_info(lee_dir).related == ()
     assert payload["warnings"] == ["Link Pending: Lee Family Is Busy"]
-    assert api.SCREEN["notices"]["related_pending"] == "Link Pending: {household} Is Busy"
+    assert screen_words.SCREEN["notices"]["related_pending"] == "Link Pending: {household} Is Busy"
 
     code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})
     assert code == 0 and payload["warnings"] == [], payload

@@ -89,11 +89,11 @@ def test_the_assign_sentences_are_the_apis_and_the_page_types_none_of_them():
     """R5.5 (D-9): the three sentences ``fileRow`` said are the API's
     constants, worded byte for byte as the page typed them, and no script
     the page loads holds any of their words in its code."""
-    assert api.ASSIGNED_FILED == "{name} filed as {filed_as}"
-    assert api.ASSIGNED_KEYWORD_ADDED == '"{keyword}" added to {identifier} so the next one files itself'
-    assert api.ASSIGNED_SPELLING_ADDED == '"{spelling}" added so the next page that prints it confirms itself'
+    assert screen_words.ASSIGNED_FILED == "{name} filed as {filed_as}"
+    assert screen_words.ASSIGNED_KEYWORD_ADDED == '"{keyword}" added to {identifier} so the next one files itself'
+    assert screen_words.ASSIGNED_SPELLING_ADDED == '"{spelling}" added so the next page that prints it confirms itself'
     text = "\n".join(stripped_js(name) for name in RENDERER_SCRIPTS)
-    for sentence in (api.ASSIGNED_FILED, api.ASSIGNED_KEYWORD_ADDED, api.ASSIGNED_SPELLING_ADDED):
+    for sentence in (screen_words.ASSIGNED_FILED, screen_words.ASSIGNED_KEYWORD_ADDED, screen_words.ASSIGNED_SPELLING_ADDED):
         for words in re.split(r"\{\w+\}", sentence):
             if len(words.split()) >= 2:
                 assert words.strip(' "') not in text, words
@@ -174,10 +174,10 @@ def test_the_renderer_types_no_unlearn_word(capsys, demo_root):
     js = (Path(__file__).resolve().parents[1] / "app" / "renderer" / "app.js").read_text(
         encoding="utf-8")
 
-    between = api.UNLEARNED_NOTE.split("}")[1].split("{")[0].strip()      # "unlearned from"
-    tail = api.UNLEARNED_NOTE.split("{identifier}")[1].strip()            # the rest of it
+    between = screen_words.UNLEARNED_NOTE.split("}")[1].split("{")[0].strip()      # "unlearned from"
+    tail = screen_words.UNLEARNED_NOTE.split("{identifier}")[1].strip()            # the rest of it
 
-    assert api.UNLEARN_LABEL not in js
+    assert screen_words.UNLEARN_LABEL not in js
     assert between not in js and tail not in js
     assert "vocab.editor.unlearn_label" in js and "vocab.editor.unlearned_note" in js
 
@@ -212,7 +212,7 @@ def test_the_state_the_app_reads_carries_no_deferred_index(capsys, demo_root, tm
     there is no word for it - in the reply, in the pass's own report, or in
     the vocabulary the renderer derives from."""
     from tracker import api
-    from tracker.runner import EngagementRun
+    from tracker.run_log import EngagementRun
 
     spec = {"household": HOUSEHOLD, "return_name": "Smith 2025", "form": "1040", "client": "John Smith",
             "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
@@ -453,10 +453,10 @@ def test_the_review_card_has_three_buckets_and_opens_only_a_documents_copy(capsy
 
     rows = {e["original_name"]: e for e in state["index"] if e["decision"] == NEEDS_REVIEW}
     assert {name: (e["bucket"], e["extension"]) for name, e in rows.items()} == {
-        "a letter.pdf": (api.BUCKET_DOCUMENT, "pdf"),
-        "vacation photo.bmp": (api.BUCKET_DOCUMENT, "bmp"),
-        "scans.zip": (api.BUCKET_CONTAINER, "zip"),
-        "W-2 2025.pdf.exe": (api.BUCKET_NOT_A_DOCUMENT, "exe"),
+        "a letter.pdf": (firm_view.BUCKET_DOCUMENT, "pdf"),
+        "vacation photo.bmp": (firm_view.BUCKET_DOCUMENT, "bmp"),
+        "scans.zip": (firm_view.BUCKET_CONTAINER, "zip"),
+        "W-2 2025.pdf.exe": (firm_view.BUCKET_NOT_A_DOCUMENT, "exe"),
     }
     assert rows["W-2 2025.pdf.exe"]["open_key"] == "" and rows["scans.zip"]["open_key"] == ""
     assert rows["vacation photo.bmp"]["code"] == reasons.NO_REQUEST_ACCEPTS_CODE
@@ -483,7 +483,7 @@ def test_a_refused_file_has_no_open_on_the_designated_machine(name, code):
     payload = api._review_payload(row)
     assert payload["open_key"] == "", (name, code, payload)
     if name != "statement.pdf":
-        assert payload["bucket"] == api.BUCKET_CONTAINER, payload
+        assert payload["bucket"] == firm_view.BUCKET_CONTAINER, payload
 
 
 @pytest.mark.parametrize("code", ["", "a-code-nobody-has-placed"])
@@ -491,7 +491,7 @@ def test_a_code_nobody_has_placed_gets_no_open(code):
     """Open is an allow-list, so it fails closed: a row with no code, or with
     a code no one has put in either set, offers no Open (decision 190)."""
     payload = api._review_payload(_parked_row("statement.pdf", code))
-    assert payload["bucket"] == api.BUCKET_DOCUMENT and payload["open_key"] == "", payload
+    assert payload["bucket"] == firm_view.BUCKET_DOCUMENT and payload["open_key"] == "", payload
 
 
 @pytest.mark.parametrize("code", sorted(reasons.READ_AND_PARKED_CODES))
@@ -501,7 +501,7 @@ def test_a_read_and_parked_document_opens_its_marked_copy(code):
     copy, marked for Protected View - and nothing else opens it."""
     row = _parked_row("statement.pdf", code)
     payload = api._review_payload(row)
-    assert payload["bucket"] == api.BUCKET_DOCUMENT
+    assert payload["bucket"] == firm_view.BUCKET_DOCUMENT
     assert payload["open_key"] == f"review_copy {ledger_key(row)}", payload
 
 
@@ -533,7 +533,7 @@ def test_every_parked_row_ships_a_unique_handle_and_a_program_from_a_zip_is_answ
     handles = [e["handle"] for e in parked.values()]
     assert "" not in handles and len(set(handles)) == len(handles)
     assert {t["handle"] for t in state["review"]} == set(handles)
-    assert parked["Pay.scr"]["bucket"] == api.BUCKET_NOT_A_DOCUMENT
+    assert parked["Pay.scr"]["bucket"] == firm_view.BUCKET_NOT_A_DOCUMENT
     assert parked["Pay.scr"]["extension"] == "scr" and parked["Pay.scr"]["open_key"] == ""
 
     first = parked["invoice.js"]
@@ -631,13 +631,9 @@ def test_assigning_a_shortlisted_request_files_it_and_the_queue_drops_it(capsys,
 
 
 def test_the_vocabulary_carries_every_word_the_review_card_shows(capsys, demo_root):
-    from tracker.api import (
-        FOOTER_PLACE_WORDS,
-        NOTHING_SUGGESTED_WORDS,
-        SET_ASIDE_NOTE_WORDS,
-    )
     from tracker.records import WHERE_FOOTER
     from tracker.review import IDENTIFIER_SEPARATOR, MAX_SUGGESTIONS, PLACE_WORDS
+    from tracker.screen_words import FOOTER_PLACE_WORDS, NOTHING_SUGGESTED_WORDS, SET_ASIDE_NOTE_WORDS
 
     vocab = run(capsys, "list")[1]["vocab"]
     # The app says the short words; the status report and the console keep
@@ -646,17 +642,17 @@ def test_the_vocabulary_carries_every_word_the_review_card_shows(capsys, demo_ro
 
     # The card's own buttons and headings...
     labels = vocab["review_labels"]
-    assert labels["file"] == api.FILE_LABEL and labels["dismiss"] == api.DISMISS_LABEL
-    assert labels["file_anyway"] == api.FILE_ANYWAY_LABEL
-    assert labels["suggested"] == api.SUGGESTED_HEADING
-    assert labels["other_requests"] == api.OTHER_REQUESTS_HEADING
+    assert labels["file"] == screen_words.FILE_LABEL and labels["dismiss"] == screen_words.DISMISS_LABEL
+    assert labels["file_anyway"] == screen_words.FILE_ANYWAY_LABEL
+    assert labels["suggested"] == screen_words.SUGGESTED_HEADING
+    assert labels["other_requests"] == screen_words.OTHER_REQUESTS_HEADING
     # ...its second rendering's three answers and the toggle's two words
     # (decision 114), which head their suggestion with the word above.
-    assert labels["accept"] == api.ACCEPT_LABEL and labels["skip"] == api.SKIP_LABEL
-    assert labels["open_in_list"] == api.OPEN_IN_LIST_LABEL
-    assert labels["card_mode"] == api.CARD_MODE_LABEL
-    assert labels["list_mode"] == api.LIST_MODE_LABEL
-    assert labels["card_position"] == api.CARD_POSITION
+    assert labels["accept"] == screen_words.ACCEPT_LABEL and labels["skip"] == screen_words.SKIP_LABEL
+    assert labels["open_in_list"] == screen_words.OPEN_IN_LIST_LABEL
+    assert labels["card_mode"] == screen_words.CARD_MODE_LABEL
+    assert labels["list_mode"] == screen_words.LIST_MODE_LABEL
+    assert labels["card_position"] == screen_words.CARD_POSITION
     # ...and every word tracker.review owns, from tracker.review or, where
     # the app says it shorter, from the API.
     assert vocab["triage"] == {
@@ -680,7 +676,6 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
     label pattern, the set-aside sentence and the returning-client line -
     and the reason the editor saves travels in the one rules_changed event
     beside the override."""
-    from tracker.api import SET_ASIDE_NOTE_WORDS as SET_ASIDE_NOTE
     from tracker.manifest import (
         NOT_APPLICABLE_LABEL,
         OVERRIDE_REASON_OTHER,
@@ -688,6 +683,7 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
         Override,
     )
     from tracker.rollover import ORIGIN_NOT_APPLICABLE
+    from tracker.screen_words import SET_ASIDE_NOTE_WORDS as SET_ASIDE_NOTE
 
     vocab = run(capsys, "list")[1]["vocab"]
     assert vocab["override_reasons"] == list(OVERRIDE_REASONS)
@@ -696,12 +692,12 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
     assert "not_applicable_label" not in vocab
     assert vocab["triage"]["set_aside_note"] == SET_ASIDE_NOTE
     assert vocab["origin_not_applicable"] == ORIGIN_NOT_APPLICABLE
-    assert vocab["not_applicable_carried"] == api.NOT_APPLICABLE_CARRIED
+    assert vocab["not_applicable_carried"] == screen_words.NOT_APPLICABLE_CARRIED
     assert [c["key"] for c in vocab["columns"]][-4:] == [
         "override_reason", "named", "asked", "short_title"]
     renderer = renderer_text()   # every script the page loads (R3.3)
     for word in (*OVERRIDE_REASONS, OVERRIDE_REASON_OTHER, *Override.ALL, NOT_APPLICABLE_LABEL,
-                 SET_ASIDE_NOTE, api.NOT_APPLICABLE_CARRIED, view.SET_ASIDE_SECTION, view.SET_ASIDE_GROUP):
+                 SET_ASIDE_NOTE, screen_words.NOT_APPLICABLE_CARRIED, view.SET_ASIDE_SECTION, view.SET_ASIDE_GROUP):
         assert f'"{word}"' not in renderer and f"'{word}'" not in renderer, word
     for word in (*Override.ALL, OVERRIDE_REASON_OTHER, "Not Applicable in"):
         assert word not in renderer, word
@@ -711,21 +707,21 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
     from tracker.rollover import ORIGIN_NEW
 
     assert vocab["not_asked_label"] == NOT_ASKED_LABEL
-    assert vocab["ask_the_client"] == api.ASK_THE_CLIENT
-    assert vocab["request_list"] == api.REQUEST_LIST_WORDS == "request list"   # the dialog's heading (R5.5)
-    assert vocab["not_asked_table_label"] == api.NOT_ASKED_TABLE_LABEL
-    assert vocab["roll_template_label"] == api.ROLL_TEMPLATE_LABEL
-    assert vocab["nothing_asked"] == api.NOTHING_ASKED
+    assert vocab["ask_the_client"] == screen_words.ASK_THE_CLIENT
+    assert vocab["request_list"] == screen_words.REQUEST_LIST_WORDS == "request list"   # the dialog's heading (R5.5)
+    assert vocab["not_asked_table_label"] == screen_words.NOT_ASKED_TABLE_LABEL
+    assert vocab["roll_template_label"] == screen_words.ROLL_TEMPLATE_LABEL
+    assert vocab["nothing_asked"] == screen_words.NOTHING_ASKED
     assert vocab["origin_new"] == ORIGIN_NEW
-    assert vocab["new_not_asked_carried"] == api.NEW_NOT_ASKED_CARRIED
+    assert vocab["new_not_asked_carried"] == screen_words.NEW_NOT_ASKED_CARRIED
     assert vocab["set_aside"] == {"heading": view.SET_ASIDE_SECTION, "group": view.SET_ASIDE_GROUP}
     assert "not_asked_heading" not in vocab["editor"]
     assert vocab["editor"]["yes_no_fields"] == ["named", "asked"]
     html = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "index.html").read_text(
         encoding="utf-8")
-    for word in (NOT_ASKED_LABEL, api.ASK_THE_CLIENT, screen_words.ASK_THE_CLIENT_NOTE,
-                 api.NOT_ASKED_TABLE_LABEL, api.ROLL_TEMPLATE_LABEL, api.NOTHING_ASKED,
-                 api.NEW_NOT_ASKED_CARRIED.split("{n}")[1].split(" - ")[0].strip(),
+    for word in (NOT_ASKED_LABEL, screen_words.ASK_THE_CLIENT, screen_words.ASK_THE_CLIENT_NOTE,
+                 screen_words.NOT_ASKED_TABLE_LABEL, screen_words.ROLL_TEMPLATE_LABEL, screen_words.NOTHING_ASKED,
+                 screen_words.NEW_NOT_ASKED_CARRIED.split("{n}")[1].split(" - ")[0].strip(),
                  view.SET_ASIDE_SECTION.split("{")[0].strip()):
         assert word not in renderer and word not in html, word
 
@@ -841,7 +837,7 @@ def test_a_review_command_with_no_seq_is_refused_and_a_stale_one_names_the_newer
 
     code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"original": parked["pbc_location"], "identifier": "D01"})
-    assert code == 1 and payload["error"] == api.NO_SEQ
+    assert code == 1 and payload["error"] == screen_words.NO_SEQ
 
     # Somebody else sets the row aside while this card is open. It is still
     # parked, so the by-name refusal has nothing to say about it.
@@ -1043,7 +1039,7 @@ def test_restore_refuses_without_a_seq_and_with_a_stale_one(capsys, demo_root, t
 
     code, payload = run(capsys, "restore", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"original": moved["pbc_location"]})
-    assert code == 1 and payload["error"] == api.NO_SEQ
+    assert code == 1 and payload["error"] == screen_words.NO_SEQ
 
     code, payload = run(capsys, "restore", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"original": moved["pbc_location"], "seq": filed["seq"]})
@@ -1060,18 +1056,18 @@ def test_the_renderer_types_none_of_the_moved_cards_words(capsys, demo_root):
     and the page shows them without holding one of its own."""
     vocab = run(capsys, "list")[1]["vocab"]
     labels = vocab["review_labels"]
-    assert labels["restore"] == api.RESTORE_LABEL
-    assert labels["keep"] == api.KEEP_LABEL
-    assert labels["send_to_review"] == api.SEND_TO_REVIEW_LABEL
-    assert labels["moved_heading"] == api.MOVED_HEADING
-    assert labels["moved_summary"] == api.MOVED_SUMMARY
-    assert labels["moved_nowhere"] == api.MOVED_NOWHERE
+    assert labels["restore"] == screen_words.RESTORE_LABEL
+    assert labels["keep"] == screen_words.KEEP_LABEL
+    assert labels["send_to_review"] == screen_words.SEND_TO_REVIEW_LABEL
+    assert labels["moved_heading"] == screen_words.MOVED_HEADING
+    assert labels["moved_summary"] == screen_words.MOVED_SUMMARY
+    assert labels["moved_nowhere"] == screen_words.MOVED_NOWHERE
 
     renderer = Path(__file__).resolve().parent.parent / "app" / "renderer"
     for rel in ("app.js", "index.html"):
         text = (renderer / rel).read_text(encoding="utf-8")
-        for word in (api.RESTORE_LABEL, api.KEEP_LABEL, api.SEND_TO_REVIEW_LABEL,
-                     api.MOVED_HEADING, api.MOVED_SUMMARY, api.MOVED_NOWHERE):
+        for word in (screen_words.RESTORE_LABEL, screen_words.KEEP_LABEL, screen_words.SEND_TO_REVIEW_LABEL,
+                     screen_words.MOVED_HEADING, screen_words.MOVED_SUMMARY, screen_words.MOVED_NOWHERE):
             assert word not in text, (rel, word)
 
 
@@ -1224,10 +1220,10 @@ def test_the_state_builder_triages_once(capsys, demo_root, monkeypatch):
 
 def test_the_words_188_and_204_added_are_still_in_the_vocabulary(capsys, demo_root):
     vocab = run(capsys, "list")[1]["vocab"]
-    assert vocab["review_labels"]["file_where_it_waits"] == api.FILE_WHERE_IT_WAITS_LABEL
-    assert vocab["review_labels"]["handed_over"] == api.HANDED_OVER_LINE
-    assert vocab["household"]["accept_folder_name"] == api.ACCEPT_FOLDER_NAME_LABEL
-    assert vocab["household"]["accept_folder_name_help"] == api.ACCEPT_FOLDER_NAME_HELP
+    assert vocab["review_labels"]["file_where_it_waits"] == screen_words.FILE_WHERE_IT_WAITS_LABEL
+    assert vocab["review_labels"]["handed_over"] == screen_words.HANDED_OVER_LINE
+    assert vocab["household"]["accept_folder_name"] == screen_words.ACCEPT_FOLDER_NAME_LABEL
+    assert vocab["household"]["accept_folder_name_help"] == screen_words.ACCEPT_FOLDER_NAME_HELP
     father, _ = two_households(capsys, demo_root)
     assert "waits_for" in waiting_document(capsys, father)
 
@@ -1332,9 +1328,9 @@ def test_a_locked_rescan_after_adding_the_issuer_is_said_by_its_class_never_its_
     code, payload = _add_issuer(capsys, engagement, row)
     assert code == 0, payload
     note = payload["added_and_filed"]["assigned"]["scan_note"]
-    assert note == api.ISSUER_NOT_RESCANNED
+    assert note == screen_words.ISSUER_NOT_RESCANNED
     assert "private" not in note
-    assert api.vocab()["review_labels"]["issuer_not_rescanned"] == api.ISSUER_NOT_RESCANNED
+    assert api.vocab()["review_labels"]["issuer_not_rescanned"] == screen_words.ISSUER_NOT_RESCANNED
 
 
 def test_the_reply_names_the_row_added_and_the_document_filed(capsys, demo_root):
@@ -1344,7 +1340,7 @@ def test_the_reply_names_the_row_added_and_the_document_filed(capsys, demo_root)
     done = payload["added_and_filed"]
     assert done["added"] == {"identifier": "F03", "document": "Schedule K-1 - Dunmore Capital LP"}
     assert done["assigned"]["identifier"] == "F03" and done["assigned"]["original_name"] == "k-1 dunmore.pdf"
-    assert done["said"] == api.ISSUER_ADDED_AND_FILED.format(
+    assert done["said"] == screen_words.ISSUER_ADDED_AND_FILED.format(
         identifier="F03", document="Schedule K-1 - Dunmore Capital LP", name="k-1 dunmore.pdf")
     assert "F03" in {rule["identifier"] for rule in payload["state"]["rules"]}
 
@@ -1451,7 +1447,7 @@ def test_an_issuer_that_is_not_text_is_refused_rather_than_made_a_name(capsys, d
     before = _as_it_stands(engagement)
     for sent in (["Dunmore Capital"], {"name": "Dunmore Capital"}, 7):
         code, payload = _add_issuer(capsys, engagement, row, issuer=sent)
-        assert code == 1 and payload["error"] == api.ISSUER_NOT_TEXT, sent
+        assert code == 1 and payload["error"] == screen_words.ISSUER_NOT_TEXT, sent
     _nothing_moved(engagement, before)
 
 
@@ -1581,7 +1577,7 @@ def test_the_vocabulary_carries_every_word_201_shows():
                                          "date_pattern", "named"]
     # The fold and its two labels went with S5's one Advanced switch; nothing reads them.
     assert "routing" not in editor and "routing_all" not in editor and editor["advanced"] == "Advanced"
-    assert editor["not_this_return"] == api.EDITOR_NOT_THIS_RETURN
+    assert editor["not_this_return"] == screen_words.EDITOR_NOT_THIS_RETURN
     assert editor["routing_help"] == ("How the app recognises this document when it arrives. A save "
                                       "checks these the same way whether the fold is open or not.")
     labels = words["review_labels"]
@@ -1590,7 +1586,7 @@ def test_the_vocabulary_carries_every_word_201_shows():
                                       "Taught to the request so the next one files itself; the editor "
                                       "shows it beside the row.")
     assert labels["issuer_label"] == "Issuer Name"
-    assert api.ISSUER_LABEL is manifest.COL_ISSUER
+    assert screen_words.ISSUER_LABEL is manifest.COL_ISSUER
     assert labels["issuer_help"] == ("Adds {identifier}, a K-1 row for this issuer, to the request list "
                                      "and files this document under it. Type the distinctive words and "
                                      "leave off the suffix (L.P., LLC).")
@@ -1629,7 +1625,7 @@ def test_a_filed_documents_working_copy_has_a_key_the_shell_can_open_and_the_row
     copy = Path(state["paths"][key])
     assert copy == engagement / filed["prepared_location"] and copy.is_file()
     assert copy.name == filed["filed_as"], "the name that is drawn is the name of the file that opens"
-    assert api.PATH_KINDS[key.split(" ", 1)[0]] == "reveal", "a filed copy is shown, never opened (F1)"
+    assert screen_words.PATH_KINDS[key.split(" ", 1)[0]] == "reveal", "a filed copy is shown, never opened (F1)"
     # The reply puts no absolute path on a row the page draws; a key is a word and a row's handle.
     for field in ("open_keys", "filed_names", "filed_as"):
         assert not [s for s in _walk_strings(filed[field]) if str(engagement) in s or s.startswith("/")], field
@@ -1664,7 +1660,7 @@ def test_a_moved_by_hand_copy_has_a_key_to_where_it_is_now_and_no_path_on_the_ro
     [moved] = state["moved"]
 
     assert Path(state["paths"][moved["open_key"]]) == target and target.is_file()
-    assert api.PATH_KINDS[moved["open_key"].split(" ", 1)[0]] == "reveal"
+    assert screen_words.PATH_KINDS[moved["open_key"].split(" ", 1)[0]] == "reveal"
     assert not [s for s in _walk_strings(moved["open_key"]) if str(engagement) in s]
     # The moved row's index entry is not a filed one, so it offers no second key for the same file.
     [index_row] = [e for e in state["index"] if e["decision"] == "File Moved"]
@@ -1710,12 +1706,12 @@ def test_a_set_aside_file_and_a_parked_document_are_shown_but_a_zip_or_email_is_
     row = rows["vacation photo.bmp"]
     assert row["open_key"] == ""
     key = row["shown_key"]
-    assert key.startswith("shown_copy ") and api.PATH_KINDS["shown_copy"] == "reveal"
+    assert key.startswith("shown_copy ") and screen_words.PATH_KINDS["shown_copy"] == "reveal"
     assert Path(state["paths"][key]) == engagement / row["prepared_location"]
     assert Path(state["paths"][key]).is_file()
     assert not [s for s in _walk_strings(key) if str(engagement) in s]
     zipped = rows["letters.zip"]
-    assert zipped["prepared_location"] and zipped["bucket"] == api.BUCKET_CONTAINER
+    assert zipped["prepared_location"] and zipped["bucket"] == firm_view.BUCKET_CONTAINER
     assert zipped["open_key"] == "" and zipped["shown_key"] == "", "an email or a zip is plain text"
     assert rows["setup.exe"]["shown_key"] == "" and not rows["setup.exe"]["prepared_location"]
     assert not [k for k in state["paths"] if k.startswith("shown_copy") and "setup" in state["paths"][k]]
@@ -1738,7 +1734,7 @@ def test_a_parked_pdfs_shown_key_is_its_open_key_so_no_path_is_named_twice(capsy
     assert parked["shown_key"] == parked["open_key"]
     kinds_of = {}
     for key, path in state["paths"].items():
-        kinds_of.setdefault(path, set()).add(api.PATH_KINDS.get(key.split(" ", 1)[0]))
+        kinds_of.setdefault(path, set()).add(screen_words.PATH_KINDS.get(key.split(" ", 1)[0]))
     assert all(len(kinds) == 1 for kinds in kinds_of.values()), kinds_of
     paths = list(state["paths"].values())
     assert len(paths) == len(set(paths)), "one key per path"
@@ -1755,7 +1751,7 @@ def test_a_real_state_paths_still_opens_a_parked_pdfs_review_copy_through_the_sh
     review = state["paths"][parked["open_key"]]
     [zip_like] = [e for e in state["index"] if e["original_name"] == "Mortgage Notes.docx"]
     shown = state["paths"][zip_like["shown_key"]]
-    scenario = {"pathKinds": api.PATH_KINDS, "paths": state["paths"]}
+    scenario = {"pathKinds": screen_words.PATH_KINDS, "paths": state["paths"]}
     steps = [{"tracker": ["list"]}, {"open": [review]}, {"open": [review, "reveal"]},
              {"open": [shown]}, {"open": [shown, "reveal"]}]
     ran = run_menu(tmp_path, steps, **scenario)
@@ -1791,6 +1787,6 @@ def test_no_return_or_household_row_carries_an_open_key_and_their_words_navigate
 
 def test_the_short_reason_and_the_section_words_are_capitalised_as_jason_asked():
     assert reasons.SHORT_REASONS["unmatched"] == "Could Not Sort"
-    assert api.MENU["needs_review"] == "Needs Review"
+    assert screen_words.MENU["needs_review"] == "Needs Review"
     assert api.vocab()["screen"]["sections"]["needs_review"] == "Needs Review"
     assert api.vocab()["screen"]["empty"]["needs_review"] == "Nothing Needs Review"

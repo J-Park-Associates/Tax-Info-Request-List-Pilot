@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 413,
-    "edges": 2418,
-    "reused": 359
+    "edges": 2455,
+    "reused": 319
   },
   "node_types": [
     "artifact",
@@ -4976,7 +4976,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "9fac9efc9291df61",
+      "sha256": "0069436d79f39aeb",
       "lines": 2058,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -6258,8 +6258,8 @@
       "id": "tests/api_driver.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a9d85d68504a463f",
-      "lines": 545,
+      "sha256": "e9275f6f0b094f55",
+      "lines": 546,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -6729,7 +6729,7 @@
       "id": "tests/passes.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "47f637880add963e",
+      "sha256": "d036abf489c9d066",
       "lines": 243,
       "exports": [
         "FRIDAY",
@@ -6821,8 +6821,8 @@
       "id": "tests/plugin_session.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "abaf3241038e59fe",
-      "lines": 429,
+      "sha256": "5e70bd03c3ba825c",
+      "lines": 431,
       "exports": [
         "ENV_OFFICE_SHAPED_FULL",
         "LOST_WORKER",
@@ -7294,8 +7294,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5df694c14d27d0ed",
-      "lines": 2158,
+      "sha256": "2d7946d36163c3f4",
+      "lines": 2159,
       "exports": [
         "payload_of_label",
         "test_a_broken_journal_is_said_in_the_firms_sentence_with_its_line_and_run_recover",
@@ -7388,8 +7388,8 @@
       "id": "tests/test_api_editor.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f8af40eb49294ebd",
-      "lines": 1732,
+      "sha256": "fbca6c7fa506b957",
+      "lines": 1735,
       "exports": [
         "test_a_bad_due_date_is_a_sentence",
         "test_a_case_only_change_reads_the_same_in_the_readme_and_the_letter",
@@ -7473,8 +7473,8 @@
       "id": "tests/test_api_firm.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a280f3a1d1de6a1e",
-      "lines": 1520,
+      "sha256": "9166377580e5e1ca",
+      "lines": 1521,
       "exports": [
         "WINDOWS_WORDS",
         "test_a_cold_overview_says_each_batch_of_households_it_reads",
@@ -7546,8 +7546,8 @@
       "id": "tests/test_api_household.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d264324bb54fca98",
-      "lines": 1861,
+      "sha256": "9b970831ece4d02c",
+      "lines": 1862,
       "exports": [
         "a_park_household",
         "a_parked_document",
@@ -7618,8 +7618,8 @@
       "id": "tests/test_api_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "21370a995d1f8ba1",
-      "lines": 347,
+      "sha256": "7393cf8c225ecaad",
+      "lines": 348,
       "exports": [
         "test_a_held_reminder_shows_no_letter_and_offers_no_action",
         "test_a_letter_that_only_asks_about_a_program_is_offered_on_the_card",
@@ -7639,8 +7639,8 @@
       "id": "tests/test_api_returns.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "029ccea1480836e6",
-      "lines": 801,
+      "sha256": "faf01e2af2519f13",
+      "lines": 804,
       "exports": [
         "test_a_client_of_only_illegal_characters_still_makes_one_folder_name",
         "test_a_command_names_a_return_by_its_place_under_a_clients_root_that_is_set",
@@ -7685,8 +7685,8 @@
       "id": "tests/test_api_review.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "555fa022f45fd47a",
-      "lines": 1796,
+      "sha256": "4c98df13e2ab5f9c",
+      "lines": 1792,
       "exports": [
         "TWIN_SAID",
         "WANDERED",
@@ -7774,8 +7774,8 @@
       "id": "tests/test_api_root.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "4aea1209c5c740e6",
-      "lines": 1415,
+      "sha256": "3304ad364c1ad0f8",
+      "lines": 1418,
       "exports": [
         "FITS_MARGIN",
         "LONG_ROW_OVER",
@@ -7936,8 +7936,8 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e7f286ff64cca7b6",
-      "lines": 1453,
+      "sha256": "e9c0d3e266eb9f26",
+      "lines": 1455,
       "exports": [
         "APP_INSTALLERS",
         "ARTWORK_APP",
@@ -8141,8 +8141,8 @@
       "id": "tests/test_containers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "fde08a7dfe2ae9f6",
-      "lines": 1061,
+      "sha256": "388693757050d214",
+      "lines": 1062,
       "exports": [
         "FORM_1098",
         "Killed",
@@ -8210,8 +8210,8 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "494e100266512af5",
-      "lines": 2247,
+      "sha256": "7dffa0732ed2544d",
+      "lines": 2253,
       "exports": [
         "A_PASS_READING",
         "BOMB_REFUSED",
@@ -8419,7 +8419,7 @@
       "id": "tests/test_errors.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7a1731894a15c99a",
+      "sha256": "4c9c2c3cdc5ddd94",
       "lines": 1049,
       "exports": [
         "DROPPED",
@@ -8493,8 +8493,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "326ae23acf3de177",
-      "lines": 5628,
+      "sha256": "9dfd382447a89ded",
+      "lines": 5629,
       "exports": [
         "A_PASS_KILLED_MID_COPY",
         "DANA",
@@ -8812,8 +8812,8 @@
       "id": "tests/test_firm_view.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "af8c86b7c1837db0",
-      "lines": 60,
+      "sha256": "7e1c7fa8c9a0c6ed",
+      "lines": 61,
       "exports": [
         "test_a_file_falls_in_the_group_its_decision_says",
         "test_item_group_follows_its_table"
@@ -8945,7 +8945,7 @@
       "id": "tests/test_households.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e06414fb3d6f638c",
+      "sha256": "88b7e9f325a60867",
       "lines": 538,
       "exports": [
         "ITEMS",
@@ -9011,8 +9011,8 @@
       "id": "tests/test_intents.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "837811e5ab93fc61",
-      "lines": 544,
+      "sha256": "1a68f6d39fcce37e",
+      "lines": 545,
       "exports": [
         "FORGED",
         "test_a_copy_through_a_link_copies_nothing",
@@ -9094,8 +9094,8 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7f6d45e8eca07af2",
-      "lines": 1398,
+      "sha256": "49ccfcda07aa7d00",
+      "lines": 1405,
       "exports": [
         "MOVED_OUT",
         "REPO",
@@ -9147,7 +9147,7 @@
         "SPELLING_OWNERS": "('tracker/layout.py', 'tracker/door.py')"
       },
       "role": "The package's layers, domains and import rules, pinned: no load-time import points to a higher layer, and each module sits in exactly one layer and one domain.",
-      "notes": "SPEC-architecture-p4 P4.13 (R4.13.1): the guard holds every name phase 4 moved to its home (MOVED_OUT says where each old module's names went), so a test cannot reach it through the module it left; READ_THROUGH_ON_PURPOSE, the allow-list, starts empty and an entry is a stop and ask."
+      "notes": "SPEC-architecture-p4 P4.13 (R4.13.1): the guard holds every name phase 4 moved to its home (MOVED_OUT says where each old module's names went), so a test cannot reach it through the module it left; READ_THROUGH_ON_PURPOSE, the allow-list, starts empty and an entry is a stop and ask. SPEC-architecture-p5 P5.16 (R5.16.1, R5.16.5): the guard holds phase 5's moves too, the API's words, editors, creation and firm view, the runner's log, status page and pass order, and the reminder's letter rendering, and every test now reads those names from the module that defines them."
     },
     {
       "id": "tests/test_layout.py",
@@ -9392,8 +9392,8 @@
       "id": "tests/test_locking.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "cc2c42600a3a3cd8",
-      "lines": 1432,
+      "sha256": "b5dda04e46b8c1c2",
+      "lines": 1433,
       "exports": [
         "test_a_breaker_another_racer_is_reading_is_still_removed_on_release",
         "test_a_breaker_from_before_the_boot_is_abandoned_whatever_its_pid_says_now",
@@ -9587,8 +9587,8 @@
       "id": "tests/test_ocr.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3d2ceed0b7159d86",
-      "lines": 1117,
+      "sha256": "9fe59ada3132fce2",
+      "lines": 1118,
       "exports": [
         "A_PASS_BETWEEN_DOCUMENTS",
         "LETTER_300",
@@ -9680,8 +9680,8 @@
       "id": "tests/test_page_rows.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "dc9c4edc320dd4a2",
-      "lines": 365,
+      "sha256": "750d5a26a11ce0fa",
+      "lines": 366,
       "exports": [
         "NOW",
         "firm",
@@ -9704,8 +9704,8 @@
       "id": "tests/test_pass_order.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9c963cea1d7d4d63",
-      "lines": 76,
+      "sha256": "9ef49e61beae1b84",
+      "lines": 75,
       "exports": [
         "test_a_hint_for_a_thousand_households_is_read_back_whole",
         "test_a_household_the_run_limit_cut_off_is_not_said_to_be_stopped_by_a_person",
@@ -9769,7 +9769,7 @@
       "id": "tests/test_pilot.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f3973d88bc98e94f",
+      "sha256": "14c17b821b475283",
       "lines": 990,
       "exports": [
         "KIT_PROMPT",
@@ -10220,8 +10220,8 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0fb2b5f6932ef44a",
-      "lines": 2413,
+      "sha256": "a668f6a64f075439",
+      "lines": 2412,
       "exports": [
         "A_WRITE_KILLED_HALF_WAY",
         "CLIENT_SIDE_NOT_HELD",
@@ -10524,8 +10524,8 @@
       "id": "tests/test_resident.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "cba369f4aaa55d12",
-      "lines": 717,
+      "sha256": "67af0b5c71a57253",
+      "lines": 718,
       "exports": [
         "CHANGES_IN_PLACE",
         "END_PREFIX",
@@ -10814,8 +10814,8 @@
       "id": "tests/test_row_columns.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "521c9fc02ab6804a",
-      "lines": 745,
+      "sha256": "1c17c59b9bb16208",
+      "lines": 746,
       "exports": [
         "BASE",
         "COMPANION",
@@ -10847,8 +10847,8 @@
       "id": "tests/test_run_log.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ba47dcc6144f15f9",
-      "lines": 158,
+      "sha256": "a24a765c0fafe026",
+      "lines": 157,
       "exports": [
         "test_a_name_utf8_cannot_hold_never_reaches_the_log",
         "test_a_saved_choice_that_will_not_read_turns_the_line_red_and_names_no_guess",
@@ -10865,8 +10865,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0ac37717d6840d1e",
-      "lines": 1360,
+      "sha256": "d522cd73dc3b9a97",
+      "lines": 1352,
       "exports": [
         "DRAFT_DAY",
         "IDLE_PASS_MEASURED",
@@ -10941,8 +10941,8 @@
       "id": "tests/test_runner_household.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "31b04af4330b4e17",
-      "lines": 1705,
+      "sha256": "80100f9bb16cd4eb",
+      "lines": 1691,
       "exports": [
         "TRIAL_BALANCE",
         "a_clock",
@@ -11009,8 +11009,8 @@
       "id": "tests/test_runner_reports.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a778c74e3e20c769",
-      "lines": 1534,
+      "sha256": "58ee5efaf32d6556",
+      "lines": 1518,
       "exports": [
         "test_a_busy_checkpoint_is_never_called_another_root",
         "test_a_checkpoint_that_will_not_open_stops_the_pass_by_name",
@@ -11074,8 +11074,8 @@
       "id": "tests/test_runner_watch.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "405ce8e55c2d2d44",
-      "lines": 1014,
+      "sha256": "dfc847cb20830e92",
+      "lines": 1005,
       "exports": [
         "A_CLIENT_PATH",
         "StopAt",
@@ -11142,8 +11142,8 @@
       "id": "tests/test_scaffold.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7a2e7243782d22de",
-      "lines": 1182,
+      "sha256": "dd6d841f2525e301",
+      "lines": 1178,
       "exports": [
         "A01_LABEL",
         "ACTIVE_IDS",
@@ -11452,8 +11452,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "78f1d264d2c34f31",
-      "lines": 8283,
+      "sha256": "9cc58d039741a4b5",
+      "lines": 8284,
       "exports": [
         "CARD_HOUSEHOLD",
         "COMPACT_FUNCTIONS",
@@ -11857,8 +11857,8 @@
       "id": "tests/test_shell_menu.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "85e2d016e1a2fcf1",
-      "lines": 786,
+      "sha256": "e1262be6ff00b3c8",
+      "lines": 787,
       "exports": [
         "MAC",
         "NOT_FROM_THE_WINDOW",
@@ -11928,8 +11928,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "005855735018c2c2",
-      "lines": 5433,
+      "sha256": "41fb7b48455bb9d9",
+      "lines": 5448,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
@@ -12166,8 +12166,8 @@
       "id": "tests/test_status_page.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "012900c9da83482a",
-      "lines": 195,
+      "sha256": "d4740a2ce635ff73",
+      "lines": 194,
       "exports": [
         "test_a_file_named_like_markup_is_shown_as_a_name_not_rendered",
         "test_a_record_the_disk_refuses_is_said_by_its_class_and_code_never_its_path",
@@ -12184,8 +12184,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "33e9d7eef4545783",
-      "lines": 3986,
+      "sha256": "8b0b9beee50de8a9",
+      "lines": 3988,
       "exports": [
         "AS_AT_16",
         "AS_AT_17",
@@ -12497,7 +12497,7 @@
       "id": "tests/test_tripwire.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "831be21632ff4f16",
+      "sha256": "e24e03b6ffbf2d7a",
       "lines": 669,
       "exports": [
         "ALL_PASS",
@@ -13883,6 +13883,12 @@
     },
     {
       "from": "tests/api_driver.py",
+      "to": "tracker/screen_words.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/api_driver.py",
       "to": "tracker/settings.py",
       "type": "exercises",
       "source": "derived"
@@ -14339,6 +14345,12 @@
     },
     {
       "from": "tests/passes.py",
+      "to": "tracker/pass_order.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/passes.py",
       "to": "tracker/records.py",
       "type": "exercises",
       "source": "derived"
@@ -14573,6 +14585,12 @@
     },
     {
       "from": "tests/plugin_session.py",
+      "to": "tracker/run_log.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/plugin_session.py",
       "to": "tracker/runner.py",
       "type": "exercises",
       "source": "derived"
@@ -14586,6 +14604,12 @@
     {
       "from": "tests/plugin_session.py",
       "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/plugin_session.py",
+      "to": "tracker/status_page.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -15299,7 +15323,19 @@
     },
     {
       "from": "tests/test_api.py",
+      "to": "tracker/screen_words.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
       "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
+      "to": "tracker/status_page.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -15401,6 +15437,12 @@
     },
     {
       "from": "tests/test_api_editor.py",
+      "to": "tracker/household_edit.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_editor.py",
       "to": "tracker/households.py",
       "type": "exercises",
       "source": "derived"
@@ -15473,7 +15515,19 @@
     },
     {
       "from": "tests/test_api_editor.py",
+      "to": "tracker/request_edit.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_editor.py",
       "to": "tracker/rollover.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_editor.py",
+      "to": "tracker/run_log.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -15743,19 +15797,25 @@
     },
     {
       "from": "tests/test_api_firm.py",
-      "to": "tracker/runner.py",
-      "type": "exercises",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_api_firm.py",
       "to": "tracker/scaffold.py",
       "type": "exercises",
       "source": "derived"
     },
     {
       "from": "tests/test_api_firm.py",
+      "to": "tracker/screen_words.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_firm.py",
       "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_firm.py",
+      "to": "tracker/status_page.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -15822,6 +15882,12 @@
     {
       "from": "tests/test_api_household.py",
       "to": "tracker/creation.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_household.py",
+      "to": "tracker/firm_view.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -15906,6 +15972,12 @@
     {
       "from": "tests/test_api_household.py",
       "to": "tracker/rollover.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_household.py",
+      "to": "tracker/run_log.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -16043,6 +16115,12 @@
     },
     {
       "from": "tests/test_api_reminder.py",
+      "to": "tracker/screen_words.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_reminder.py",
       "to": "tracker/templates.py",
       "type": "exercises",
       "source": "derived"
@@ -16080,6 +16158,12 @@
     {
       "from": "tests/test_api_returns.py",
       "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_returns.py",
+      "to": "tracker/creation.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -16169,7 +16253,19 @@
     },
     {
       "from": "tests/test_api_returns.py",
+      "to": "tracker/screen_words.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_returns.py",
       "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_returns.py",
+      "to": "tracker/status_page.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -16319,7 +16415,7 @@
     },
     {
       "from": "tests/test_api_review.py",
-      "to": "tracker/runner.py",
+      "to": "tracker/run_log.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -16488,6 +16584,12 @@
     {
       "from": "tests/test_api_root.py",
       "to": "tracker/scheduling.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_root.py",
+      "to": "tracker/screen_words.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -16685,6 +16787,12 @@
     },
     {
       "from": "tests/test_build.py",
+      "to": "tracker/pass_order.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
       "to": "tracker/progress.py",
       "type": "exercises",
       "source": "derived"
@@ -16698,6 +16806,12 @@
     {
       "from": "tests/test_build.py",
       "to": "tracker/router.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
+      "to": "tracker/run_log.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -16914,6 +17028,12 @@
     {
       "from": "tests/test_containers.py",
       "to": "tracker/registry.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_containers.py",
+      "to": "tracker/run_log.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -17609,6 +17729,12 @@
     },
     {
       "from": "tests/test_errors.py",
+      "to": "tracker/screen_words.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_errors.py",
       "to": "tracker/settings.py",
       "type": "exercises",
       "source": "derived"
@@ -17723,6 +17849,12 @@
     },
     {
       "from": "tests/test_filer.py",
+      "to": "tracker/firm_view.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
       "to": "tracker/fsio.py",
       "type": "exercises",
       "source": "derived"
@@ -17832,6 +17964,12 @@
     {
       "from": "tests/test_filer.py",
       "to": "tracker/router.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
+      "to": "tracker/run_log.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -18377,13 +18515,13 @@
     },
     {
       "from": "tests/test_households.py",
-      "to": "tracker/api.py",
+      "to": "tracker/errors.py",
       "type": "exercises",
       "source": "derived"
     },
     {
       "from": "tests/test_households.py",
-      "to": "tracker/errors.py",
+      "to": "tracker/household_edit.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -18629,6 +18767,12 @@
     },
     {
       "from": "tests/test_intents.py",
+      "to": "tracker/pass_order.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
       "to": "tracker/records.py",
       "type": "exercises",
       "source": "derived"
@@ -18648,6 +18792,12 @@
     {
       "from": "tests/test_intents.py",
       "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
+      "to": "tracker/status_page.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -19103,6 +19253,12 @@
     },
     {
       "from": "tests/test_locking.py",
+      "to": "tracker/run_log.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_locking.py",
       "to": "tracker/runner.py",
       "type": "exercises",
       "source": "derived"
@@ -19361,6 +19517,12 @@
     },
     {
       "from": "tests/test_ocr.py",
+      "to": "tracker/run_log.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
       "to": "tracker/runner.py",
       "type": "exercises",
       "source": "derived"
@@ -19475,6 +19637,12 @@
     },
     {
       "from": "tests/test_page_rows.py",
+      "to": "tracker/run_log.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_page_rows.py",
       "to": "tracker/runner.py",
       "type": "exercises",
       "source": "derived"
@@ -19535,12 +19703,6 @@
     },
     {
       "from": "tests/test_pass_order.py",
-      "to": "tracker/runner.py",
-      "type": "exercises",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_pass_order.py",
       "to": "tests/passes.py",
       "type": "imports",
       "source": "derived"
@@ -19590,6 +19752,12 @@
     {
       "from": "tests/test_pilot.py",
       "to": "tracker/containers.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot.py",
+      "to": "tracker/run_log.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -20237,12 +20405,6 @@
     },
     {
       "from": "tests/test_reminder.py",
-      "to": "tracker/api.py",
-      "type": "exercises",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_reminder.py",
       "to": "tracker/filer.py",
       "type": "exercises",
       "source": "derived"
@@ -20334,6 +20496,12 @@
     {
       "from": "tests/test_reminder.py",
       "to": "tracker/scanner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reminder.py",
+      "to": "tracker/screen_words.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -20598,6 +20766,12 @@
     {
       "from": "tests/test_resident.py",
       "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_resident.py",
+      "to": "tracker/screen_words.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -21011,6 +21185,12 @@
     },
     {
       "from": "tests/test_row_columns.py",
+      "to": "tracker/screen_words.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_row_columns.py",
       "to": "tracker/settings.py",
       "type": "exercises",
       "source": "derived"
@@ -21060,12 +21240,6 @@
     {
       "from": "tests/test_run_log.py",
       "to": "tracker/__init__.py",
-      "type": "exercises",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_run_log.py",
-      "to": "tracker/runner.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -21473,6 +21647,12 @@
     },
     {
       "from": "tests/test_runner_household.py",
+      "to": "tracker/screen_words.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_runner_household.py",
       "to": "tracker/settings.py",
       "type": "exercises",
       "source": "derived"
@@ -21893,12 +22073,6 @@
     },
     {
       "from": "tests/test_scaffold.py",
-      "to": "tracker/api.py",
-      "type": "exercises",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_scaffold.py",
       "to": "tracker/copies.py",
       "type": "exercises",
       "source": "derived"
@@ -21912,6 +22086,12 @@
     {
       "from": "tests/test_scaffold.py",
       "to": "tracker/fsio.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scaffold.py",
+      "to": "tracker/household_edit.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -21983,6 +22163,12 @@
     },
     {
       "from": "tests/test_scaffold.py",
+      "to": "tracker/run_log.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scaffold.py",
       "to": "tracker/runner.py",
       "type": "exercises",
       "source": "derived"
@@ -21996,6 +22182,12 @@
     {
       "from": "tests/test_scaffold.py",
       "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scaffold.py",
+      "to": "tracker/status_page.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -22325,6 +22517,12 @@
     },
     {
       "from": "tests/test_shell.py",
+      "to": "tracker/screen_words.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_shell.py",
       "to": "tracker/settings.py",
       "type": "exercises",
       "source": "derived"
@@ -22386,6 +22584,12 @@
     {
       "from": "tests/test_shell_menu.py",
       "to": "tracker/api.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_shell_menu.py",
+      "to": "tracker/screen_words.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -22523,6 +22727,12 @@
     },
     {
       "from": "tests/test_single_source.py",
+      "to": "tracker/pass_order.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_single_source.py",
       "to": "tracker/progress.py",
       "type": "exercises",
       "source": "derived"
@@ -22596,6 +22806,12 @@
     {
       "from": "tests/test_single_source.py",
       "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_single_source.py",
+      "to": "tracker/status_page.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -22830,6 +23046,12 @@
     {
       "from": "tests/test_store.py",
       "to": "tracker/records.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_store.py",
+      "to": "tracker/run_log.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -23075,7 +23297,7 @@
     },
     {
       "from": "tests/test_tripwire.py",
-      "to": "tracker/runner.py",
+      "to": "tracker/run_log.py",
       "type": "exercises",
       "source": "derived"
     },

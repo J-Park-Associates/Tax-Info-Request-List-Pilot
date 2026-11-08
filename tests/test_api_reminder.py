@@ -13,6 +13,7 @@ import datetime as dt
 from pathlib import Path
 
 import tracker.api as api
+import tracker.screen_words as screen_words
 from tests import api_driver
 from tests.api_driver import HOUSEHOLD, _typed_as_a_string, chased_engagement, reminder_card, run
 from tracker import ledger
@@ -230,12 +231,12 @@ def test_approve_refuses_a_stale_fingerprint(capsys, demo_root):
     card = reminder_card(capsys, folder, stage=2)
     code, payload = run(capsys, "approve", api.ENGAGEMENT_FLAG, str(folder),
                         stdin={"stage": 2, "fingerprint": card["fingerprint"] + "x"})
-    assert code == 1 and payload["error"] == api.DRAFT_MOVED
+    assert code == 1 and payload["error"] == screen_words.DRAFT_MOVED
     assert not (folder / DRAFT_FILENAME).exists()
     # The same click at another stage is a different text, and is refused too.
     code, payload = run(capsys, "approve", api.ENGAGEMENT_FLAG, str(folder),
                         stdin={"stage": 4, "fingerprint": card["fingerprint"]})
-    assert code == 1 and payload["error"] == api.DRAFT_MOVED
+    assert code == 1 and payload["error"] == screen_words.DRAFT_MOVED
     assert not (folder / DRAFT_FILENAME).exists()
 
 

@@ -48,22 +48,10 @@ from tracker.layout import household_of, inbox_of, root_of
 from tracker.manifest import ManifestError, RequestItem
 from tracker.registry import Engagement, Registry, discover_engagements
 from tracker.reminder import DRAFT_FILENAME
-from tracker.run_log import log_path
-from tracker.runner import (
-    LOG_FILENAME,
-    RECORD_UNREADABLE,
-    REMINDERS_NEVER,
-    SETTINGS_FLAG,
-    STATUS_PAGE_FILENAME,
-    RunReport,
-    append_log,
-    main,
-    run_household,
-    run_registry,
-    write_status_page,
-)
+from tracker.run_log import LOG_FILENAME, REMINDERS_NEVER, RunReport, append_log, log_path
+from tracker.runner import SETTINGS_FLAG, main, run_household, run_registry
 from tracker.settings import product_name
-from tracker.status_page import STATUS_GENERATED
+from tracker.status_page import RECORD_UNREADABLE, STATUS_GENERATED, STATUS_PAGE_FILENAME, write_status_page
 
 #: The sample pile, built once per session: a fixture of ``tests/passes.py``, named here
 #: so every claim below can ask for it.
@@ -270,8 +258,7 @@ def test_an_engagement_nobody_passed_is_read_rather_than_run(tmp_path, samples):
     others are read - manifest and sidecar, no lock, no scaffold, no scan -
     and say so by carrying no pass time."""
     from tracker.registry import discover_engagements
-    from tracker.runner import status_report
-    from tracker.status_page import STATUS_NOT_PASSED
+    from tracker.status_page import STATUS_NOT_PASSED, status_report
 
     clients = tmp_path / "Clients"
     scanned = build_engagement(clients, samples, name="Scanned TY2025")
@@ -302,12 +289,8 @@ def test_conflict_copies_and_lock_siblings_are_named_every_pass_and_never_delete
     renames one; only a person does."""
     from tracker.layout import household_of
     from tracker.page import esc
-    from tracker.runner import (
-        append_log,
-        status_report,
-        write_status_page,
-    )
-    from tracker.status_page import RECORD_SIBLING, STATUS_RECORDS_HEADING
+    from tracker.run_log import append_log
+    from tracker.status_page import RECORD_SIBLING, STATUS_RECORDS_HEADING, status_report, write_status_page
 
     repo = Path(__file__).resolve().parents[1]
 
@@ -423,8 +406,8 @@ def test_a_failure_before_the_root_is_written_to_the_last_pass_file(tmp_path, mo
 
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
 
-    beside_the_store = Path(store.store_path()).with_name(runner_module.LAST_PASS_FILENAME)
-    assert runner_module.last_pass_path() == beside_the_store
+    beside_the_store = Path(store.store_path()).with_name(run_log.LAST_PASS_FILENAME)
+    assert run_log.last_pass_path() == beside_the_store
 
     empty = tmp_path / "empty-settings"
     empty.mkdir()
@@ -432,8 +415,8 @@ def test_a_failure_before_the_root_is_written_to_the_last_pass_file(tmp_path, mo
     with pytest.raises(SystemExit):
         main([SETTINGS_FLAG, str(empty), "--reminders", "never"])
     failed = json.loads(beside_the_store.read_text(encoding="utf-8"))
-    assert failed["result"] == runner_module.PASS_FAILED
-    assert failed["reason_code"] == runner_module.PASS_NO_ROOT
+    assert failed["result"] == run_log.PASS_FAILED
+    assert failed["reason_code"] == run_log.PASS_NO_ROOT
     assert failed["root"] == "" and failed["started"] and failed["ended"] and failed["build"]
 
     clients = tmp_path / "Clients"
@@ -444,7 +427,7 @@ def test_a_failure_before_the_root_is_written_to_the_last_pass_file(tmp_path, mo
     set_clients_root(clients)
     assert main([SETTINGS_FLAG, str(settings), "--reminders", "never"]) == 0
     ran = json.loads(beside_the_store.read_text(encoding="utf-8"))
-    assert ran["result"] == runner_module.PASS_SUCCEEDED and ran["reason_code"] == ""
+    assert ran["result"] == run_log.PASS_SUCCEEDED and ran["reason_code"] == ""
     assert Path(ran["root"]) == clients
 
     # By hand, or a dry run: the file is left as the schedule wrote it.
@@ -571,7 +554,7 @@ def test_a_refused_root_is_never_written_into_even_to_log_the_refusal(tmp_path, 
     the reason code."""
     import json
 
-    from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, last_pass_path
+    from tracker.run_log import LAST_PASS_FILENAME, LOG_FILENAME, last_pass_path
     from tracker.settings import ENV_SETTINGS_DIR, KEY_CLIENTS_ROOT, settings_path
 
     settings = tmp_path / "appdata" / "settings"
@@ -608,11 +591,11 @@ def test_a_household_not_served_twice_is_the_last_pass_files_reason(tmp_path, mo
 
     assert _a_scheduled_main(tmp_path, monkeypatch,
                              lambda ns, parser, reached: runner_module.NOT_SERVED_TWICE_EXIT_CODE) == 3
-    written = json.loads(runner_module.last_pass_path().read_text(encoding="utf-8"))
-    assert written["result"] == runner_module.PASS_FAILED
-    assert written["reason_code"] == runner_module.PASS_NOT_SERVED
+    written = json.loads(run_log.last_pass_path().read_text(encoding="utf-8"))
+    assert written["result"] == run_log.PASS_FAILED
+    assert written["reason_code"] == run_log.PASS_NOT_SERVED
     line = run_log.last_pass_line()
-    assert runner_module.PASS_REASONS[runner_module.PASS_NOT_SERVED] in line["text"]
+    assert run_log.PASS_REASONS[run_log.PASS_NOT_SERVED] in line["text"]
 
 
 def test_a_last_pass_file_that_cannot_be_written_never_stops_the_pass(tmp_path, monkeypatch):
@@ -638,7 +621,7 @@ def test_a_pass_that_stops_after_its_root_logs_the_kind_never_the_words(tmp_path
     with pytest.raises(RuntimeError):
         _a_scheduled_main(tmp_path, monkeypatch, stopped)
     said = run_log.log_path().read_text(encoding="utf-8")      # the data home's (decision 186)
-    assert f"pass failed ({runner_module.PASS_ENDED_EARLY})" in said and "(RuntimeError)" in said
+    assert f"pass failed ({run_log.PASS_ENDED_EARLY})" in said and "(RuntimeError)" in said
     assert "Fabricated" not in said
     assert not (clients / LOG_FILENAME).exists()
 
@@ -647,12 +630,12 @@ def test_a_pass_that_stops_before_its_root_is_logged_in_the_data_home(tmp_path, 
     """159 had nowhere to log a pass that never found a root; the run log in
     the data home (decision 186) takes it, by code and class only."""
     def stopped(ns, parser, reached):
-        raise runner_module.PassFailed(runner_module.PASS_NO_ROOT, "Fabricated Client's folder")
+        raise runner_module.PassFailed(run_log.PASS_NO_ROOT, "Fabricated Client's folder")
 
     with pytest.raises(SystemExit):
         _a_scheduled_main(tmp_path, monkeypatch, stopped)
     said = run_log.log_path().read_text(encoding="utf-8")
-    assert f"pass failed ({runner_module.PASS_NO_ROOT})" in said and "(PassFailed)" in said
+    assert f"pass failed ({run_log.PASS_NO_ROOT})" in said and "(PassFailed)" in said
     assert "Fabricated" not in said
 
 
@@ -682,7 +665,7 @@ def _the_scheduled_pass_with(tmp_path, monkeypatch, spoil):
         code = main([SETTINGS_FLAG, str(settings), "--reminders", "never", "--log"])
     page = html.unescape((clients / STATUS_PAGE_FILENAME).read_text(encoding="utf-8"))
     logged = run_log.log_path().read_text(encoding="utf-8")   # the data home's (decision 186)
-    written = json.loads(runner_module.last_pass_path().read_text(encoding="utf-8"))
+    written = json.loads(run_log.last_pass_path().read_text(encoding="utf-8"))
     return code, page, logged, written
 
 
@@ -708,10 +691,10 @@ def test_a_damaged_checkpoint_ends_the_pass_named_with_its_page_and_log_written(
     first = records.split("<li>", 2)[1]
     assert first.startswith("No household was served this pass") and "Set the file aside" in first
     # The log carries the code and the count, never the sentence (decision 186).
-    assert f"{runner_module.CODE_CHECKPOINT_NOT_PROVED}=1" in logged and "checkpoint_unread=1" in logged
+    assert f"{run_log.CODE_CHECKPOINT_NOT_PROVED}=1" in logged and "checkpoint_unread=1" in logged
     assert "No household was served this pass" not in logged and "Traceback" not in logged
-    assert written["reason_code"] == runner_module.PASS_CHECKPOINT_UNREADABLE
-    assert runner_module.PASS_REASONS[runner_module.PASS_CHECKPOINT_UNREADABLE] in \
+    assert written["reason_code"] == run_log.PASS_CHECKPOINT_UNREADABLE
+    assert run_log.PASS_REASONS[run_log.PASS_CHECKPOINT_UNREADABLE] in \
         run_log.last_pass_line()["text"]
 
 
@@ -734,7 +717,7 @@ def test_a_busy_checkpoint_is_never_called_another_root(tmp_path, monkeypatch):
 
     code, page, _logged, written = _the_scheduled_pass_with(tmp_path, monkeypatch, held_elsewhere)
     assert code == 1
-    assert written["reason_code"] == runner_module.PASS_CHECKPOINT_BUSY
+    assert written["reason_code"] == run_log.PASS_CHECKPOINT_BUSY
     assert "the next pass tries again" in page and "Set the file aside" not in page
     assert "belongs to" not in run_log.last_pass_line()["text"]
 
@@ -768,7 +751,7 @@ def test_the_practice_page_reads_no_journal_the_walk_has_followed(tmp_path, samp
     registry = discover_engagements(tmp_path)
     read = _count_journal_reads(monkeypatch)
 
-    report = runner_module.status_report(registry)
+    report = status_page.status_report(registry)
     write_status_page(tmp_path, report)
 
     assert read == []
@@ -788,7 +771,7 @@ def test_the_page_follows_a_journal_the_store_does_not_hold(tmp_path, samples):
     registry = discover_engagements(tmp_path)
     assert store.forget(store.connect(), first.path)
 
-    report = runner_module.status_report(registry)
+    report = status_page.status_report(registry)
     write_status_page(tmp_path, report)
 
     row = next(run for run in report.runs if run.engagement.path == first.path)
@@ -826,7 +809,7 @@ def test_the_practice_pages_report_asks_each_machine_question_once(tmp_path, sam
 
     monkeypatch.setattr(hold, "resolved", resolved)
     monkeypatch.setattr(settings, "data_home", data_home)
-    report = runner_module.status_report(registry)
+    report = status_page.status_report(registry)
     assert len(report.runs) == 3 and not report.errors
     assert asked["data_home"] <= 1, asked
     assert max(asked.values()) == 1, asked
@@ -1029,7 +1012,7 @@ def test_every_pass_warning_carries_a_code(tmp_path, samples, monkeypatch):
     asked = []
     monkeypatch.setattr(content_check, "readers_that_could_not_start",
                         lambda: asked.append(1) or (["one.pdf"] if len(asked) > 1 else []))
-    hint = store.store_path().parent / runner_module.PASS_ORDER_FILENAME
+    hint = store.store_path().parent / pass_order.PASS_ORDER_FILENAME
     hint.parent.mkdir(parents=True, exist_ok=True)
     hint.write_text("not the hint", encoding="utf-8")
     smith = build_engagement(tmp_path / "Clients", samples)
@@ -1039,8 +1022,8 @@ def test_every_pass_warning_carries_a_code(tmp_path, samples, monkeypatch):
 
     assert len(report.warning_codes) == len(report.warnings) == 4
     assert sorted(report.warning_codes) == sorted([
-        runner_module.CODE_LEFT_BEHIND, runner_module.CODE_READER_PATH_WARNING,
-        run_log.CODE_ORDER_HINT_UNREADABLE, runner_module.CODE_READER_COULD_NOT_START])
+        run_log.CODE_LEFT_BEHIND, run_log.CODE_READER_PATH_WARNING,
+        run_log.CODE_ORDER_HINT_UNREADABLE, run_log.CODE_READER_COULD_NOT_START])
     text = append_log(tmp_path / LOG_FILENAME, report).read_text(encoding="utf-8")
     assert _log_line(text, "codes") == {code: "1" for code in report.warning_codes}
     assert "one.pdf" not in text
@@ -1159,7 +1142,7 @@ def test_the_pass_fills_the_firm_cache_with_the_apps_own_summary(tmp_path, sampl
     head = firm_cache.head(str(door.checked_root(None)), dt.date.today())
     assert firm_cache.holds(firm_cache.cache_path(), [head])
     assert '"returns"' not in capsys.readouterr().out
-    assert runner_module.CODE_CACHE_NOT_FILLED not in log_path().read_text(encoding="utf-8")
+    assert run_log.CODE_CACHE_NOT_FILLED not in log_path().read_text(encoding="utf-8")
 
 
 def test_the_fill_asks_for_the_apps_own_firm_command():
@@ -1290,7 +1273,8 @@ def test_a_fill_that_fails_is_a_pass_warning_and_never_the_exit_code(tmp_path, s
     """R5: said loudly - on the page, as its code in the run log, in Run
     now's final line - and never fatal: the cache only makes the next
     Overview faster."""
-    from tracker.runner import CACHE_NOT_FILLED, CODE_CACHE_NOT_FILLED, FILL_STOPPED
+    from tracker.run_log import CODE_CACHE_NOT_FILLED
+    from tracker.runner import CACHE_NOT_FILLED, FILL_STOPPED
 
     why = FILL_STOPPED.format(code=3)
     monkeypatch.setattr(runner_module, "fill_firm_cache", lambda root, product="": why)
@@ -1428,7 +1412,7 @@ def _whole_writes_of_the_hint(monkeypatch, *, refuse: bool = False) -> list[Path
     real = fsio.write_text_atomically
 
     def watched(path, *args, **kwargs):
-        if Path(path).name == runner_module.PASS_ORDER_FILENAME:
+        if Path(path).name == pass_order.PASS_ORDER_FILENAME:
             writes.append(Path(path))
             if refuse:
                 raise PermissionError(13, "fabricated: the file is held")

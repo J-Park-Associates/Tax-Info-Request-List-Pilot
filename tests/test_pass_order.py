@@ -24,7 +24,6 @@ home; a read of a name the runner no longer holds reads
 
 from pathlib import Path
 
-import tracker.runner as runner_module
 from tests.passes import FRIDAY, _hint_file, _hint_lines
 from tracker import pass_order
 from tracker.registry import Engagement
@@ -39,11 +38,11 @@ def test_a_hint_for_a_thousand_households_is_read_back_whole(tmp_path):
         "completed": "2026-10-07T02:14:09", "ended": "2026-10-07T02:14:09",
         "started": "2026-10-07T02:13:58", "not_served": 0} for n in range(1000)}
     path = _hint_file()
-    assert runner_module._write_order_hint(path, hint)
+    assert pass_order._write_order_hint(path, hint)
     assert len(_hint_lines(path)) == 1
     assert 65_536 < path.stat().st_size < pass_order.PASS_ORDER_MAX_BYTES
     report = RunReport(today=FRIDAY)
-    assert runner_module._read_order_hint(report) == (path, hint, True)
+    assert pass_order._read_order_hint(report) == (path, hint, True)
     assert report.warnings == []
 
 
@@ -56,7 +55,7 @@ def test_a_torn_last_mark_is_skipped_without_a_warning(tmp_path, caplog):
         '{"started":"2026-10-07T02:00:1', encoding="ascii")
     report = RunReport(today=FRIDAY)
     with caplog.at_level("WARNING"):
-        found, hint, settled = runner_module._read_order_hint(report)
+        found, hint, settled = pass_order._read_order_hint(report)
     assert found == path and not settled
     assert hint == {"Alder Household": {"completed": "2026-10-06T02:00:00", "started": "2026-10-07T02:00:00"},
                     "Birch Household": {"started": "2026-10-07T02:00:05"}}
@@ -66,7 +65,7 @@ def test_a_torn_last_mark_is_skipped_without_a_warning(tmp_path, caplog):
 def test_a_household_the_run_limit_cut_off_is_not_said_to_be_stopped_by_a_person():
     """A pass nobody stopped is not "stopped by a person": the run has its own reason word."""
     from tracker.pass_order import WHY_CANCELLED, WHY_RUN_LIMIT, _why_not_served
-    from tracker.runner import EngagementRun
+    from tracker.run_log import EngagementRun
 
     assert WHY_RUN_LIMIT == "reached the run limit" != WHY_CANCELLED
     run = EngagementRun(engagement=Engagement(path=Path("x")))

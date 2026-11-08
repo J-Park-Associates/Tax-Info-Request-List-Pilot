@@ -30,6 +30,7 @@ from pathlib import Path
 import pytest
 
 import tracker.api as api
+import tracker.screen_words as screen_words
 from tests.api_driver import run, sample_engagement, scan
 from tests.css_rules import GRID_PROPS, GRID_TOKEN, blocks, colour_faults, declarations, stripped, top_level
 from tests.node_harness import (
@@ -2561,7 +2562,7 @@ def test_the_harness_stub_replies_have_the_shape_of_the_engines(capsys, scratch_
     for reply in (stub["firm"], real["firm"]):
         opened = {one["open_key"] for one in reply["files"]} - {""}
         assert opened and opened <= set(reply["paths"]), "every file's open key is a key of paths"
-        assert {key.split(" ")[0] for key in reply["paths"]} <= set(api.PATH_KINDS)
+        assert {key.split(" ")[0] for key in reply["paths"]} <= set(screen_words.PATH_KINDS)
 
     # firm, a page of a list (P278): the page, the totals, each return's counts, only its rows' paths and, on Needs Review, every file
     for name, real_page in real["pages"].items():
@@ -2602,7 +2603,7 @@ def test_the_harness_stub_replies_have_the_shape_of_the_engines(capsys, scratch_
         assert set(reply) <= set(real["state"])
         for level in ("index", "review", "items"):
             assert _keys(reply[level]) <= _keys(real["state"][level]), level
-        assert {key.split(" ")[0] for key in reply["paths"]} <= set(api.PATH_KINDS)
+        assert {key.split(" ")[0] for key in reply["paths"]} <= set(screen_words.PATH_KINDS)
     moved = [row for reply in stub["states"] for row in reply["moved"]]
     assert moved and set(moved[0]) - {"named"} == {
         "original_name", "pbc_location", "handle", "seq", "home", "now", "in_request", "gone",
@@ -2649,7 +2650,7 @@ def test_every_link_key_the_engine_sends_names_a_real_file_main_js_would_reveal(
     state = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))[1]
     firm = run(capsys, "firm")[1]
     listed = run(capsys, "list")[1]
-    assert listed["vocab"]["path_kinds"] == api.PATH_KINDS
+    assert listed["vocab"]["path_kinds"] == screen_words.PATH_KINDS
     keys = [(state, row["shown_key"]) for row in state["index"] if row.get("shown_key")]
     keys += [(state, row["open_keys"][0]) for row in state["index"] if row.get("open_keys")]
     keys += [(firm, row["open_key"]) for row in firm["files"] if row["open_key"]]
@@ -2657,8 +2658,8 @@ def test_every_link_key_the_engine_sends_names_a_real_file_main_js_would_reveal(
     for reply, key in keys:
         assert key in reply["paths"], key
         assert Path(reply["paths"][key]).is_file(), key
-        assert api.PATH_KINDS[key.split(" ")[0]] in ("file", "reveal"), key
-    assert [word for word, kind in api.PATH_KINDS.items() if kind == "file" and word.endswith("_copy")] == ["review_copy"]
+        assert screen_words.PATH_KINDS[key.split(" ")[0]] in ("file", "reveal"), key
+    assert [word for word, kind in screen_words.PATH_KINDS.items() if kind == "file" and word.endswith("_copy")] == ["review_copy"]
     assert not any(one["paused"] for one in firm["returns"])
 
 
@@ -3231,10 +3232,10 @@ def test_only_the_header_tooltip_says_sort_and_always_by_its_column():
     {Column}" - the "by {Column}" keeps it apart from the filing pass's Sort
     Now - and no column word, width line or menu item of this change says
     Sort; pages.js types none of them (every word is the vocabulary's)."""
-    for key, words in api.SCREEN["columns"].items():
+    for key, words in screen_words.SCREEN["columns"].items():
         assert "sort" not in words.lower() or key == "sort_by", key
-    assert "sort" not in api.MENU["reset_columns"].lower()
-    assert api.SCREEN["columns"]["sort_by"] == "Sort by {column}"
+    assert "sort" not in screen_words.MENU["reset_columns"].lower()
+    assert screen_words.SCREEN["columns"]["sort_by"] == "Sort by {column}"
     heads = js_function("pagesColumnHeads", "pages.js")
     assert not re.findall(r'"(?:Sort|Order|Return|Client|Status|Date)\b', heads), "a header word typed in pages.js"
 
@@ -3569,8 +3570,8 @@ def test_the_search_finds_waiting_files_on_needs_review_and_its_placeholder_says
     ran = run_shell(["screenWords", "fold", "foldedName", "shellHousehold", "shellOwnReturns", "shellReturn", "findOptions"], PEOPLE, probe, tmp_path)
     assert ran["names"][0] == "Smith W-2.pdf" and ran["note"] == "1040 - John & Jane Smith 2025"
     assert ran["check"] == {"ret": "r1", "name": "Smith W-2.pdf", "handle": "h1"} and ran["without"] == 3
-    assert api.SCREEN["find_placeholder"] == "Households and Returns"
-    assert api.SCREEN["find_placeholder_files"] == "Files, Households and Returns"
+    assert screen_words.SCREEN["find_placeholder"] == "Households and Returns"
+    assert screen_words.SCREEN["find_placeholder_files"] == "Files, Households and Returns"
     shell = stripped_js("shell.js")
     assert 'setAttribute("placeholder", shellRoute.level === "needs-review" ? words.find_placeholder_files : words.find_placeholder)' in shell
 
@@ -3587,13 +3588,13 @@ def test_the_side_panel_is_the_mocks_with_the_products_brand_and_nothing_behind_
     for ident in ("side-brand-product", "side-scroll", "side-types-heading", "side-workspace-heading", "side-settings", "last-sort"):
         assert f'id="{ident}"' in side, ident
     assert side.index('data-soon="family_entities"') < side.index('id="side-types-heading"') < side.index('data-soon="personal_trusts"')
-    words = api.SCREEN["side"]
+    words = screen_words.SCREEN["side"]
     assert "brand" not in words and words["product"] == "Tax Document Console"
-    assert words["under_construction"] == "Under Construction" == api.SCREEN["notices"]["under_construction"]
+    assert words["under_construction"] == "Under Construction" == screen_words.SCREEN["notices"]["under_construction"]
     assert words["soon"] == {"ready_to_sign": "Ready to Sign", "family_entities": "Family Entities", "personal_trusts": "Personal Trusts",
                              "corporate_entities": "Corporate Entities", "portal_settings": "Portal Settings"}
-    assert set(api.SCREEN["client_types"]) == set(api.CLIENT_TYPE_FORMS) and '"client_type_forms": CLIENT_TYPE_FORMS,' in (REPO / "tracker" / "api.py").read_text(encoding="utf-8")
-    assert api.CLIENT_TYPE_FORMS == {
+    assert set(screen_words.SCREEN["client_types"]) == set(screen_words.CLIENT_TYPE_FORMS) and '"client_type_forms": CLIENT_TYPE_FORMS,' in (REPO / "tracker" / "api.py").read_text(encoding="utf-8")
+    assert screen_words.CLIENT_TYPE_FORMS == {
         "individuals": ["1040"], "businesses": ["1120", "1120S", "1065"], "trusts": ["1041"], "nonprofits": ["990"]}
     shell = stripped_js("shell.js")
     soon = shell[shell.index('querySelectorAll(".side-section[data-soon]")) {\n  node.addEventListener'):]
@@ -3801,8 +3802,8 @@ def test_the_household_is_in_the_taxpayer_tooltip_and_the_rows_description(tmp_p
     assert "Navigate to Return (Alpha)" in ran["tips"] and "Navigate to Return (Bravo)" in ran["tips"]
     assert ran["described"].endswith("Alpha, Linked Households")
     assert ran["mark"] == ["Alpha"]
-    assert api.SCREEN["columns"]["taxpayer_tip"] == "{action} ({household})"
-    assert "return" not in api.SCREEN["columns"] and "client" not in api.SCREEN["columns"], "no list draws the old Return or Client header"
+    assert screen_words.SCREEN["columns"]["taxpayer_tip"] == "{action} ({household})"
+    assert "return" not in screen_words.SCREEN["columns"] and "client" not in screen_words.SCREEN["columns"], "no list draws the old Return or Client header"
 
 
 def test_tax_year_orders_by_number_and_form_type_by_the_apps_form_order(tmp_path):
@@ -4450,9 +4451,9 @@ def test_the_path_beside_updating_keeps_its_width_when_the_word_comes():
     body = body[:body.index("}")]
     for declaration in ("flex: none;", "inline-size: 8ch;", "overflow: hidden;", "white-space: nowrap;"):
         assert declaration in body, declaration
-    from tracker import api
+    from tracker import screen_words
 
-    assert len(api.SCREEN["updating"]) <= 8, "a longer word needs a wider slot in shell.css"
+    assert len(screen_words.SCREEN["updating"]) <= 8, "a longer word needs a wider slot in shell.css"
 
 
 def test_a_household_or_year_page_marks_its_held_statuses_while_they_are_asked_again(tmp_path):
@@ -6497,7 +6498,7 @@ def test_the_brand_band_is_the_mark_and_the_products_name_and_never_the_firms_na
     for one in RENDERER.rglob("*"):
         if one.is_file() and one.suffix in (".js", ".css", ".html", ".svg", ".json"):
             assert "logo.svg" not in one.read_text(encoding="utf-8"), one.name
-    assert "brand" not in api.SCREEN["side"]
+    assert "brand" not in screen_words.SCREEN["side"]
     assert "side.brand" not in stripped_js("shell.js")
     merged, _each = _shell_rules()
     assert merged["#side-brand:not(.hidden)"]["height"] == "var(--size-bar)" and merged["#side-brand:not(.hidden)"]["background"] == "var(--brand)"
@@ -6514,7 +6515,7 @@ def test_the_firms_name_is_the_window_titles_alone():
     for one in RENDERER.rglob("*"):
         if one.is_file() and one.suffix in (".js", ".css", ".html", ".svg") and "vendor" not in one.parts and one.name != "pilot-content.js":
             assert "J Park" not in one.read_text(encoding="utf-8"), one.name
-    assert "J Park" not in json.dumps(api.SCREEN)
+    assert "J Park" not in json.dumps(screen_words.SCREEN)
 
 
 def test_a_name_link_is_underlined_on_hover_on_the_keyboards_active_row_and_always_in_a_contrast_theme():
@@ -6643,7 +6644,7 @@ def test_an_overview_date_says_whether_it_is_since_or_due(tmp_path):
     just saying date"): a return that needs a person says "Since Mar 3" (the
     day its oldest waiting file arrived), a return waiting on the taxpayer
     "Due Apr 15"; the header stays "Date" and the order key stays the ISO day."""
-    assert api.SCREEN["since"] == "Since {date}" and api.SCREEN["due"] == "Due {date}" and api.SCREEN["columns"]["date"] == "Date"
+    assert screen_words.SCREEN["since"] == "Since {date}" and screen_words.SCREEN["due"] == "Due {date}" and screen_words.SCREEN["columns"]["date"] == "Date"
     ran = run_lists("""
       const page = draw("overview");
       const dates = page.byClass("row").map((row) => [row.byClass("row-name")[0].textContent, row.byClass("row-date")[0].textContent]);
@@ -8143,8 +8144,8 @@ def test_a_turn_refused_for_another_reason_offers_retry_and_retry_asks_the_same_
       const again = retryOf(said[0]);
       if (again) again();
       return { said: said.map((one) => one.sentence), offered, wish, turns, retried: asked.length > 1 ? asked[1].payload : null };
-    """.replace("@SENTENCE@", json.dumps(api.PRACTICE_NOT_WALKED)), tmp_path, functions=("retryOf",))
-    assert said["said"] == [api.PRACTICE_NOT_WALKED], "one notice, in the engine's words"
+    """.replace("@SENTENCE@", json.dumps(screen_words.PRACTICE_NOT_WALKED)), tmp_path, functions=("retryOf",))
+    assert said["said"] == [screen_words.PRACTICE_NOT_WALKED], "one notice, in the engine's words"
     assert said["offered"] == ["function"], "Retry is offered, as a fresh load's notice offers it"
     assert said["wish"] == 2 and said["turns"] == 0
     assert said["retried"] == {"page": {"list": "overview", "at": 2, "order": None, "filter": {"tab": "all"}}, "view": "v1"}, "Retry asks the same page"

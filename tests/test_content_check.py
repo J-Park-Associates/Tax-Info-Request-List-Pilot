@@ -270,7 +270,7 @@ def an_engagement_run(**kwargs):
     from pathlib import Path
 
     from tracker.registry import Engagement
-    from tracker.runner import EngagementRun
+    from tracker.run_log import EngagementRun
 
     return EngagementRun(engagement=Engagement(path=Path("Smith 2025")), **kwargs)
 
@@ -1094,7 +1094,8 @@ def test_a_cached_verdict_starts_no_child(tmp_path, in_a_child):
     from tests.builders import named_page
     from tracker.layout import inbox_of
     from tracker.registry import discover_engagements
-    from tracker.runner import REMINDERS_NEVER, run_registry
+    from tracker.run_log import REMINDERS_NEVER
+    from tracker.runner import run_registry
 
     started = []
     real = content_check._read_in_a_child
@@ -1275,7 +1276,8 @@ def test_a_page_tree_bomb_cannot_stall_the_pass(tmp_path, a_short_stop):
     from tracker.index import read_index
     from tracker.layout import inbox_of
     from tracker.registry import discover_engagements
-    from tracker.runner import REMINDERS_NEVER, run_registry
+    from tracker.run_log import REMINDERS_NEVER
+    from tracker.runner import run_registry
 
     w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
                      min_size_kb=0, required_keywords=("W-2",))
@@ -1372,7 +1374,8 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
     from tracker.index import read_index
     from tracker.layout import inbox_of, originals_of
     from tracker.registry import discover_engagements
-    from tracker.runner import REMINDERS_NEVER, append_log, format_report, run_registry
+    from tracker.run_log import REMINDERS_NEVER, append_log
+    from tracker.runner import format_report, run_registry
     from tracker.validators import sha256_of
 
     unavailable = ("The reader could not start on this machine, so this file was not read. "
@@ -1438,7 +1441,8 @@ def test_a_drop_the_reader_could_not_start_on_is_routed_next_pass(tmp_path, in_a
     from tracker.index import read_index
     from tracker.layout import inbox_of, originals_of
     from tracker.registry import discover_engagements
-    from tracker.runner import REMINDERS_NEVER, run_registry
+    from tracker.run_log import REMINDERS_NEVER
+    from tracker.runner import run_registry
 
     root = tmp_path / "root"
     w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
@@ -1485,7 +1489,8 @@ def test_a_resent_file_the_reader_could_not_start_on_waits_for_the_next_pass(
     from tracker.index import read_index
     from tracker.layout import inbox_of, locate, originals_of
     from tracker.registry import discover_engagements
-    from tracker.runner import REMINDERS_NEVER, run_registry
+    from tracker.run_log import REMINDERS_NEVER
+    from tracker.runner import run_registry
 
     root = tmp_path / "root"
     w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
@@ -1806,7 +1811,8 @@ def test_no_client_text_is_matched_in_the_pass_own_process(tmp_path, in_a_child)
     from tracker.layout import inbox_of
     from tracker.manifest import Status, load_manifest
     from tracker.registry import discover_engagements
-    from tracker.runner import REMINDERS_NEVER, run_registry
+    from tracker.run_log import REMINDERS_NEVER
+    from tracker.runner import run_registry
 
     w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
                      min_size_kb=0, required_keywords=("W-2",))

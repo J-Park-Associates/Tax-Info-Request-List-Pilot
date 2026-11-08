@@ -901,7 +901,8 @@ def scans_in_the_inbox(engagement, names_and_pages: dict[str, int]):
 
 def a_pass(root: Path, day: int = 1):
     from tracker.registry import discover_engagements
-    from tracker.runner import REMINDERS_NEVER, run_registry
+    from tracker.run_log import REMINDERS_NEVER
+    from tracker.runner import run_registry
 
     return run_registry(discover_engagements(root), today=dt.date(2026, 7, day), reminders=REMINDERS_NEVER)
 
@@ -910,7 +911,7 @@ def test_no_gpu_pack_means_the_cpu_without_a_word(tmp_path, monkeypatch, a_card)
     """R-2: with no ``gpu-runtime`` folder the reader never asks for the
     card - no library loaded, no CUDA engine requested, so no error lines -
     and says nothing but "processor" in the run log's first line."""
-    from tracker.runner import append_log
+    from tracker.run_log import append_log
 
     for module in (ocr, reader_child):
         monkeypatch.setattr(module, "gpu_pack", lambda: None)
@@ -933,7 +934,7 @@ def test_a_pack_is_used_only_when_every_session_is_on_cuda_and_the_self_test_rea
     ``CUDAExecutionProvider`` first, and the one-page self-test must read.
     Then the run log says "graphics card"; anything less is the processor
     and one run-log line saying why - never a pass warning."""
-    from tracker.runner import append_log
+    from tracker.run_log import append_log
 
     engagement = make_engagement(tmp_path / "root", w2_rows())
     scans_in_the_inbox(engagement, {"one.pdf": 1})
@@ -977,7 +978,7 @@ def test_a_gpu_fault_switches_the_rest_of_the_pass_to_the_cpu(tmp_path, a_card):
     the pass says so once, and no reading failed. The next pass tries the
     card again."""
     from tracker.index import read_index
-    from tracker.runner import append_log
+    from tracker.run_log import append_log
 
     engagement = make_engagement(tmp_path / "root", w2_rows())
     scans_in_the_inbox(engagement, {"one.pdf": 3, "two.pdf": 1})

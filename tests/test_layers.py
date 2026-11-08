@@ -1308,15 +1308,22 @@ def test_firm_pages_joins_layer_0_and_reaches_only_the_standard_library_and_the_
 
 # ── P4.13 (SPEC-architecture-p4 R4.13.1): moved names are read from home ───
 
-# Where each old module's names went in phase 4 (P331-P338 and SPEC-architecture-p4).
-# P4.13 holds them: a test, a tool or the program reads a moved name from the
-# module that defines it, never through the module it left, because an old
-# module that happens to import the name back for its own use would keep the
-# read working until the day it stops needing the import.
+# Where each old module's names went in phases 4 and 5 (P331-P338, P340-P348 and
+# SPEC-architecture-p4 and -p5). P4.13 and P5.16 hold them: a test, a tool or
+# the program reads a moved name from the module that defines it, never through
+# the module it left, because an old module that happens to import the name
+# back for its own use would keep the read working until the day it stops
+# needing the import.
 MOVED_OUT = {
     "filer": ("copies", "intents", "inbox", "readme_ack", "actions", "index"),
     "content_check": ("keywords", "verdicts"),
     "ocr": ("reader_child",),
+    # Phase 5's moves (P340-P348 and SPEC-architecture-p5, P5.16): the API's words and
+    # editors and the firm view, the runner's log, status page and pass order, and
+    # the reminder's letter rendering.
+    "api": ("screen_words", "request_edit", "household_edit", "creation", "firm_view"),
+    "runner": ("run_log", "status_page", "pass_order"),
+    "reminder": ("letter_render",),
 }
 
 # A read through an old module that must stay, with the reason. It starts empty:
@@ -1380,9 +1387,9 @@ def _reads_of_moved_names(tree: ast.AST, moved: dict[str, set[str]]) -> list[tup
 
 
 def test_a_name_this_phase_moved_is_read_from_its_home_never_through_the_module_it_left():
-    """P4.13 (R4.13.1): no ``from tracker.filer import room_for`` and no
-    ``filer.room_for`` for a name phase 4 moved out of the filer, the content
-    check or the OCR module. It reads code only: a ``setattr`` target is a
+    """P4.13 (R4.13.1), P5.16 (R5.16.1): no ``from tracker.filer import room_for`` and no
+    ``filer.room_for`` for a name phases 4 and 5 moved out of the filer, the content
+    check, the OCR module, the API, the runner or the reminder. It reads code only: a ``setattr`` target is a
     string and patch_sites' concern, and a string program is swept by hand."""
     moved = _moved_names()
     assert all(moved[old] for old in MOVED_OUT), moved

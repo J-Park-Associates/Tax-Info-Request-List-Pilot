@@ -57,6 +57,7 @@ from types import SimpleNamespace
 import pytest
 
 import tracker.api as api
+import tracker.screen_words as screen_words
 from tests.builders import app_stdin, make_engagement
 from tests.node_harness import js_function
 from tracker import ledger, records, store, templates, view
@@ -699,7 +700,7 @@ def test_a_save_with_a_column_this_version_does_not_know_is_refused(ctx):
         code = api.main(["edit", api.ENGAGEMENT_FLAG, str(folder)])
     payload = json.loads(ctx.capsys.readouterr().out)
     assert code == 1
-    assert payload["error"] == api.UNKNOWN_COLUMN.format(n=1, key="column_from_a_newer_build")
+    assert payload["error"] == screen_words.UNKNOWN_COLUMN.format(n=1, key="column_from_a_newer_build")
     assert ledger.path_for(folder).read_bytes() == before
 
 

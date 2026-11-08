@@ -909,7 +909,8 @@ def test_a_container_the_reader_could_not_start_on_is_reopened_next_pass(
     from tests.children import _a_reader_only_the_pass_has, no_child_left
     from tracker import content_check
     from tracker.registry import discover_engagements
-    from tracker.runner import REMINDERS_NEVER, run_registry
+    from tracker.run_log import REMINDERS_NEVER
+    from tracker.runner import run_registry
 
     mail = eml([("w2.pdf", pdf(W2)), ("1098.pdf", pdf(FORM_1098))])
     drop_bytes(engagement, "mail.eml", mail)

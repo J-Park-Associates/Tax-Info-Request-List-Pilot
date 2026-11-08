@@ -24,6 +24,7 @@ from pathlib import Path
 import pytest
 
 import tracker.api as api
+import tracker.screen_words as screen_words
 from tests import api_driver
 from tests.api_driver import (
     _AGED_AT,
@@ -63,9 +64,9 @@ from tracker.layout import PRIVATE_TREE, inbox_of
 from tracker.locking import lock_line, this_host
 from tracker.manifest import ManifestError, Status
 from tracker.records import ENGAGEMENT_LABELS
-from tracker.runner import STATUS_PAGE_FILENAME
 from tracker.scaffold import PREPARED_DIR_NAME, REVIEW_DIR_NAME
 from tracker.scheduling import TASK_NAME
+from tracker.status_page import STATUS_PAGE_FILENAME
 from tracker.templates import BASE_YEAR
 
 #: A fixture of ``tests/api_driver.py``, named here so every claim below can ask for it.
@@ -203,48 +204,48 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
                                   "duplicate": DUPLICATE, "dismissed": NOT_REQUESTED,
                                   "file_moved": FILE_MOVED}
     assert vocab["review_labels"] == {
-        "dismiss": api.DISMISS_LABEL, "dismiss_note": api.DISMISS_NOTE_HINT,
-        "came_from": api.CAME_FROM_SUBFOLDER,
-        "dismissed_heading": api.DISMISSED_HEADING, "file": api.FILE_LABEL,
-        "file_anyway": api.FILE_ANYWAY_LABEL,
-        "unfile": api.UNFILE_LABEL, "unfile_note": api.UNFILE_NOTE_HINT,
-        "mark_missing": api.MARK_MISSING_LABEL, "also_answers": api.ALSO_ANSWERS_LABEL,
-        "filed_heading": api.FILED_HEADING,
-        "suggested": api.SUGGESTED_HEADING, "other_requests": api.OTHER_REQUESTS_HEADING,
-        "restore": api.RESTORE_LABEL, "keep": api.KEEP_LABEL,
-        "send_to_review": api.SEND_TO_REVIEW_LABEL,
-        "moved_heading": api.MOVED_HEADING, "moved_summary": api.MOVED_SUMMARY,
-        "moved_nowhere": api.MOVED_NOWHERE,
-        "accept": api.ACCEPT_LABEL, "skip": api.SKIP_LABEL,
-        "open_in_list": api.OPEN_IN_LIST_LABEL,
-        "card_mode": api.CARD_MODE_LABEL, "list_mode": api.LIST_MODE_LABEL,
-        "card_position": api.CARD_POSITION,
-        "hand_over": api.HAND_OVER_LABEL,
-        "hand_over_return": api.HAND_OVER_RETURN_LABEL,
-        "hand_over_request": api.HAND_OVER_REQUEST_LABEL,
-        "handed_over": api.HANDED_OVER_LINE,
-        "file_where_it_waits": api.FILE_WHERE_IT_WAITS_LABEL,
+        "dismiss": screen_words.DISMISS_LABEL, "dismiss_note": screen_words.DISMISS_NOTE_HINT,
+        "came_from": screen_words.CAME_FROM_SUBFOLDER,
+        "dismissed_heading": screen_words.DISMISSED_HEADING, "file": screen_words.FILE_LABEL,
+        "file_anyway": screen_words.FILE_ANYWAY_LABEL,
+        "unfile": screen_words.UNFILE_LABEL, "unfile_note": screen_words.UNFILE_NOTE_HINT,
+        "mark_missing": screen_words.MARK_MISSING_LABEL, "also_answers": screen_words.ALSO_ANSWERS_LABEL,
+        "filed_heading": screen_words.FILED_HEADING,
+        "suggested": screen_words.SUGGESTED_HEADING, "other_requests": screen_words.OTHER_REQUESTS_HEADING,
+        "restore": screen_words.RESTORE_LABEL, "keep": screen_words.KEEP_LABEL,
+        "send_to_review": screen_words.SEND_TO_REVIEW_LABEL,
+        "moved_heading": screen_words.MOVED_HEADING, "moved_summary": screen_words.MOVED_SUMMARY,
+        "moved_nowhere": screen_words.MOVED_NOWHERE,
+        "accept": screen_words.ACCEPT_LABEL, "skip": screen_words.SKIP_LABEL,
+        "open_in_list": screen_words.OPEN_IN_LIST_LABEL,
+        "card_mode": screen_words.CARD_MODE_LABEL, "list_mode": screen_words.LIST_MODE_LABEL,
+        "card_position": screen_words.CARD_POSITION,
+        "hand_over": screen_words.HAND_OVER_LABEL,
+        "hand_over_return": screen_words.HAND_OVER_RETURN_LABEL,
+        "hand_over_request": screen_words.HAND_OVER_REQUEST_LABEL,
+        "handed_over": screen_words.HANDED_OVER_LINE,
+        "file_where_it_waits": screen_words.FILE_WHERE_IT_WAITS_LABEL,
         "buckets": api.BUCKET_HEADINGS, "bucket_order": list(api.BUCKET_HEADINGS),
-        "not_a_document": api.BUCKET_NOT_A_DOCUMENT,
-        "open_copy": api.OPEN_COPY_LABEL, "true_type": api.TRUE_TYPE,
-        "keyword": api.KEYWORD_LABEL, "keyword_help": api.KEYWORD_HELP,
-        "issuer_label": api.ISSUER_LABEL, "issuer_help": api.ISSUER_HELP,
-        "issuer_add": api.ISSUER_ADD_LABEL, "issuer_not_rescanned": api.ISSUER_NOT_RESCANNED,
+        "not_a_document": firm_view.BUCKET_NOT_A_DOCUMENT,
+        "open_copy": screen_words.OPEN_COPY_LABEL, "true_type": screen_words.TRUE_TYPE,
+        "keyword": screen_words.KEYWORD_LABEL, "keyword_help": screen_words.KEYWORD_HELP,
+        "issuer_label": screen_words.ISSUER_LABEL, "issuer_help": screen_words.ISSUER_HELP,
+        "issuer_add": screen_words.ISSUER_ADD_LABEL, "issuer_not_rescanned": screen_words.ISSUER_NOT_RESCANNED,
     }
     assert "carried_sheet" not in vocab
     # The editor's every word, and the request list's schema.
     assert vocab["columns"] == [{"key": f, "label": h, "help": COLUMN_HELP[f]} for h, f in COLUMNS]
     editor = vocab["editor"]
-    assert editor["open"] == api.EDITOR_OPEN_LABEL and editor["title"] == api.EDITOR_TITLE
-    assert editor["engagement_title"] == api.EDITOR_ENGAGEMENT_TITLE
-    assert editor["save"] == api.EDITOR_SAVE_LABEL and editor["cancel"] == api.EDITOR_CANCEL_LABEL
-    assert editor["add_row"] == api.EDITOR_ADD_LABEL and editor["remove_row"] == api.EDITOR_REMOVE_LABEL
-    assert editor["paste"] == api.EDITOR_PASTE_LABEL and editor["paste_hint"] == api.EDITOR_PASTE_HINT
-    assert editor["warnings_heading"] == api.EDITOR_WARNINGS_HEADING
-    assert editor["saved"] == api.RULES_SAVED and editor["nothing_changed"] == api.NOTHING_CHANGED
-    assert editor["learned_note"] == api.LEARNED_NOTE
-    assert editor["unlearn_label"] == api.UNLEARN_LABEL
-    assert editor["unlearned_note"] == api.UNLEARNED_NOTE
+    assert editor["open"] == screen_words.EDITOR_OPEN_LABEL and editor["title"] == screen_words.EDITOR_TITLE
+    assert editor["engagement_title"] == screen_words.EDITOR_ENGAGEMENT_TITLE
+    assert editor["save"] == screen_words.EDITOR_SAVE_LABEL and editor["cancel"] == screen_words.EDITOR_CANCEL_LABEL
+    assert editor["add_row"] == screen_words.EDITOR_ADD_LABEL and editor["remove_row"] == screen_words.EDITOR_REMOVE_LABEL
+    assert editor["paste"] == screen_words.EDITOR_PASTE_LABEL and editor["paste_hint"] == screen_words.EDITOR_PASTE_HINT
+    assert editor["warnings_heading"] == screen_words.EDITOR_WARNINGS_HEADING
+    assert editor["saved"] == screen_words.RULES_SAVED and editor["nothing_changed"] == screen_words.NOTHING_CHANGED
+    assert editor["learned_note"] == screen_words.LEARNED_NOTE
+    assert editor["unlearn_label"] == screen_words.UNLEARN_LABEL
+    assert editor["unlearned_note"] == screen_words.UNLEARNED_NOTE
     assert [f["key"] for f in editor["engagement_fields"]] == [f for _, f in ENGAGEMENT_FIELDS]
     assert {f["key"] for f in editor["engagement_fields"] if f["editable"]} == set(ENGAGEMENT_EDITABLE)
     # Which details take a date box is the record's answer, not the page's.
@@ -260,13 +261,13 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     assert vocab["schedule"] == {"start": DEFAULT_START, "every": DEFAULT_REPEAT_MINUTES,
                                  "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
                                  "task_name": TASK_NAME,
-                                 "repair": api.SCHEDULE_REPAIR_LABEL,
-                                 "repair_help": api.SCHEDULE_REPAIR_HELP,
-                                 "repair_confirm": api.SCHEDULE_REPAIR_CONFIRM.format(
+                                 "repair": screen_words.SCHEDULE_REPAIR_LABEL,
+                                 "repair_help": screen_words.SCHEDULE_REPAIR_HELP,
+                                 "repair_confirm": screen_words.SCHEDULE_REPAIR_CONFIRM.format(
                                      draft_day=WEEKDAY_NAMES[DRAFT_WEEKDAY]),
-                                 "move_confirm": api.SCHEDULE_MOVE_CONFIRM,
-                                 "move_warning": api.SCHEDULE_MOVE_WARNING,
-                                 "remove_confirm": api.SCHEDULE_REMOVE_CONFIRM,
+                                 "move_confirm": screen_words.SCHEDULE_MOVE_CONFIRM,
+                                 "move_warning": screen_words.SCHEDULE_MOVE_WARNING,
+                                 "remove_confirm": screen_words.SCHEDULE_REMOVE_CONFIRM,
                                  "button": "Schedule", "title": "Schedule on This Computer",
                                  "enabled_label": "Run the Schedule", "on": "On", "off": "Off",
                                  "start_label": "First Run At", "every_label": "How Often",
@@ -278,13 +279,13 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
                                      {"minutes": 240, "label": "Every 4 Hours"},
                                      {"minutes": 480, "label": "Every 8 Hours"}],
                                  "note": "Scan works either way. Nothing is ever sent.",
-                                 "loading": api.SCHEDULE_LOADING, "save": "Save", "cancel": "Cancel"}
+                                 "loading": screen_words.SCHEDULE_LOADING, "save": "Save", "cancel": "Cancel"}
     # The settings page's phone box: its label, its sentence and the
     # number as recorded (decision 117).
-    assert vocab["settings"] == {"phone_label": api.FIRM_PHONE_LABEL,
-                                 "phone_help": api.FIRM_PHONE_HELP, "phone": "",
-                                 "firm_label": api.FIRM_NAME_LABEL, "firm_help": api.FIRM_NAME_HELP,
-                                 "root_label": api.CLIENTS_FOLDER_LABEL}
+    assert vocab["settings"] == {"phone_label": screen_words.FIRM_PHONE_LABEL,
+                                 "phone_help": screen_words.FIRM_PHONE_HELP, "phone": "",
+                                 "firm_label": screen_words.FIRM_NAME_LABEL, "firm_help": screen_words.FIRM_NAME_HELP,
+                                 "root_label": screen_words.CLIENTS_FOLDER_LABEL}
     # And every word and colour the Reminder card shows (decision 118).
     _the_reminder_card_words_are_all_pythons(vocab["reminder"])
 
@@ -318,8 +319,8 @@ def _the_reminder_card_words_are_all_pythons(words):
         "copied": reminder.COPIED_NOTE,
         "set_aside_line": reminder.SET_ASIDE_LINE,
         "not_yet": reminder.REMINDER_NOT_YET,
-        "unreadable": api.REMINDER_UNREADABLE,
-        "line_unreadable": api.REMINDER_LINE_UNREADABLE,
+        "unreadable": screen_words.REMINDER_UNREADABLE,
+        "line_unreadable": screen_words.REMINDER_LINE_UNREADABLE,
         "nothing_to_send": NOTHING_OUTSTANDING,
         "stages": [{"number": stage.number, "name": stage.name,
                     "colour": letter_render.STAGE_COLOURS[stage.number],
@@ -367,7 +368,7 @@ def test_the_settings_carry_the_firm_phone_and_the_vocabulary_names_its_box(caps
     html = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "index.html").read_text(
         encoding="utf-8"
     )
-    for word in (api.FIRM_PHONE_LABEL, api.FIRM_PHONE_HELP):
+    for word in (screen_words.FIRM_PHONE_LABEL, screen_words.FIRM_PHONE_HELP):
         assert word not in renderer and word not in html, word
     setup = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "shell.js").read_text(encoding="utf-8")
     assert "vocab.settings.phone_label" in setup, "the setup page's box is named by the API"
@@ -667,7 +668,7 @@ def test_a_household_row_the_store_cannot_read_costs_no_other_card_and_is_said(
     with conn:
         conn.execute(f"UPDATE engagements SET {store.HOUSEHOLD_PREFIX}feeds = ? WHERE path LIKE ?",
                      ('{"x": 1}', f"%/{family.name}"))
-    said = api.FED_BY_UNREADABLE.format(kind="ValueError")
+    said = screen_words.FED_BY_UNREADABLE.format(kind="ValueError")
 
     with caplog.at_level(logging.WARNING, logger="tracker.api"):
         code, other = run(capsys, "state", api.ENGAGEMENT_FLAG, str(kim))
@@ -843,8 +844,8 @@ def test_a_broken_journal_is_said_in_the_firms_sentence_with_its_line_and_run_re
     assert code == 1 and payload["error"] == sentence, payload
     assert payload["failure"]["kind"] == "refused" and ledger.RUN_RECOVER in payload["error"]
 
-    for raised, sentence in ((ledger.RecordNotWritten("ENOSPC"), api.RECORD_NOT_WRITTEN),
-                             (store.StoreUnavailable("SQLITE_BUSY"), api.STORE_UNAVAILABLE)):
+    for raised, sentence in ((ledger.RecordNotWritten("ENOSPC"), screen_words.RECORD_NOT_WRITTEN),
+                             (store.StoreUnavailable("SQLITE_BUSY"), screen_words.STORE_UNAVAILABLE)):
         def fails(argv, raised=raised):
             raise raised
 
@@ -959,7 +960,7 @@ def test_cancel_pass_refuses_a_pass_that_is_not_running(capsys, demo_root):
     from tracker import progress
 
     code, payload = run(capsys, "cancel-pass", stdin={"pass": 999_999_999})
-    assert code == 1 and payload["error"] == api.NOTHING_TO_STOP
+    assert code == 1 and payload["error"] == screen_words.NOTHING_TO_STOP
     assert payload["failure"]["kind"] == "refused"
     other = _live_child()
     try:
@@ -1033,7 +1034,7 @@ def test_a_returns_reminder_line_that_cannot_be_read_says_so(capsys, demo_root, 
     [line] = [r["reminder"] for r in payload["household"]["returns"] if r["path"] == str(folder)]
     assert line["unreadable"] is True and line["kind"] == "OSError (EIO)"
     [label] = [r["label"] for r in payload["household"]["returns"] if r["path"] == str(folder)]
-    said = api.REMINDER_LINE_UNREADABLE_WARNING.format(label=label)
+    said = screen_words.REMINDER_LINE_UNREADABLE_WARNING.format(label=label)
     assert label in said, "the warning must name the return"
     assert said in payload["warnings"]
 
@@ -1050,13 +1051,13 @@ def test_a_root_that_cannot_be_walked_says_so_on_the_feeds_and_the_list(capsys, 
     for module in (api, firm_view, household_edit):
         monkeypatch.setattr(module, "households_named", cannot_walk)
     payload = payload_of_state(capsys, father)
-    assert [feed["warning"] for feed in payload["household"]["feeds"]] == [api.PRACTICE_NOT_WALKED]
-    assert api.PRACTICE_NOT_WALKED in payload["warnings"]
+    assert [feed["warning"] for feed in payload["household"]["feeds"]] == [screen_words.PRACTICE_NOT_WALKED]
+    assert screen_words.PRACTICE_NOT_WALKED in payload["warnings"]
 
     monkeypatch.setattr(api, "discover_engagements", cannot_walk)
     code, payload = run(capsys, "list")
-    assert code == 0 and payload["root_problem"] == api.PRACTICE_NOT_WALKED
-    assert payload["warnings"] == [api.PRACTICE_NOT_WALKED]
+    assert code == 0 and payload["root_problem"] == screen_words.PRACTICE_NOT_WALKED
+    assert payload["warnings"] == [screen_words.PRACTICE_NOT_WALKED]
     assert "fabricated" not in json.dumps(payload)
 
 
@@ -1252,7 +1253,7 @@ def test_a_reminder_that_cannot_be_read_is_said_and_the_page_still_arrives(
     assert payload["items"]
     said = payload["reminder_card"]["unreadable"]
     assert payload["reminder_card"] == {"reminder": None, "unreadable": said}
-    assert said == api.FAILED.format(kind="OSError", log=api.ERROR_LOG_FILENAME)
+    assert said == screen_words.FAILED.format(kind="OSError", log=api.ERROR_LOG_FILENAME)
     assert said in payload["warnings"]
     for word in ("secret", "Park W-2"):
         assert word not in json.dumps(payload)
@@ -1712,7 +1713,7 @@ def test_no_word_the_window_draws_says_client_but_a_folders_own_name(capsys, dem
              ("engagement_help", [f["help"] for f in vocab["editor"]["engagement_fields"]
                                   if f["editable"] and f["key"] in ("reminders", "active")]),
              ("settings.root_label", vocab["settings"]["root_label"]),
-             ("open_client_folder", api.OPEN_CLIENT_FOLDER_LABEL),
+             ("open_client_folder", screen_words.OPEN_CLIENT_FOLDER_LABEL),
              ("override_reasons", vocab["override_reasons"])]
     said = [(where + path, text) for where, branch in drawn for path, text in _drawn_words(branch)
             if "client" in text.lower() and text not in _FOLDER_WORDS
@@ -2106,7 +2107,7 @@ def _wording_rows() -> dict[str, list[str]]:
 def test_the_side_panels_unbuilt_items_have_short_names_and_one_soon_word():
     """P265: each unbuilt page is a short name with a "Soon" tag; the longer
     "Under Construction" is its tooltip and description, said once."""
-    side = api.SCREEN["side"]
+    side = screen_words.SCREEN["side"]
     assert side["soon"] == {"ready_to_sign": "Ready to Sign", "family_entities": "Family Entities", "personal_trusts": "Personal Trusts",
                             "corporate_entities": "Corporate Entities", "portal_settings": "Portal Settings"}
     assert not any("Under Construction" in said for said in side["soon"].values())
@@ -2124,7 +2125,7 @@ def test_the_sort_buttons_words_are_the_apis_and_its_tooltip_says_what_it_sorts(
     says what the button sorts, and the firm pages' "Open a Household to
     Sort" is cut (those pages have no sort control). Only the new and the cut
     words have rows in the wording table: the unchanged ones never did."""
-    sort = api.SCREEN["sort"]
+    sort = screen_words.SCREEN["sort"]
     assert set(sort) == {"now", "stop", "locked", "stopping", "tip"}
     assert sort["tip"] == "Sort This Household's Inbox"
     assert sort["now"] == "Sort Now" and sort["stop"] == "Stop Sorting"
@@ -2138,8 +2139,8 @@ def test_the_sort_buttons_words_are_the_apis_and_its_tooltip_says_what_it_sorts(
 def test_the_compact_rows_word_is_in_the_menu_and_the_wording_table():
     """P271: View > Compact Rows is a check item with an access key; its word
     is the API's and has a row in the wording table."""
-    assert api.MENU["compact_rows"] == "&Compact Rows"
-    assert _wording_rows()["compact_rows"][4] == api.MENU["compact_rows"]
+    assert screen_words.MENU["compact_rows"] == "&Compact Rows"
+    assert _wording_rows()["compact_rows"][4] == screen_words.MENU["compact_rows"]
 
 
 def test_the_household_card_words_are_in_the_screen_vocabulary_and_the_wording_table():

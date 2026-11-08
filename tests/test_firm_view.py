@@ -17,6 +17,7 @@ until SPEC-architecture-p5 P5.16 retargets every such read to its home.
 """
 
 import tracker.api as api
+import tracker.firm_view as firm_view
 from tracker.index import NEEDS_REVIEW
 from tracker.manifest import Status
 from tracker.records import IndexEntry
@@ -32,17 +33,17 @@ def test_item_group_follows_its_table():
         return SimpleNamespace(identifier=identifier, status=status, asked=asked,
                                manual_override=override)
 
-    assert api.item_group(row(override=Override.NOT_APPLICABLE), {}) == "set_aside"
-    assert api.item_group(row(status="", asked=False), {}) == "set_aside"       # nothing in
-    assert api.item_group(row(), {"A01": (SIDE_CLIENT, "")}) == "waiting"
-    assert api.item_group(row(), {"A01": (SIDE_US, "")}) == "needs_you"
-    assert api.item_group(row(), {"A01": (SIDE_DECIDE, "")}) == "needs_you"
-    assert api.item_group(row(status=Status.RECEIVED), {}) == "received"
-    assert api.item_group(row(override=Override.ACCEPTED), {}) == "received"
-    assert api.item_group(row(), {}) == "waiting"                                # not yet checked
+    assert firm_view.item_group(row(override=Override.NOT_APPLICABLE), {}) == "set_aside"
+    assert firm_view.item_group(row(status="", asked=False), {}) == "set_aside"       # nothing in
+    assert firm_view.item_group(row(), {"A01": (SIDE_CLIENT, "")}) == "waiting"
+    assert firm_view.item_group(row(), {"A01": (SIDE_US, "")}) == "needs_you"
+    assert firm_view.item_group(row(), {"A01": (SIDE_DECIDE, "")}) == "needs_you"
+    assert firm_view.item_group(row(status=Status.RECEIVED), {}) == "received"
+    assert firm_view.item_group(row(override=Override.ACCEPTED), {}) == "received"
+    assert firm_view.item_group(row(), {}) == "waiting"                                # not yet checked
     # The order of the table: an override beats a side; a side beats Received.
-    assert api.item_group(row(override=Override.NOT_APPLICABLE), {"A01": (SIDE_US, "")}) == "set_aside"
-    assert api.item_group(row(status=Status.RECEIVED), {"A01": (SIDE_US, "")}) == "needs_you"
+    assert firm_view.item_group(row(override=Override.NOT_APPLICABLE), {"A01": (SIDE_US, "")}) == "set_aside"
+    assert firm_view.item_group(row(status=Status.RECEIVED), {"A01": (SIDE_US, "")}) == "needs_you"
 
 
 def test_a_file_falls_in_the_group_its_decision_says():
@@ -53,8 +54,8 @@ def test_a_file_falls_in_the_group_its_decision_says():
                           identifier="A01", prepared_location=home, pbc_location="pbc/a.pdf",
                           decision=decision, reason="")
 
-    assert api.file_group(entry(NEEDS_REVIEW)) == "needs_you"
-    assert api.file_group(entry(FILE_MOVED)) == "needs_you"
-    assert api.file_group(entry(FILE_MOVED, home="")) == "set_aside"      # marked missing
-    assert api.file_group(entry(NOT_REQUESTED)) == "set_aside"
-    assert api.file_group(entry(api.FILED)) == "received"
+    assert firm_view.file_group(entry(NEEDS_REVIEW)) == "needs_you"
+    assert firm_view.file_group(entry(FILE_MOVED)) == "needs_you"
+    assert firm_view.file_group(entry(FILE_MOVED, home="")) == "set_aside"      # marked missing
+    assert firm_view.file_group(entry(NOT_REQUESTED)) == "set_aside"
+    assert firm_view.file_group(entry(api.FILED)) == "received"

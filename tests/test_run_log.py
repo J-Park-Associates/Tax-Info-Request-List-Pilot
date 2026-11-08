@@ -20,7 +20,6 @@ import datetime as dt
 
 import pytest
 
-import tracker.runner as runner_module
 from tests import passes
 from tests.passes import FRIDAY, SATURDAY, build_engagement
 from tracker import run_log
@@ -71,16 +70,16 @@ def test_the_amber_threshold_is_two_missed_runs_of_the_saved_interval(tmp_path, 
     settings.set_schedule(True, "07:00", every)
     assert run_log.amber_hours(every) == hours
     now = dt.datetime(2026, 3, 2, 12, 0)
-    path = tmp_path / runner_module.LAST_PASS_FILENAME
+    path = tmp_path / run_log.LAST_PASS_FILENAME
 
     inside = now - dt.timedelta(hours=hours) + dt.timedelta(minutes=1)
-    runner_module.write_last_pass(path, started=inside, ended=inside, root="R",
-                                  result=runner_module.PASS_SUCCEEDED)
+    run_log.write_last_pass(path, started=inside, ended=inside, root="R",
+                            result=run_log.PASS_SUCCEEDED)
     assert run_log.last_pass_line(path, now=now)["level"] == run_log.LEVEL_OK
 
     outside = now - dt.timedelta(hours=hours, minutes=1)
-    runner_module.write_last_pass(path, started=outside, ended=outside, root="R",
-                                  result=runner_module.PASS_SUCCEEDED)
+    run_log.write_last_pass(path, started=outside, ended=outside, root="R",
+                            result=run_log.PASS_SUCCEEDED)
     line = run_log.last_pass_line(path, now=now)
     assert line["level"] == run_log.LEVEL_WARN
     assert line["text"].endswith(run_log.LAST_PASS_OLD.format(hours=str(hours)))
@@ -91,10 +90,10 @@ def test_the_last_pass_line_says_the_schedule_is_off_instead_of_turning_amber(tm
 
     settings.set_schedule(False, "07:00", 120)
     now = dt.datetime(2026, 3, 2, 12, 0)
-    path = tmp_path / runner_module.LAST_PASS_FILENAME
+    path = tmp_path / run_log.LAST_PASS_FILENAME
     long_ago = now - dt.timedelta(days=30)
-    runner_module.write_last_pass(path, started=long_ago, ended=long_ago, root="R",
-                                  result=runner_module.PASS_SUCCEEDED)
+    run_log.write_last_pass(path, started=long_ago, ended=long_ago, root="R",
+                            result=run_log.PASS_SUCCEEDED)
     assert run_log.last_pass_line(path, now=now) == {
         "text": run_log.LAST_PASS_OFF, "level": run_log.LEVEL_OK}
     assert run_log.last_pass_line(tmp_path / "missing.json", now=now)["text"] == run_log.LAST_PASS_OFF
@@ -105,7 +104,7 @@ def test_a_saved_choice_that_will_not_read_turns_the_line_red_and_names_no_guess
 
     settings.settings_path().parent.mkdir(parents=True, exist_ok=True)
     settings.settings_path().write_text('{"schedule_every": 45}', encoding="utf-8")
-    line = run_log.last_pass_line(tmp_path / runner_module.LAST_PASS_FILENAME)
+    line = run_log.last_pass_line(tmp_path / run_log.LAST_PASS_FILENAME)
     assert line["level"] == run_log.LEVEL_ERR
     assert settings.EVERY_REFUSED.format(value=45) in line["text"]      # the refusal's own sentence
     assert line["text"] != run_log.LAST_PASS_UNREADABLE.format(error="ScheduleChoiceError")
@@ -116,29 +115,29 @@ def test_the_last_pass_line_is_amber_when_old_and_red_when_failed(tmp_path):
     LAST_PASS_AMBER_HOURS or when no pass has run, red on a failure or a
     file that does not read - every word the runner's."""
     now = dt.datetime(2026, 3, 2, 12, 0)
-    path = tmp_path / runner_module.LAST_PASS_FILENAME
+    path = tmp_path / run_log.LAST_PASS_FILENAME
     assert run_log.last_pass_line(path, now=now) == {
         "text": run_log.LAST_PASS_NEVER, "level": run_log.LEVEL_WARN}
 
     recent = now - dt.timedelta(hours=1)
-    runner_module.write_last_pass(path, started=recent, ended=recent, root="R",
-                                  result=runner_module.PASS_SUCCEEDED)
+    run_log.write_last_pass(path, started=recent, ended=recent, root="R",
+                            result=run_log.PASS_SUCCEEDED)
     line = run_log.last_pass_line(path, now=now)
     assert line["level"] == run_log.LEVEL_OK and "2026-03-02 11:00" in line["text"]
 
     old = now - dt.timedelta(hours=run_log.LAST_PASS_AMBER_HOURS, minutes=1)
-    runner_module.write_last_pass(path, started=old, ended=old, root="R",
-                                  result=runner_module.PASS_SUCCEEDED)
+    run_log.write_last_pass(path, started=old, ended=old, root="R",
+                            result=run_log.PASS_SUCCEEDED)
     line = run_log.last_pass_line(path, now=now)
     assert line["level"] == run_log.LEVEL_WARN
     assert line["text"].endswith(run_log.LAST_PASS_OLD.format(hours="4"))
 
-    runner_module.write_last_pass(path, started=recent, ended=recent, root="",
-                                  result=runner_module.PASS_FAILED,
-                                  reason_code=runner_module.PASS_SETTINGS)
+    run_log.write_last_pass(path, started=recent, ended=recent, root="",
+                            result=run_log.PASS_FAILED,
+                            reason_code=run_log.PASS_SETTINGS)
     line = run_log.last_pass_line(path, now=now)
     assert line["level"] == run_log.LEVEL_ERR
-    assert runner_module.PASS_REASONS[runner_module.PASS_SETTINGS] in line["text"]
+    assert run_log.PASS_REASONS[run_log.PASS_SETTINGS] in line["text"]
 
     path.write_text("{not json", encoding="utf-8")
     assert run_log.last_pass_line(path, now=now)["level"] == run_log.LEVEL_ERR
@@ -152,7 +151,7 @@ def test_the_last_pass_line_is_amber_when_old_and_red_when_failed(tmp_path):
 def test_the_last_pass_line_echoes_nothing_the_file_holds(tmp_path, text):
     """Read as 189 reads its hint: bounded, never raising, and a result or
     a reason is said only when it is one this module writes."""
-    path = tmp_path / runner_module.LAST_PASS_FILENAME
+    path = tmp_path / run_log.LAST_PASS_FILENAME
     path.write_text(text, encoding="utf-8")
     line = run_log.last_pass_line(path, now=dt.datetime(2026, 3, 2, 12, 0))
     assert line["level"] == run_log.LEVEL_ERR and "Fabricated" not in line["text"]

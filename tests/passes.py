@@ -35,7 +35,7 @@ from pathlib import Path
 
 import pytest
 
-import tracker.runner as runner_module
+import tracker.pass_order as pass_order
 from tests.builders import make_engagement, seed_index
 from tests.samples import DEMO_ITEMS, SCRATCH_PEOPLE, YEAR, build_samples
 from tracker import ledger, store
@@ -168,7 +168,7 @@ def _page(root) -> str:
 
 
 def _hint_file() -> Path:
-    path = store.store_path().parent / runner_module.PASS_ORDER_FILENAME
+    path = store.store_path().parent / pass_order.PASS_ORDER_FILENAME
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 

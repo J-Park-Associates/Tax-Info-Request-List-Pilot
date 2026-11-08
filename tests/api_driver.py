@@ -37,6 +37,7 @@ from pathlib import Path
 import pytest
 
 import tracker.api as api
+import tracker.screen_words as screen_words
 from tests.builders import TEST_CLIENT, app_stdin
 from tests.samples import PRIOR_YEAR, SCRATCH_PEOPLE, text_pdf
 from tracker import firm_view, layout, ledger, reasons
@@ -227,7 +228,7 @@ def demo_root(short_root, tmp_path, monkeypatch):
 def said_by_class(payload: dict, kind: str) -> bool:
     """An unexpected error said on screen by its class alone (decision 193):
     never its message, which stays in the error log."""
-    return payload["error"] == api.FAILED.format(kind=kind, log=api.ERROR_LOG_FILENAME) \
+    return payload["error"] == screen_words.FAILED.format(kind=kind, log=api.ERROR_LOG_FILENAME) \
         and payload["failure"]["kind"] == "failed"
 
 
@@ -505,7 +506,7 @@ def _firm_whole(capsys, monkeypatch) -> dict:
 
 def _rows_read(monkeypatch) -> list[str]:
     """The returns the next replies read (``_firm_row``), by path."""
-    read, real = [], api._firm_row
+    read, real = [], firm_view._firm_row
 
     def counted(one, household, today):
         read.append(str(one.path))

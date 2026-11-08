@@ -584,11 +584,12 @@ def test_the_shell_says_protected_view_does_not_exist_each_time_a_macro_copy_ope
     button - each time, not when it only shows the file, not for any other
     file, not on Windows, where the mark itself does it - and never refuses."""
     import tracker.api as api
+    import tracker.screen_words as screen_words
 
     main_js = read("app/main.js")
     says = main_js.split("const shellSays = {", 1)[1].split("\n};\n", 1)[0]
-    assert _joined_string(says, "protected_view_mac:") == api.PROTECTED_VIEW_MAC
-    assert api.vocab()["shell"]["protected_view_mac"] == api.PROTECTED_VIEW_MAC
+    assert _joined_string(says, "protected_view_mac:") == screen_words.PROTECTED_VIEW_MAC
+    assert api.vocab()["shell"]["protected_view_mac"] == screen_words.PROTECTED_VIEW_MAC
     assert main_js.count("shell.openPath(") == 1                       # the one door, still
     assert "showMessageBox(" not in main_js.replace("showMessageBoxSync(", "")
     assert "said.says" in read("app/renderer/shell.js")
@@ -606,9 +607,10 @@ def test_the_side_panel_names_the_product_from_its_one_home():
     """SPEC-rename R1: the side panel's brand band says the product's name
     as package.json's productName says it, with no second typed copy."""
     import tracker.api as api
+    import tracker.screen_words as screen_words
     from tracker.settings import product_name
 
-    assert api.SCREEN["side"]["product"] == product_name() == json.loads(read("app/package.json"))["productName"]
+    assert screen_words.SCREEN["side"]["product"] == product_name() == json.loads(read("app/package.json"))["productName"]
     assert api.vocab()["screen"]["side"]["product"] == product_name()
     assert '"product": product_name(),' in read("tracker/screen_words.py")
     assert product_name() not in read("tracker/api.py")
@@ -680,13 +682,14 @@ def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
     from tracker.fsio import TEMP_SUFFIX
     from tracker.progress import PASSES_DIRNAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
-    from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
+    from tracker.run_log import LOG_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import (
         EXPECTATIONS_FILENAME,
         OCR_SCRATCH_DIRNAME,
         SETTINGS_FILENAME,
     )
+    from tracker.status_page import STATUS_PAGE_FILENAME
     from tracker.store import STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
 
     ignored = [line.strip() for line in read(".gitignore").splitlines()
@@ -739,15 +742,17 @@ def _deny_list_from_the_constants() -> list[str]:
     from tracker.errlog import ERROR_LOG_FILENAME
     from tracker.layout import CLIENTS_TREE, INBOX_DIR_NAME, OPENED_DIR_NAME, PRIVATE_TREE, RETURN_NAME_PATTERN
     from tracker.ledger import LEDGER_FILENAME
+    from tracker.pass_order import PASS_ORDER_FILENAME
     from tracker.registry import LEGACY_MANIFEST_FILENAME
     from tracker.reminder import DRAFT_FILENAME
-    from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME, STATUS_PAGE_FILENAME
+    from tracker.run_log import LAST_PASS_FILENAME, LOG_FILENAME
     from tracker.settings import (
         DATA_HOME_NAME,
         EXPECTATIONS_FILENAME,
         MAC_SUPPORT,
         OCR_SCRATCH_DIRNAME,
     )
+    from tracker.status_page import STATUS_PAGE_FILENAME
     from tracker.store import RECOVERED_DIR, STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
     from tracker.verdicts import RETIRED_CACHE_FILENAME
     from tracker.view import VIEW_FILENAME
@@ -930,7 +935,7 @@ def test_every_file_beside_the_store_is_ignored_by_git():
     from tracker.after_install import RECORD_FILENAME
     from tracker.checkpoint import CHECKPOINT_FILENAME, SET_ASIDE_SUFFIX
     from tracker.fsio import TEMP_SUFFIX
-    from tracker.runner import LAST_PASS_FILENAME
+    from tracker.run_log import LAST_PASS_FILENAME
     from tracker.store import RECOVERED_DIR, STORE_FILENAME
 
     aside = STORE_FILENAME + SET_ASIDE_SUFFIX.format(version=15)
@@ -1124,10 +1129,10 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
     from tracker import rollover, screen_words
     from tracker.manifest import ALSO_RECEIVED_LABEL, COLUMN_HELP, NOT_ASKED_LABEL
 
-    added = (NOT_ASKED_LABEL, ALSO_RECEIVED_LABEL, api_module.ASK_THE_CLIENT,
-             screen_words.ASK_THE_CLIENT_NOTE, api_module.NOT_ASKED_TABLE_LABEL,
-             api_module.ROLL_TEMPLATE_LABEL, api_module.NOTHING_ASKED, COLUMN_HELP["asked"],
-             api_module.NEW_NOT_ASKED_CARRIED.split("{n}")[1].split(" - ")[0].strip(),
+    added = (NOT_ASKED_LABEL, ALSO_RECEIVED_LABEL, screen_words.ASK_THE_CLIENT,
+             screen_words.ASK_THE_CLIENT_NOTE, screen_words.NOT_ASKED_TABLE_LABEL,
+             screen_words.ROLL_TEMPLATE_LABEL, screen_words.NOTHING_ASKED, COLUMN_HELP["asked"],
+             screen_words.NEW_NOT_ASKED_CARRIED.split("{n}")[1].split(" - ")[0].strip(),
              rollover.NEW_NOT_ASKED_NOTE, rollover.NOT_ASKED_NOTE,
              rollover.NOW_ASKED_NOTE.split("{")[0].strip(), '"' + _slug(NOT_ASKED_LABEL) + '"',
              api_module.SET_ASIDE_SECTION.split("{")[0].strip())
@@ -1744,12 +1749,14 @@ def test_documents_name_only_runtime_files_the_code_owns():
     from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME, RACE_LOCK_FILENAME
     from tracker.page_rows import ROWS_FILENAME
+    from tracker.pass_order import PASS_ORDER_FILENAME
     from tracker.registry import LEGACY_MANIFEST_FILENAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
-    from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME, STATUS_PAGE_FILENAME
+    from tracker.run_log import LAST_PASS_FILENAME, LOG_FILENAME
     from tracker.scaffold import README_NAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import SETTINGS_FILENAME
+    from tracker.status_page import STATUS_PAGE_FILENAME
     from tracker.store import STORE_FILENAME
     from tracker.view import VIEW_FILENAME
 
@@ -1830,7 +1837,7 @@ def test_the_roadmap_names_every_status_in_bold():
 def test_documents_name_buttons_by_their_labels():
     """A doc may say 'the X button' only for a button the page actually has."""
     from tracker import reminder
-    from tracker.api import (
+    from tracker.screen_words import (
         ACCEPT_LABEL,
         CARD_MODE_LABEL,
         EDITOR_ADD_LABEL,
@@ -2021,7 +2028,7 @@ FOREIGN_FLAGS = {
 
 
 def test_every_cli_flag_a_document_names_exists_in_the_code():
-    from tracker.runner import REMINDER_MODES
+    from tracker.run_log import REMINDER_MODES
 
     known = _known_flags() | set(FOREIGN_FLAGS)
     for rel in DOCUMENTS:
@@ -2121,10 +2128,11 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
     from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
-    from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
+    from tracker.run_log import LOG_FILENAME
     from tracker.scaffold import README_NAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import SETTINGS_FILENAME
+    from tracker.status_page import STATUS_PAGE_FILENAME
     from tracker.view import VIEW_FILENAME
 
     owned = {LEDGER_FILENAME, LOCK_FILENAME,
@@ -2229,7 +2237,7 @@ def test_the_package_prose_names_constants_rather_than_their_values():
     from tracker.manifest import Override, Status
     from tracker.registry import LEGACY_MANIFEST_FILENAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
-    from tracker.runner import LOG_FILENAME
+    from tracker.run_log import LOG_FILENAME
     from tracker.settings import SETTINGS_FILENAME
     from tracker.store import STORE_FILENAME
     from tracker.view import VIEW_FILENAME
@@ -2262,7 +2270,7 @@ def test_every_review_action_the_renderer_sends_carries_the_rows_seq():
     one, which would make a handler that forgot it a button that never
     works - and this is the test that says so before anyone clicks it.
     """
-    import tracker.api as api
+    import tracker.screen_words as screen_words
 
     js = read("app/renderer/app.js")
     # The sheet's dismissal reads the row's version off the row on the sheet...
@@ -2289,7 +2297,7 @@ def test_every_review_action_the_renderer_sends_carries_the_rows_seq():
     # from - since decision 190 one more: the row that is not a document.
     assert js.count("seq: e.seq") == 1 and js.count("seq: m.seq") == 2
     # And the sentence a refusal shows is the API's, never the renderer's.
-    assert api.NO_SEQ not in js
+    assert screen_words.NO_SEQ not in js
 
 
 def test_the_feed_editor_picks_a_return_by_index_and_never_takes_a_value_apart():
@@ -2561,6 +2569,7 @@ def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind()
     folder as a folder, a file as a file - with the kinds and the refusal
     from the API's vocabulary."""
     import tracker.api as api
+    import tracker.screen_words as screen_words
 
     main = read("app/main.js")
     # openPath refuses an unreported path first, then checks; reveal is an argument, not a channel.
@@ -2574,7 +2583,7 @@ def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind()
     # One call site of each, both behind openChecked (after the lstat and the kind check).
     assert main.count("shell.openPath(") == 1 and main.count("shell.showItemInFolder(") == 1
     vocab = api.vocab()
-    assert vocab["shell"]["not_opened"] == api.SHELL_NOT_OPENED
+    assert vocab["shell"]["not_opened"] == screen_words.SHELL_NOT_OPENED
     assert set(vocab["path_kinds"].values()) == {"folder", "file", "reveal"}
     # A reveal-only kind is refused unless the call asked to reveal (F1).
     assert 'kind === "reveal" && !reveal' in opener
@@ -3166,16 +3175,16 @@ def test_the_end_of_a_pass_gives_back_only_what_the_lock_did_not_hold(tmp_path):
 
 
 def test_a_pass_killed_at_its_own_limit_ends_with_the_killed_sentence(tmp_path):
-    import tracker.api as api
+    import tracker.screen_words as screen_words
 
     ran = _run_the_shell(tmp_path, [["list"], ["run-now", "--engagement", "/sample/slow"]],
                          HARNESS_WAIT="3000")
     assert ran["out"][1]["reply"]["pass"] == 4242
     [ended] = [m["message"] for m in ran["sent"] if "reply" in m["message"]]
     assert ended["reply"]["killed"] is True
-    assert ended["reply"]["error"] == (api.SHELL_KILLED.format(minutes=1) + " "
-                                       + api.SHELL_KILLED_AT.format(household="Sample Household",
-                                                                    name="W-2 Sample.pdf"))
+    assert ended["reply"]["error"] == (screen_words.SHELL_KILLED.format(minutes=1) + " "
+                                       + screen_words.SHELL_KILLED_AT.format(household="Sample Household",
+                                                                             name="W-2 Sample.pdf"))
 
 
 def test_closing_the_app_breaks_its_passes_pipe_rather_than_killing_it(tmp_path):
@@ -3192,7 +3201,7 @@ def test_closing_the_app_breaks_its_passes_pipe_rather_than_killing_it(tmp_path)
 
 
 def test_the_shells_kill_follows_the_limit_the_pass_reported_and_says_where_it_was(tmp_path):
-    import tracker.api as api
+    import tracker.screen_words as screen_words
 
     ran = _run_the_shell(tmp_path, [["list"], ["state", "--engagement", "/sample/return"]])
     killed = ran["out"][1]
@@ -3200,8 +3209,8 @@ def test_the_shells_kill_follows_the_limit_the_pass_reported_and_says_where_it_w
     reply = killed["reply"]
     assert reply["killed"] is True and reply["failure"]["kind"] == "failed"
     assert reply["error"] == reply["failure"]["sentence"]
-    assert reply["error"] == (api.SHELL_KILLED_READ + " "
-                              + api.SHELL_KILLED_AT.format(household="Sample Household", name="A01"))
+    assert reply["error"] == (screen_words.SHELL_KILLED_READ + " "
+                              + screen_words.SHELL_KILLED_AT.format(household="Sample Household", name="A01"))
     assert reply["progress"]["name"] == "A01"
 
 
@@ -3210,16 +3219,17 @@ def test_a_command_killed_at_the_cap_says_whether_it_was_a_sort_a_change_or_a_re
     change that was killed says part of it may have happened; a read only that
     it stopped. The shell learns which commands change things from the API."""
     import tracker.api as api
+    import tracker.screen_words as screen_words
 
     ran = _run_the_shell(tmp_path, [["list"], ["rename", "--engagement", "/sample/return"],
                                     ["state", "--engagement", "/sample/return"]])
-    at = " " + api.SHELL_KILLED_AT.format(household="Sample Household", name="A01")
-    assert ran["out"][1]["reply"]["error"] == f"{api.SHELL_KILLED_WRITE} {api.SHELL_KILLED_WRITE_NOTE}{at}"
-    assert ran["out"][2]["reply"]["error"] == f"{api.SHELL_KILLED_READ}{at}"
+    at = " " + screen_words.SHELL_KILLED_AT.format(household="Sample Household", name="A01")
+    assert ran["out"][1]["reply"]["error"] == f"{screen_words.SHELL_KILLED_WRITE} {screen_words.SHELL_KILLED_WRITE_NOTE}{at}"
+    assert ran["out"][2]["reply"]["error"] == f"{screen_words.SHELL_KILLED_READ}{at}"
     assert "rename" in api.vocab()["writing_commands"] and api.PASS_COMMAND not in api.vocab()["writing_commands"]
     assert "state" not in api.vocab()["writing_commands"]
-    for said in (api.SHELL_KILLED, api.SHELL_KILLED_WRITE, api.SHELL_KILLED_WRITE_NOTE, api.SHELL_KILLED_READ,
-                 api.SHELL_KILLED_AT):
+    for said in (screen_words.SHELL_KILLED, screen_words.SHELL_KILLED_WRITE, screen_words.SHELL_KILLED_WRITE_NOTE, screen_words.SHELL_KILLED_READ,
+                 screen_words.SHELL_KILLED_AT):
         assert len(said.split()) <= 5, said
         assert said.endswith("."), "each phrase is a sentence of its own (final re-review NEW 4)"
     # Read aloud, the line breaks at each full stop: no phrase runs into the next.
@@ -3229,11 +3239,11 @@ def test_a_command_killed_at_the_cap_says_whether_it_was_a_sort_a_change_or_a_re
 
 
 def test_the_shell_never_puts_stderr_on_screen_and_appends_it_to_the_error_log(tmp_path):
-    import tracker.api as api
+    import tracker.screen_words as screen_words
 
     ran = _run_the_shell(tmp_path, [["list"], ["templates"]])
     reply = ran["out"][1]["reply"]
-    assert reply["error"] == api.SHELL_NO_REPLY.format(code=1)
+    assert reply["error"] == screen_words.SHELL_NO_REPLY.format(code=1)
     assert reply["failure"]["kind"] == "failed" and "fabricated" not in json.dumps(reply)
     logged = (tmp_path / "tracker-errors.log").read_text(encoding="utf-8")
     assert "a fabricated message naming Sample Client's folder" in logged
@@ -3249,13 +3259,13 @@ def test_with_no_error_log_named_the_failure_is_saved_in_the_fallback_log_and_th
     shell's fallback log in the per-user app folder, never beside the
     program - and the screen says just "App Failed", with nothing of
     stderr in the reply."""
-    import tracker.api as api
+    import tracker.screen_words as screen_words
     from tracker.errlog import ERROR_LOG_FILENAME
 
-    assert api.SHELL_NO_LOG == "App Failed"
+    assert screen_words.SHELL_NO_LOG == "App Failed"
     ran = _run_the_shell(tmp_path, [["list"], ["templates"]], FAKE_LOG="")
     reply = ran["out"][1]["reply"]
-    sentence = api.SHELL_NO_REPLY.format(code=1) + "\n\n" + api.SHELL_NO_LOG
+    sentence = screen_words.SHELL_NO_REPLY.format(code=1) + "\n\n" + screen_words.SHELL_NO_LOG
     assert reply["error"] == sentence and reply["failure"]["sentence"] == sentence
     assert reply["error"].endswith("\n\nApp Failed")
     assert "fabricated" not in json.dumps(reply) and "Sample Client" not in json.dumps(reply)
@@ -3267,17 +3277,17 @@ def test_with_no_error_log_named_the_failure_is_saved_in_the_fallback_log_and_th
 
 
 def test_with_an_error_log_named_the_failure_goes_there_and_not_to_the_fallback_or_the_screen(tmp_path):
-    import tracker.api as api
+    import tracker.screen_words as screen_words
 
     ran = _run_the_shell(tmp_path, [["list"], ["templates"]])
     reply = ran["out"][1]["reply"]
-    assert reply["error"] == api.SHELL_NO_REPLY.format(code=1) and "App Failed" not in reply["error"]
+    assert reply["error"] == screen_words.SHELL_NO_REPLY.format(code=1) and "App Failed" not in reply["error"]
     assert _STDERR_TEXT in (tmp_path / "tracker-errors.log").read_text(encoding="utf-8")
     assert not (tmp_path / "userdata").exists()
 
 
 def test_the_fallback_log_is_capped_and_a_write_that_fails_never_throws(tmp_path):
-    import tracker.api as api
+    import tracker.screen_words as screen_words
 
     # Past the cap the file becomes error.log.1 and a fresh one is begun.
     userdata = tmp_path / "userdata"
@@ -3311,19 +3321,19 @@ def test_the_fallback_log_is_capped_and_a_write_that_fails_never_throws(tmp_path
         pass                                        # this machine cannot make a link
     else:
         ran = _run_the_shell(linked, [["list"], ["templates"]], FAKE_LOG="")
-        assert ran["out"][1]["reply"]["error"].endswith(api.SHELL_NO_LOG)
+        assert ran["out"][1]["reply"]["error"].endswith(screen_words.SHELL_NO_LOG)
         assert target.read_text(encoding="utf-8") == "untouched\n"
     # A folder where the log should be: the write fails, the reply is unchanged.
     broken = tmp_path / "broken"
     (broken / "userdata" / "error.log").mkdir(parents=True)
     ran = _run_the_shell(broken, [["list"], ["templates"]], FAKE_LOG="")
-    assert ran["out"][1]["reply"]["error"].endswith(api.SHELL_NO_LOG)
+    assert ran["out"][1]["reply"]["error"].endswith(screen_words.SHELL_NO_LOG)
     # A per-user folder that cannot be made (a file is in its way): same.
     blocked = tmp_path / "blocked"
     blocked.mkdir()
     (blocked / "userdata").write_text("a file", encoding="utf-8")
     ran = _run_the_shell(blocked, [["list"], ["templates"]], FAKE_LOG="")
-    assert ran["out"][1]["reply"]["error"].endswith(api.SHELL_NO_LOG)
+    assert ran["out"][1]["reply"]["error"].endswith(screen_words.SHELL_NO_LOG)
 
 
 def test_on_windows_the_fallback_log_is_local_and_never_the_roaming_or_data_folder(tmp_path):
@@ -3351,11 +3361,11 @@ def test_on_windows_the_fallback_log_is_local_and_never_the_roaming_or_data_fold
 
 
 def test_a_failed_spawn_is_said_by_its_code(tmp_path):
-    import tracker.api as api
+    import tracker.screen_words as screen_words
 
     ran = _run_the_shell(tmp_path, [["list"]], FAKE_SPAWN_FAILS="1")
     reply = ran["out"][0]["reply"]
-    assert reply["error"] == api.SHELL_COULD_NOT_START.format(code="ENOENT")
+    assert reply["error"] == screen_words.SHELL_COULD_NOT_START.format(code="ENOENT")
     assert "/no/such" not in reply["error"] and reply["failure"]["kind"] == "failed"
 
 
@@ -3374,6 +3384,7 @@ def test_the_progress_key_is_typed_once_per_language_and_the_error_log_only_by_t
 
 def test_the_shells_default_words_are_the_apis_word_for_word():
     import tracker.api as api
+    import tracker.screen_words as screen_words
 
     main_js = read("app/main.js")
 
@@ -3382,19 +3393,19 @@ def test_the_shells_default_words_are_the_apis_word_for_word():
     def default(key):
         return re.search(rf'^  {key}: "([^"]*)",$', says, re.MULTILINE).group(1)
 
-    assert default("killed") == api.SHELL_KILLED
-    assert default("killed_at") == api.SHELL_KILLED_AT
-    assert default("killed_write") == api.SHELL_KILLED_WRITE
-    assert default("killed_write_note") == api.SHELL_KILLED_WRITE_NOTE
-    assert default("killed_read") == api.SHELL_KILLED_READ
-    assert default("no_reply") == api.SHELL_NO_REPLY
-    assert default("could_not_start") == api.SHELL_COULD_NOT_START
-    assert default("could_not_send") == api.SHELL_COULD_NOT_SEND
-    assert default("no_log") == api.SHELL_NO_LOG
-    assert default("not_opened") == api.SHELL_NOT_OPENED
+    assert default("killed") == screen_words.SHELL_KILLED
+    assert default("killed_at") == screen_words.SHELL_KILLED_AT
+    assert default("killed_write") == screen_words.SHELL_KILLED_WRITE
+    assert default("killed_write_note") == screen_words.SHELL_KILLED_WRITE_NOTE
+    assert default("killed_read") == screen_words.SHELL_KILLED_READ
+    assert default("no_reply") == screen_words.SHELL_NO_REPLY
+    assert default("could_not_start") == screen_words.SHELL_COULD_NOT_START
+    assert default("could_not_send") == screen_words.SHELL_COULD_NOT_SEND
+    assert default("no_log") == screen_words.SHELL_NO_LOG
+    assert default("not_opened") == screen_words.SHELL_NOT_OPENED
     shell = api.vocab()["shell"]
     assert (shell["killed"], shell["killed_at"], shell["no_reply"], shell["could_not_start"]) == (
-        api.SHELL_KILLED, api.SHELL_KILLED_AT, api.SHELL_NO_REPLY, api.SHELL_COULD_NOT_START)
+        screen_words.SHELL_KILLED, screen_words.SHELL_KILLED_AT, screen_words.SHELL_NO_REPLY, screen_words.SHELL_COULD_NOT_START)
 
 
 def test_the_notice_buttons_are_the_apis_labels_word_for_word():
@@ -3403,15 +3414,16 @@ def test_the_notice_buttons_are_the_apis_labels_word_for_word():
     and tooltip are ``screen.icons.dismiss``. Both stay typed in the template
     so a notice works before any vocabulary arrives, word for word the API's."""
     import tracker.api as api
+    import tracker.screen_words as screen_words
 
     html = read("app/renderer/index.html")
     template = html.split('<template id="notice-buttons">', 1)[1].split("</template>", 1)[0]
     text_buttons = dict(re.findall(r'data-act="([a-z]+)">([^<]+)</button>', template))
-    assert text_buttons == {"retry": api.NOTICE_LABELS["retry"]}
+    assert text_buttons == {"retry": screen_words.NOTICE_LABELS["retry"]}
     icon = re.search(r'<button[^>]*data-act="dismiss"[^>]*>', template).group(0)
-    assert 'data-tip-key="screen.icons.dismiss"' in icon and f'aria-label="{api.NOTICE_LABELS["dismiss"]}"' in icon
+    assert 'data-tip-key="screen.icons.dismiss"' in icon and f'aria-label="{screen_words.NOTICE_LABELS["dismiss"]}"' in icon
     assert "look" not in template
-    assert api.vocab()["notices"]["labels"] == api.NOTICE_LABELS
+    assert api.vocab()["notices"]["labels"] == screen_words.NOTICE_LABELS
 
 
 def test_no_failure_is_toasted():
@@ -3620,6 +3632,7 @@ def test_every_word_a_scan_reply_is_said_in_is_the_apis():
 
 def test_an_error_of_the_page_or_the_shell_is_said_by_class_and_its_message_only_logged():
     import tracker.api as api
+    import tracker.screen_words as screen_words
 
     js = read("app/renderer/app.js")
     body = js.split("function failureSentence(err) {", 1)[1].split("\n}\n", 1)[0]
@@ -3635,7 +3648,7 @@ def test_an_error_of_the_page_or_the_shell_is_said_by_class_and_its_message_only
     assert "shellFailure(fill(shellSays.could_not_send" in run and "`The app could not send" not in run
     assert "err.message" not in run.split("keepInLog(", 1)[0]
     assert 'ipcMain.handle("log-error"' in main_js
-    assert api.vocab()["shell"]["page_error"] == api.PAGE_ERROR
+    assert api.vocab()["shell"]["page_error"] == screen_words.PAGE_ERROR
 
 
 # ============= one spawn per click (decision 194) ===========================
@@ -3721,6 +3734,7 @@ def test_a_warning_about_another_return_is_said_under_its_label():
     warns is about that return, so it is said under its label in the API's
     format and never as if about the return shown (the review's S1)."""
     import tracker.api as api
+    import tracker.screen_words as screen_words
 
     js = read("app/renderer/app.js")
     handover = js_function("loadHandOverRequests", "app.js")
@@ -3729,8 +3743,8 @@ def test_a_warning_about_another_return_is_said_under_its_label():
     body = js_function("takeReply", "app.js")
     assert "vocab.notices.about" in body and "labelOfState(result)" in body
     assert js.count("ofAnother: true") == 1
-    assert api.vocab()["notices"]["about"] == api.NOTICE_ABOUT
-    assert set(re.findall(r"{(\w+)}", api.NOTICE_ABOUT)) == {"label", "sentence"}
+    assert api.vocab()["notices"]["about"] == screen_words.NOTICE_ABOUT
+    assert set(re.findall(r"{(\w+)}", screen_words.NOTICE_ABOUT)) == {"label", "sentence"}
 
 
 # ------------------------------- statuses in a preparer's words (d200) ----
@@ -4109,10 +4123,10 @@ def test_edit_request_list_says_so_when_the_state_is_still_another_returns(tmp_p
     the editor is still another return's - a switch landed while it was
     read - Edit Request List puts the API's sentence in the banner and
     opens nothing - never a button that does nothing."""
-    from tracker import api
+    from tracker import screen_words
 
     seen = _run_renderer(tmp_path, "open_editor", ("async function openEditor(focus) {",), f"""
-const vocab = {{ editor: {{ not_this_return: {json.dumps(api.EDITOR_NOT_THIS_RETURN)} }} }};
+const vocab = {{ editor: {{ not_this_return: {json.dumps(screen_words.EDITOR_NOT_THIS_RETURN)} }} }};
 const active = "/root/J Park & Associates/Lee/2026/1040 - Pat Lee";
 const other = {{ paths: {{ engagement: "/root/J Park & Associates/Lee/2026/1120S - Lee LLC" }} }};
 let lastState = other, editorState = null;
@@ -4124,7 +4138,7 @@ const outcome = (text, cls) => done.banners.push([text, cls]);
 const openDialog = (id) => done.opened.push(id);
 openEditor().then(() => process.stdout.write(JSON.stringify(done)));
 """)
-    assert seen == {"called": ["state"], "banners": [[api.EDITOR_NOT_THIS_RETURN, "err"]],
+    assert seen == {"called": ["state"], "banners": [[screen_words.EDITOR_NOT_THIS_RETURN, "err"]],
                     "opened": [], "failed": 0}
 
 
@@ -5352,6 +5366,7 @@ def test_the_last_counts_are_an_early_read_only_command_the_api_answers():
     the renderer asks it by that name. The words the renderer reads for it
     are the API's ``updating`` and ``updating_as_of`` keys, by those names."""
     import tracker.api as api
+    import tracker.screen_words as screen_words
 
     main_js = read("app/main.js")
     early = set(re.findall(r'"([a-z-]+)"', re.search(r"const EARLY_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)))
@@ -5365,7 +5380,7 @@ def test_the_last_counts_are_an_early_read_only_command_the_api_answers():
     renderer = shell_js + read("app/renderer/pages.js")
     read_keys = set(re.findall(r"screenWords\(\)\.(updating\w*)", renderer))
     assert read_keys == {"updating", "updating_as_of"}
-    assert read_keys <= set(api.SCREEN) and "{time}" in api.SCREEN["updating_as_of"]
+    assert read_keys <= set(screen_words.SCREEN) and "{time}" in screen_words.SCREEN["updating_as_of"]
     # The time it fills in is the reply's own ``as_of``, read by that name.
     last_of = shell_js[shell_js.index("function shellLastOf(reply) {"):]
     last_of = last_of[:last_of.index("\n}\n")]
@@ -5402,14 +5417,14 @@ def test_the_runbooks_mac_paragraphs_quote_the_sentences_the_app_shows_and_name_
     ``DATA_HOME_NAME`` on both systems (the Windows lines said
     ``tax-document-tracker``; the folder is the pilot's), the settings folder by
     the product name, the agent by its label."""
-    from tracker import after_install, api, runner, scheduling, settings
+    from tracker import after_install, run_log, scheduling, screen_words, settings
 
     runbook = read("docs/runbook.md")
-    assert runbook.count("### On a Mac\n") == 1 and "'On a Mac'" in runner.PASS_REASONS[runner.PASS_ROOT_NOT_PERMITTED]
+    assert runbook.count("### On a Mac\n") == 1 and "'On a Mac'" in run_log.PASS_REASONS[run_log.PASS_ROOT_NOT_PERMITTED]
     mac = _prose("docs/runbook.md")
-    for sentence in (api.PROTECTED_VIEW_MAC, after_install.TIME_MACHINE_EXCLUDED, after_install.SCHEDULE_REMOVED_FROM_MAC,
+    for sentence in (screen_words.PROTECTED_VIEW_MAC, after_install.TIME_MACHINE_EXCLUDED, after_install.SCHEDULE_REMOVED_FROM_MAC,
                      after_install.SCHEDULE_SWITCHED_OFF.format(product=settings.product_name()),
-                     runner.PASS_REASONS[runner.PASS_ROOT_NOT_PERMITTED].split(" (runbook")[0]):
+                     run_log.PASS_REASONS[run_log.PASS_ROOT_NOT_PERMITTED].split(" (runbook")[0]):
         assert sentence in mac, sentence
     for place in (f"~/Library/Application Support/{settings.DATA_HOME_NAME}",
                   f"~/Library/Application Support/{settings.product_name()}",

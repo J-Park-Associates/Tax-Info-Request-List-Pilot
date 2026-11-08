@@ -57,29 +57,21 @@ from tracker.reminder import (
     NEW_DRAFT_FILENAME,
     is_unedited,
 )
+from tracker.run_log import LOG_FILENAME, REMINDERS_ALWAYS, REMINDERS_AUTO, REMINDERS_NEVER, RunReport, append_log
 from tracker.runner import (
     DRAFT_WEEKDAY,
-    LOG_FILENAME,
     NOTHING_OUTSTANDING,
-    RECORD_UNREADABLE,
-    REMINDERS_ALWAYS,
-    REMINDERS_AUTO,
-    REMINDERS_NEVER,
     SETTINGS_FLAG,
-    STATUS_PAGE_FILENAME,
     WEEKDAY_NAMES,
-    RunReport,
-    append_log,
     format_report,
     is_draft_day,
     last_drafted,
     main,
     run_registry,
     should_draft,
-    write_status_page,
 )
 from tracker.scaffold import PREPARED_DIR_NAME, scaffold_engagement
-from tracker.status_page import STATUS_HELD
+from tracker.status_page import RECORD_UNREADABLE, STATUS_HELD, STATUS_PAGE_FILENAME, write_status_page
 
 DRAFT_DAY = WEEKDAY_NAMES[DRAFT_WEEKDAY]
 
@@ -1061,8 +1053,8 @@ def test_what_an_earlier_version_left_is_named_for_deletion_and_never_deleted(tm
     (settings / PASSES_DIRNAME).mkdir()
     (settings / PASSES_DIRNAME / "7.progress.json").write_bytes(b"a pass's last line")
     left = {name: settings / name for name in (store.STORE_FILENAME, store.STORE_WAL_FILENAME,
-                                                runner_module.PASS_ORDER_FILENAME,
-                                                runner_module.LAST_PASS_FILENAME,
+                                                pass_order.PASS_ORDER_FILENAME,
+                                                run_log.LAST_PASS_FILENAME,
                                                 ERROR_LOG_FILENAME, f"{ERROR_LOG_FILENAME}.1")}
     for name, path in left.items():
         path.write_bytes(name.encode())
@@ -1079,11 +1071,11 @@ def test_what_an_earlier_version_left_is_named_for_deletion_and_never_deleted(tm
     named = [warning for warning in report.warnings if warning.startswith(runner_module.LEFT_BEHIND[:20])]
     assert named == [runner_module.LEFT_BEHIND.format(
         paths="; ".join(str(settings.resolve() / name) for name in (
-            store.STORE_FILENAME, store.STORE_WAL_FILENAME, runner_module.PASS_ORDER_FILENAME,
-            runner_module.LAST_PASS_FILENAME, ERROR_LOG_FILENAME, f"{ERROR_LOG_FILENAME}.1",
+            store.STORE_FILENAME, store.STORE_WAL_FILENAME, pass_order.PASS_ORDER_FILENAME,
+            run_log.LAST_PASS_FILENAME, ERROR_LOG_FILENAME, f"{ERROR_LOG_FILENAME}.1",
             PASSES_DIRNAME, OCR_SCRATCH_DIRNAME)) + f"; {old_log}",
         home=data_home())]
-    assert runner_module.CODE_LEFT_BEHIND_TO_MOVE not in report.warning_codes    # nothing to move
+    assert run_log.CODE_LEFT_BEHIND_TO_MOVE not in report.warning_codes    # nothing to move
     assert (settings / PASSES_DIRNAME / "7.progress.json").read_bytes() == b"a pass's last line"
     assert old_log.read_text(encoding="utf-8") == "an old log naming a client\n"
     for name, path in left.items():
@@ -1120,8 +1112,8 @@ def test_the_checkpoint_and_recovered_records_left_behind_are_named_to_move_neve
         paths=f"{settings.resolve() / checkpoint.CHECKPOINT_FILENAME}; "
               f"{settings.resolve() / store.RECOVERED_DIR}", home=home)
     said = dict(zip(report.warning_codes, report.warnings, strict=True))
-    assert said[runner_module.CODE_LEFT_BEHIND] == to_delete
-    assert said[runner_module.CODE_LEFT_BEHIND_TO_MOVE] == to_move
+    assert said[run_log.CODE_LEFT_BEHIND] == to_delete
+    assert said[run_log.CODE_LEFT_BEHIND_TO_MOVE] == to_move
     assert checkpoint.CHECKPOINT_FILENAME not in to_delete and store.RECOVERED_DIR not in to_delete
     assert "never delete" in to_move
     assert (settings / checkpoint.CHECKPOINT_FILENAME).read_bytes() == b"an old checkpoint"
@@ -1141,9 +1133,9 @@ def test_the_store_in_use_is_never_named_as_left_behind(tmp_path, monkeypatch):
     app = tmp_path / "app"
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
     store.connect()                                              # the fixture's store, in use
-    for name in (store.STORE_WAL_FILENAME, runner_module.PASS_ORDER_FILENAME,
+    for name in (store.STORE_WAL_FILENAME, pass_order.PASS_ORDER_FILENAME,
                  checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
-                 checkpoint.CHECKPOINT_DAMAGED_FILENAME, runner_module.LAST_PASS_FILENAME,
+                 checkpoint.CHECKPOINT_DAMAGED_FILENAME, run_log.LAST_PASS_FILENAME,
                  ERROR_LOG_FILENAME, f"{ERROR_LOG_FILENAME}.1",
                  f"{store.STORE_FILENAME}.v3.old", f"{checkpoint.CHECKPOINT_FILENAME}.v1.old"):
         if not (app / name).exists():                              # the store may have made one
@@ -1182,8 +1174,8 @@ def test_159s_set_asides_and_the_checkpoints_journal_left_behind_are_named_in_th
     def named(code, before):
         return sorted(Path(one).name for one in said[code].split(": ", 1)[1].split(before, 1)[0].split("; "))
 
-    assert named(runner_module.CODE_LEFT_BEHIND, ". They hold") == sorted(to_delete)
-    assert named(runner_module.CODE_LEFT_BEHIND_TO_MOVE, ". These cannot") == sorted(to_move)
+    assert named(run_log.CODE_LEFT_BEHIND, ". They hold") == sorted(to_delete)
+    assert named(run_log.CODE_LEFT_BEHIND_TO_MOVE, ". These cannot") == sorted(to_move)
     for name in to_delete + to_move:
         assert (settings / name).read_bytes() == name.encode()      # named, never touched
 
@@ -1226,8 +1218,8 @@ def test_a_checkpoint_log_left_beside_the_program_is_named_to_move_never_to_dele
     store.close()
 
     said = dict(runner_module.left_behind_warnings(None))
-    assert runner_module.CODE_LEFT_BEHIND not in said
-    moving = said[runner_module.CODE_LEFT_BEHIND_TO_MOVE].split(": ", 1)[1].split(". These cannot", 1)[0]
+    assert run_log.CODE_LEFT_BEHIND not in said
+    moving = said[run_log.CODE_LEFT_BEHIND_TO_MOVE].split(": ", 1)[1].split(". These cannot", 1)[0]
     assert sorted(Path(one).name for one in moving.split("; ")) == sorted(to_move)
     for name in to_move:
         assert (settings / name).read_bytes() == name.encode()
@@ -1260,10 +1252,10 @@ def test_a_pass_serves_no_household_while_the_old_checkpoint_sits_beside_the_pro
     first = page[page.index(status_page.STATUS_RECORDS_HEADING):].split("<li>", 2)[1]
     assert first.startswith("No household was served this pass") and "No record checkpoint was made" in first
     logged = run_log.log_path().read_text(encoding="utf-8")
-    assert f"{runner_module.CODE_CHECKPOINT_NOT_PROVED}=1" in logged
+    assert f"{run_log.CODE_CHECKPOINT_NOT_PROVED}=1" in logged
     assert "No record checkpoint was made" not in logged
-    written = json.loads(runner_module.last_pass_path().read_text(encoding="utf-8"))
-    assert written["reason_code"] == runner_module.PASS_CHECKPOINT_LEFT_BEHIND
+    written = json.loads(run_log.last_pass_path().read_text(encoding="utf-8"))
+    assert written["reason_code"] == run_log.PASS_CHECKPOINT_LEFT_BEHIND
     assert not new.exists() and old.read_bytes() == before
 
 
@@ -1302,7 +1294,7 @@ def _an_idle_pass_counted(tmp_path, samples, monkeypatch) -> dict:
         return real_connect(path)
 
     def write(path, *args, **kwargs):
-        counted["hint writes"] += Path(path).name == runner_module.PASS_ORDER_FILENAME
+        counted["hint writes"] += Path(path).name == pass_order.PASS_ORDER_FILENAME
         return real_write(path, *args, **kwargs)
 
     def unheld(real):

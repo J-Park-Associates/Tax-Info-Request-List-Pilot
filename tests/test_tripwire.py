@@ -49,7 +49,7 @@ from tracker import errlog, fsio, locking, settings, store
 from tracker.checkpoint import CHECKPOINT_FILENAME, CHECKPOINT_SHM_FILENAME, CHECKPOINT_WAL_FILENAME
 from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
 from tracker.progress import PASSES_DIRNAME
-from tracker.runner import LAST_PASS_FILENAME
+from tracker.run_log import LAST_PASS_FILENAME
 from tracker.scheduling import SCHEDULE_XML_FILENAME
 
 #: The guarded places that are folders, by their label; the rest are files.
