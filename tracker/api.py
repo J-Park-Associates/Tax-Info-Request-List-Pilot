@@ -4745,13 +4745,14 @@ def _cmd_firm_last(argv: list[str]) -> dict:
     marks now show whose row was never kept; the cache file written again
     while it was read (the early ``firm`` landing at the same moment), so
     the time would label older rows. Each is named in
-    :data:`FIRM_LAST_REFUSALS`, never in a client's words: the ordinary
-    ones - no cache under today's head (the first launch of the day, a
-    program, root, settings or data folder change), no plain household
-    positions (the fresh reply says why in its own words), the file
-    rewritten while read - are logged below the error log; the unusual ones
-    - kept households not exactly the walk's, a household with a problem,
-    a shown return without a kept row - reach the error log, by name.
+    :data:`tracker.firm_view.FIRM_LAST_REFUSALS`, never in a client's
+    words: the ordinary ones - no cache under today's head (the first
+    launch of the day, a program, root, settings or data folder change), no
+    plain household positions (the fresh reply says why in its own words),
+    the file rewritten while read - are logged below the error log; the
+    unusual ones - kept households not exactly the walk's, a household with
+    a problem, a shown return without a kept row - reach the error log, by
+    name.
 
     **What it loosens.** P120's rule that a cache may never make a status
     wrong, for the seconds between the launch and the fresh reply: a count
