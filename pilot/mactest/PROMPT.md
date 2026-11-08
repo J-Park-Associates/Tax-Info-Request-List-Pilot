@@ -82,11 +82,12 @@ SAFETY - never break these:
    the answer under "Machine" in the result file.
 
 3. AUTOMATED PART. Run:
-     bash pilot/mactest/run_checks.sh --tests test_settings,test_after_install,test_scheduling,test_runner,test_locking,test_fsio,test_checkpoint,test_store,test_ledger,test_layout,test_filer,test_validators,test_ocr,test_api,test_api_entry,test_build,test_shell,test_shell_menu,test_single_source,test_layers,test_repo_map,test_tripwire,test_content_check,test_pilot,test_errors,test_lockfiles
+     bash pilot/mactest/run_checks.sh --tests test_settings,test_after_install,test_scheduling,test_runner,test_locking,test_fsio,test_checkpoint,test_store,test_ledger,test_layout,test_filer,test_validators,test_ocr,test_api,test_api_entry,test_build,test_shell,test_shell_menu,test_single_source,test_layers,test_repo_map,test_tripwire,test_content_check,test_pilot,test_errors,test_lockfiles,test_hold,test_errlog,test_admission,test_store_check,test_verify,test_index,test_copies,test_intents,test_inbox,test_readme_ack,test_actions,test_renderer_seams,test_keywords,test_verdicts,test_reader_child,test_screen_words,test_request_edit,test_household_edit,test_creation,test_firm_view,test_api_returns,test_api_review,test_api_editor,test_api_root,test_api_household,test_api_reminder,test_api_firm,test_run_log,test_status_page,test_pass_order,test_runner_household,test_runner_watch,test_runner_reports
    Why these: the first twenty-two are the files this port changes (SPEC-mac R33), each run on the
    system it changes for; test_content_check and test_pilot are the files the port's last job
    changes (R36), and test_errors and test_lockfiles are named by the jobs that changed the
-   wording and the build lock. Not the whole suite: the sorting engine's own tests are not rerun
+   wording and the build lock, and the rest are the files SPEC-architecture's jobs split out of
+   those, so every test that was in a listed file still runs (P351). Not the whole suite: the sorting engine's own tests are not rerun
    (Jason, 2026-09-29). Run the whole suite (the script with no --tests) only if Jason asks.
    The script checks the tools, makes the environment, runs ruff and the map check, runs each test
    file in its own process, builds the disk image, checks what the bundle holds, makes the frozen

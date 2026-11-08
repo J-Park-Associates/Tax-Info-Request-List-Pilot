@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 413,
     "edges": 2418,
-    "reused": 353
+    "reused": 348
   },
   "node_types": [
     "artifact",
@@ -5079,8 +5079,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a310383060894ff6",
-      "lines": 344
+      "sha256": "25e32f0afb5aaf5a",
+      "lines": 345
     },
     {
       "id": "pilot/HANDOFF-client-folder.md",
@@ -5318,8 +5318,8 @@
       "id": "pilot/SPEC-mac.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ccd0311c11777575",
-      "lines": 967
+      "sha256": "98a0b12609bea946",
+      "lines": 970
     },
     {
       "id": "pilot/SPEC-ocr-prepare.md",
@@ -5474,8 +5474,8 @@
       "id": "pilot/mactest/PROMPT.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "737842d89e6423fd",
-      "lines": 398,
+      "sha256": "18e6d2df8679dd2a",
+      "lines": 399,
       "role": "The prompt for Claude Code on the test Mac (SPEC-mac R33): the safety rules, the run of pilot/mactest/run_checks.sh with the exact test files, and the hands-on steps H1-H14 with the buyer's walk as H2 and why each was chosen.",
       "notes": "Carries the proof items the Mac jobs' reviews left for a Mac under the step that matches them: job 1 in H2 steps 4-7 and 10 and H6, job 2 in H1, H2 steps 2-3 and H11, job 5 in H4, H7 and H8, job 6 in H3, H5, H9, H13 and H14, job 7 in H1 and H10. Its season builder (for H10's timing) is lifted and run by tests/test_pilot.py. The 60-minute figure H10 passes at is the kit's reading of P247's 'well inside' the two-hour slot, for Jason to change."
     },
@@ -5483,8 +5483,8 @@
       "id": "pilot/mactest/RESULTS-TEMPLATE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "087c48197a83ede5",
-      "lines": 117,
+      "sha256": "9f611cb7e2f8f8fa",
+      "lines": 150,
       "role": "The result file the Mac check fills in: the machine, the automated checks (one row per check the script records and per test file), the walk's fourteen steps and H1-H14. tests/test_pilot.py holds its rows to the script's and the prompt's."
     },
     {
@@ -9769,14 +9769,15 @@
       "id": "tests/test_pilot.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6134dd7d1d6ba4f8",
-      "lines": 975,
+      "sha256": "f3973d88bc98e94f",
+      "lines": 990,
       "exports": [
         "KIT_PROMPT",
         "KIT_RESULTS",
         "KIT_SCRIPT",
         "KIT_TESTS",
         "KIT_TESTS_ADDED",
+        "KIT_TESTS_SPLIT",
         "MACTEST",
         "POWERSHELL",
         "REPO",
@@ -9834,7 +9835,8 @@
       ],
       "constants": {
         "KIT_TESTS": "('test_settings', 'test_after_install', 'test_scheduling', 'test_runner', 'test_locking', 'test_fsio', 'test_checkpoint', 'test_store', 'test_ledger', 'test_layout', 'test_filer', 'test_validators', 'test_ocr', 'test_api', 'test_api_entry', 'test_build', 'test_shell', 'test_shell_menu', 'test_single_source', 'test_layers', 'test_repo_map', 'test_tripwire')",
-        "KIT_TESTS_ADDED": "('test_content_check', 'test_pilot', 'test_errors', 'test_lockfiles')"
+        "KIT_TESTS_ADDED": "('test_content_check', 'test_pilot', 'test_errors', 'test_lockfiles')",
+        "KIT_TESTS_SPLIT": "('test_hold', 'test_errlog', 'test_admission', 'test_store_check', 'test_verify', 'test_index', 'test_copies', 'test_intents', 'test_inbox', 'test_readme_ack', 'test_actions', 'test_renderer_seams', 'test_keywords', 'test_verdicts', 'test_reader_child', 'test_screen_words', 'test_request_edit', 'test_household_edit', 'test_creation', 'test_firm_view', 'test_api_returns', 'test_api_review', 'test_api_editor', 'test_api_root', 'test_api_household', 'test_api_reminder', 'test_api_firm', 'test_run_log', 'test_status_page', 'test_pass_order', 'test_runner_household', 'test_runner_watch', 'test_runner_reports')"
       },
       "role": "The pilot edition's badge, terms and wording, and both check kits: the Windows script's helpers run in PowerShell 5.1 where there is one, and the Mac kit's script, prompt and template (SPEC-mac R33).",
       "notes": "Mac kit tests run on Linux: the script's helpers are lifted by their BEGIN/END markers and run in real bash, and the whole script is run with a PATH of stand-in uname, sw_vers, sysctl and xcode-select so every stop (Intel, Rosetta, macOS 13, a missing tool, a typo in --tests) is proved without a Mac. A test that runs the script to its end on a real Mac would build, so each one stops it early by design."

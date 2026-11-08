@@ -55,6 +55,39 @@
 | tests test_pilot.py | | |
 | tests test_errors.py | | |
 | tests test_lockfiles.py | | |
+| tests test_hold.py | | |
+| tests test_errlog.py | | |
+| tests test_admission.py | | |
+| tests test_store_check.py | | |
+| tests test_verify.py | | |
+| tests test_index.py | | |
+| tests test_copies.py | | |
+| tests test_intents.py | | |
+| tests test_inbox.py | | |
+| tests test_readme_ack.py | | |
+| tests test_actions.py | | |
+| tests test_renderer_seams.py | | |
+| tests test_keywords.py | | |
+| tests test_verdicts.py | | |
+| tests test_reader_child.py | | |
+| tests test_screen_words.py | | |
+| tests test_request_edit.py | | |
+| tests test_household_edit.py | | |
+| tests test_creation.py | | |
+| tests test_firm_view.py | | |
+| tests test_api_returns.py | | |
+| tests test_api_review.py | | |
+| tests test_api_editor.py | | |
+| tests test_api_root.py | | |
+| tests test_api_household.py | | |
+| tests test_api_reminder.py | | |
+| tests test_api_firm.py | | |
+| tests test_run_log.py | | |
+| tests test_status_page.py | | |
+| tests test_pass_order.py | | |
+| tests test_runner_household.py | | |
+| tests test_runner_watch.py | | |
+| tests test_runner_reports.py | | |
 | build | | disk image path |
 | bundle | | seal, arm64, BUILD-INFO.txt, minimum macOS, folder strings, icon |
 | frozen_smoke | | list answered; dry pass read the pile as the source does; reader=processor; memory readable |

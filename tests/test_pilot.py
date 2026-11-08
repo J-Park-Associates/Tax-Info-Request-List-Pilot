@@ -481,6 +481,20 @@ KIT_TESTS = (
 #: Added by the last job: the files R36 changes, and the two the earlier jobs'
 #: sections of SPEC-mac section 7 name that R33's list leaves out.
 KIT_TESTS_ADDED = ("test_content_check", "test_pilot", "test_errors", "test_lockfiles")
+#: The files SPEC-architecture's jobs (phases 2-5) split out of a file listed above, so the Mac check
+#: still runs every test that was in a listed file. A ``tests/test_*.py`` a SPEC-architecture commit
+#: created is one of them when some SPEC-architecture commit removed a ``def test_`` line from a file
+#: in ``KIT_TESTS + KIT_TESTS_ADDED`` and added one to it (P351): the list is widened by that rule, not
+#: by hand. ``test_letter_render`` is not one (``test_reminder`` is not listed); a file whose tests the
+#: rule moved none of is still listed, for it holds the moved code's tests from now on.
+KIT_TESTS_SPLIT = (
+    "test_hold", "test_errlog", "test_admission", "test_store_check", "test_verify", "test_index",
+    "test_copies", "test_intents", "test_inbox", "test_readme_ack", "test_actions", "test_renderer_seams",
+    "test_keywords", "test_verdicts", "test_reader_child", "test_screen_words", "test_request_edit",
+    "test_household_edit", "test_creation", "test_firm_view", "test_api_returns", "test_api_review",
+    "test_api_editor", "test_api_root", "test_api_household", "test_api_reminder", "test_api_firm",
+    "test_run_log", "test_status_page", "test_pass_order", "test_runner_household", "test_runner_watch",
+    "test_runner_reports")
 
 
 def _bash() -> str:
@@ -800,12 +814,13 @@ def _prompt() -> str:
 
 def test_the_mac_prompt_lists_the_ports_test_files_and_every_one_exists():
     """R33: the exact test files, named in the prompt's run line - the twenty-two
-    the SPEC lists, then the four the last job adds with its reason - and each is
+    the SPEC lists, then the four the last job adds with its reason, then the files
+    split out of those by SPEC-architecture (P351) - and each is
     a file under ``tests/``. The whole suite runs only if Jason asks."""
     line = re.search(r"bash pilot/mactest/run_checks\.sh --tests (\S+)", _prompt())
     assert line, "the prompt names no --tests line"
     named = line.group(1).split(",")
-    assert tuple(named) == KIT_TESTS + KIT_TESTS_ADDED
+    assert tuple(named) == KIT_TESTS + KIT_TESTS_ADDED + KIT_TESTS_SPLIT
     for name in named:
         assert (REPO / "tests" / f"{name}.py").is_file(), name
     assert "only if Jason asks" in _prompt()
@@ -839,7 +854,7 @@ def test_the_mac_results_template_has_a_row_for_every_check_and_every_step():
                      "frozen_smoke", "sample_folder"}
     for name in fixed:
         assert name in rows, name
-    for name in KIT_TESTS + KIT_TESTS_ADDED:
+    for name in KIT_TESTS + KIT_TESTS_ADDED + KIT_TESTS_SPLIT:
         assert f"tests {name}.py" in rows, name
     for number in range(1, 15):
         assert any(row == str(number) or re.fullmatch(rf"{number}[a-c]", row) for row in rows), number

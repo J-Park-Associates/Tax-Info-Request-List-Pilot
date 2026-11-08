@@ -730,6 +730,9 @@ The prompt lists the exact test files: `test_settings`, `test_after_install`,
 `test_shell`, `test_shell_menu`, `test_single_source`, `test_layers`,
 `test_repo_map`, `test_tripwire`. These are the files this port changes,
 run on the system they change for.
+Since P351 the list also names, by rule, every file SPEC-architecture split out of
+one of these (`KIT_TESTS_SPLIT` in `tests/test_pilot.py`), so no test that was in a
+listed file stops running.
 
 It lists the hands-on steps, with why each is chosen:
 - H1, the build and the frozen smoke (R13, R16, R17).
