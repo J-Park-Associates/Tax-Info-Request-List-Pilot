@@ -2228,7 +2228,8 @@ def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None,
         reminders=bool(spec.get("reminders", base.reminders)),
         active=bool(spec.get("active", base.active)),
         people=_people_from_spec(spec["people"]) if "people" in spec else base.people,
-        **{key: date(key) for key in DATE_FIELDS},
+        # DATE_FIELDS names the record's date fields only, each a date or None.
+        **cast(dict, {key: date(key) for key in DATE_FIELDS}),
     )
 
 
@@ -2750,7 +2751,10 @@ def _feed_payload(household_dir: Path, years: list[int]) -> tuple[list[dict], li
             return ([{"household": one.household, "return_name": one.return_name,
                       "label": "", "path": "", "warning": sentence}
                      for one in info.feeds], fed)
-        found, said = resolve_feeds(household_dir, info.feeds, year, practice)
+        # resolve_feeds is duck-typed on the registry it is given (households
+        # sits below registry); what it finds are that registry's own returns.
+        found, said = cast(tuple[list[Engagement], list[str]],
+                           resolve_feeds(household_dir, info.feeds, year, practice))
     by_line = {(one.info.household or one.household_path.name, one.info.return_name or one.path.name):
                one for one in found}
     unresolved = iter(said)
@@ -2837,7 +2841,8 @@ def _fed_by_payload(household_dir: Path) -> list[dict]:
                 continue
             if info is not None:
                 built.append(Household(path=folder, info=info))
-    shown = [one for one in fed_by(SimpleNamespace(households=built), household_dir)
+    # fed_by is duck-typed on the registry it is given; it gives back the Households built here.
+    shown = [one for one in cast(list[Household], fed_by(SimpleNamespace(households=built), household_dir))
              if layout.place_of(root, one.path).kind == layout.HOUSEHOLD
              and one.path.parent == household_dir.parent
              and layout.segment_problem(one.path.name) is None
@@ -3251,7 +3256,8 @@ def _state(engagement: Path) -> dict:
             # the record already holds.
             **{key: str(locate(engagement, where)) for e in entries
                if e.decision == FILED for key, where in zip(_filed_copy_keys(e), e.filed_locations, strict=True)},
-            **{key: str(locate(engagement, moved_to(e))) for e in entries
+            # moved_to(e) is not None: _moved_copy_key gives a key only where it is.
+            **{key: str(locate(engagement, cast(str, moved_to(e)))) for e in entries
                if (key := _moved_copy_key(e))},
         },
         # The openable paths whose copy Windows would have marked as from the
@@ -4124,8 +4130,9 @@ def _cmd_create(argv: list[str]) -> dict:
     if form:
         require_form(form)
     client = _text(spec, "client")
-    # The return's tax year: the calendar's default unless chosen.
-    year = _tax_year(spec.get("year"), default_tax_year())
+    # The return's tax year: the calendar's default unless chosen (never
+    # None: _tax_year answers None only where its default is None).
+    year = cast(int, _tax_year(spec.get("year"), default_tax_year()))
 
     given = _text(spec, "household_path")
     if given:
@@ -5964,9 +5971,10 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict], di
     by_name = {item.identifier: item for item in items}
     paths: dict[str, str] = {}
 
-    def shown(key: str, where: str) -> str:
+    def shown(key: str, where: str | None) -> str:
         if key:
-            paths[key] = str(locate(one.path, where))
+            # A key is only ever given with the location it names.
+            paths[key] = str(locate(one.path, cast(str, where)))
         return key
 
     files = [{"return": row["path"], "year": row["year"], "name": t.entry.original_name,
@@ -6572,21 +6580,26 @@ def _firm_last(root: Path, today: dt.date) -> tuple[list[_FirmShown], dt.datetim
 
     positions = household_positions(root)
     if positions is None:
-        return refuse("no_positions")
+        refuse("no_positions")
+        return None
     _private, folders = positions
     where = firm_cache.cache_path()
     try:
         before = where.stat().st_mtime_ns
     except OSError:
-        return refuse("no_kept_practice")
+        refuse("no_kept_practice")
+        return None
     kept = firm_cache.load(where, firm_cache.head(root, today))
     if not kept or not folders:
-        return refuse("no_kept_practice")
+        refuse("no_kept_practice")
+        return None
     if set(kept) != {folder.name for folder in folders} or len(folders) != len(kept):
-        return refuse("households_differ")
+        refuse("households_differ")
+        return None
     entries = {folder: kept[folder.name] for folder in folders}
     if not all(_firm_keepable(entry) for entry in entries.values()):
-        return refuse("household_problem")
+        refuse("household_problem")
+        return None
     order = _firm_order(folders, entries)
     facts, marked, paused, showing = _firm_marks(root, order, entries)
     links = _firm_links(order, entries)
@@ -6595,7 +6608,8 @@ def _firm_last(root: Path, today: dt.date) -> tuple[list[_FirmShown], dt.datetim
         if not show:
             continue
         if one["shown"] is None:
-            return refuse("row_not_kept")
+            refuse("row_not_kept")
+            return None
         shown.append(_firm_marked(one["shown"]["row"], one["shown"]["files"], one["shown"]["paths"],
                                   engagement, paused, links))
     try:
@@ -6603,7 +6617,8 @@ def _firm_last(root: Path, today: dt.date) -> tuple[list[_FirmShown], dt.datetim
     except OSError:
         after = None
     if after != before:
-        return refuse("cache_rewritten")
+        refuse("cache_rewritten")
+        return None
     return shown, dt.datetime.fromtimestamp(before / 1e9), _firm_seen(order, entries, links, facts, showing)
 
 
@@ -6761,7 +6776,9 @@ def main(argv: list[str]) -> int:
                 if argv[0] in HELD_READING_COMMANDS:
                     held.enter_context(one_reading())
                 held.enter_context(reader_child.reading_session(in_a_child=content_check.READ_IN_A_CHILD))
-                payload = COMMANDS[argv[0]](argv[1:])
+                # A dict: run-now, the one command whose handler answers an
+                # int, returned before this point.
+                payload = cast(dict, COMMANDS[argv[0]](argv[1:]))
         except Exception as exc:  # said as JSON, never a traceback on screen
             return say_failure(argv[0], exc)
         finally:

@@ -155,6 +155,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
+from typing import cast
 
 from tracker import door, errors, fsio, ledger, registry, runner, scheduling, settings, store, store_check
 from tracker.fsio import TEMP_SUFFIX, write_json_atomically
@@ -527,23 +528,24 @@ def _schedule(root: Path | None, preference: scheduling.SchedulePreference) -> _
         return _Step(outcome, scheduling.SCHEDULE_WAITS_FOR_ROOT)
     if outcome == scheduling.NO_TASK_SCHEDULER:
         return _Step(outcome, scheduling.SCHEDULE_NOT_HERE)
+    # Past NO_ROOT, root is not None: schedule_decision answers NO_ROOT for none.
     if outcome == scheduling.UNREADABLE:
         return _Step(outcome, scheduling.DESIGNATION_UNREADABLE.format(
-            file=scheduling.designation_file(root)), failed=True)
+            file=scheduling.designation_file(cast(Path, root))), failed=True)
     if outcome == scheduling.UNNAMED_HOST:
         return _Step(outcome, scheduling.HOST_UNNAMED.format(
-            file=scheduling.designation_file(root)), failed=True)
+            file=scheduling.designation_file(cast(Path, root))), failed=True)
     if outcome == scheduling.CLAIMED:
         # Only the claim writes the designation file, so only its OSError
         # says that file could not be written (the review's S2).
         try:
-            scheduling.claim(root)
+            scheduling.claim(cast(Path, root))
         except scheduling.DesignationError as exc:
             return _Step(outcome, str(exc), failed=True)
         except OSError as exc:
             errors.keep("after_install: claiming the schedule", exc)
             return _Step(outcome, DESIGNATION_UNWRITABLE.format(
-                file=scheduling.designation_file(root)), failed=True)
+                file=scheduling.designation_file(cast(Path, root))), failed=True)
     try:
         if outcome == scheduling.ELSEWHERE:
             removed = scheduling.remove_task()

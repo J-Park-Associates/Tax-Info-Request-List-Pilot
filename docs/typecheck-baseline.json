@@ -1,7 +1,7 @@
 {
   "note": "Every type error each file had when this was written, by python tools/typecheck.py update. check fails when a file has more; update refuses to raise a count. Never edit it by hand.",
   "mypy": "2.3.1",
-  "total": 138,
+  "total": 106,
   "files": {
     "tools/learned_keywords.py": [
       "Cannot find implementation or library stub for module named \"vocab_report\"  [import-not-found]"
@@ -46,38 +46,6 @@
       "Incompatible types in assignment (expression has type \"list[str]\", target has type \"str\")  [assignment]",
       "Incompatible types in assignment (expression has type \"list[str]\", target has type \"str\")  [assignment]",
       "Name \"key\" already defined on line 892  [no-redef]"
-    ],
-    "tracker/after_install.py": [
-      "Argument 1 to \"claim\" has incompatible type \"Path | None\"; expected \"str | Path\"  [arg-type]",
-      "Argument 1 to \"designation_file\" has incompatible type \"Path | None\"; expected \"Path | str\"  [arg-type]",
-      "Argument 1 to \"designation_file\" has incompatible type \"Path | None\"; expected \"Path | str\"  [arg-type]",
-      "Argument 1 to \"designation_file\" has incompatible type \"Path | None\"; expected \"Path | str\"  [arg-type]"
-    ],
-    "tracker/api.py": [
-      "\"object\" has no attribute \"info\"  [attr-defined]",
-      "\"object\" has no attribute \"name\"  [attr-defined]",
-      "\"object\" has no attribute \"path\"  [attr-defined]",
-      "\"object\" has no attribute \"path\"  [attr-defined]",
-      "\"object\" has no attribute \"path\"  [attr-defined]",
-      "\"object\" has no attribute \"path\"  [attr-defined]",
-      "\"object\" has no attribute \"path\"  [attr-defined]",
-      "\"object\" has no attribute \"path\"  [attr-defined]",
-      "\"refuse\" does not return a value (it only ever returns None)  [func-returns-value]",
-      "\"refuse\" does not return a value (it only ever returns None)  [func-returns-value]",
-      "\"refuse\" does not return a value (it only ever returns None)  [func-returns-value]",
-      "\"refuse\" does not return a value (it only ever returns None)  [func-returns-value]",
-      "\"refuse\" does not return a value (it only ever returns None)  [func-returns-value]",
-      "\"refuse\" does not return a value (it only ever returns None)  [func-returns-value]",
-      "\"refuse\" does not return a value (it only ever returns None)  [func-returns-value]",
-      "Argument 2 to \"locate\" has incompatible type \"str | None\"; expected \"str\"  [arg-type]",
-      "Argument 2 to \"shown\" has incompatible type \"str | None\"; expected \"str\"  [arg-type]",
-      "Argument 3 to \"_new_return_dir\" has incompatible type \"int | None\"; expected \"int\"  [arg-type]",
-      "Argument 3 to \"_placed\" has incompatible type \"int | None\"; expected \"int\"  [arg-type]",
-      "Argument 9 to \"replace\" of \"EngagementInfo\" has incompatible type \"**dict[str, date | None]\"; expected \"int | None\"  [arg-type]",
-      "Argument 9 to \"replace\" of \"EngagementInfo\" has incompatible type \"**dict[str, date | None]\"; expected \"str\"  [arg-type]",
-      "Incompatible types in assignment (expression has type \"list[object]\", variable has type \"list[Engagement]\")  [assignment]",
-      "Unsupported operand types for - (\"None\" and \"int\")  [operator]",
-      "Unsupported target for indexed assignment (\"object\")  [index]"
     ],
     "tracker/checkpoint.py": [
       "\"Connection\" has no attribute \"_refused\"  [attr-defined]",
@@ -147,12 +115,6 @@
     "tracker/router.py": [
       "Item \"None\" of \"ContentCache | None\" has no attribute \"digest_of\"  [union-attr]",
       "Item \"None\" of \"ContentCache | None\" has no attribute \"put_by_digest\"  [union-attr]"
-    ],
-    "tracker/runner.py": [
-      "Incompatible return value type (got \"tuple[list[object], list[str]]\", expected \"tuple[list[Engagement], list[str]]\")  [return-value]",
-      "Item \"None\" of \"Path | None\" has no attribute \"parent\"  [union-attr]",
-      "Item \"None\" of \"Path | None\" has no attribute \"parent\"  [union-attr]",
-      "Item \"None\" of \"Watch | None\" has no attribute \"why_stopped\"  [union-attr]"
     ],
     "tracker/scaffold.py": [
       "\"_ReturnLine\" has no attribute \"count\"  [attr-defined]",

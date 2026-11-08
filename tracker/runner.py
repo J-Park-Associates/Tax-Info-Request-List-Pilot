@@ -171,6 +171,7 @@ from collections.abc import Iterable
 from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 from tracker import (
     checkpoint,
@@ -1441,7 +1442,8 @@ def run_household(
                 for one in dict.fromkeys([household, *(household_of(f.path) for f in fed)]):
                     refresh_household_readme(one, said=working[0].warnings)
     except ScanLockedError as exc:
-        held = exc.lock.parent if getattr(exc, "lock", None) else None
+        # exc.lock is not None: the getattr beside it just said so.
+        held = cast(Path, exc.lock).parent if getattr(exc, "lock", None) else None
         for run in working:
             run.skipped = f"another run is still going ({exc})"
             run.code = CODE_LOCK_HELD
@@ -1462,7 +1464,8 @@ def run_household(
         errors.keep("runner: household pass", exc, name=household.name)
         log.error("A household stopped early (%s)", errors.error_class(exc))
     stopped = watch is not None and watch.stop_asked()
-    why = watch.why_stopped if stopped else ""
+    # watch is not None wherever stopped is true: stopped asked it.
+    why = cast(Watch, watch).why_stopped if stopped else ""
     if unreached or any(run.out_of_time for run in working):
         # The household's time ran out (decision 189), or a person stopped
         # it (decision 193, the same deadline brought to now): every working
@@ -1550,7 +1553,9 @@ def _feeds_of(household: Path, year: int, registry: object) -> tuple[list[Engage
     if not feeds:
         return [], []
     found, said = resolve_feeds(household, feeds, year, registry)
-    return found, said
+    # resolve_feeds is duck-typed on the registry it is given (households sits
+    # below registry); what it finds are that registry's own returns.
+    return cast(list[Engagement], found), said
 
 
 def _sort_step(household: Path, sorting: list[EngagementRun], fed: list[Engagement], *,
@@ -1684,7 +1689,8 @@ def run_engagement(
                 _view_step(run)
     except ScanLockedError as exc:
         run.skipped = f"another run is still going ({exc})"
-        run.locked_at = exc.lock.parent if getattr(exc, "lock", None) else None
+        # exc.lock is not None: the getattr beside it just said so.
+        run.locked_at = cast(Path, exc.lock).parent if getattr(exc, "lock", None) else None
         run.code = CODE_LOCK_HELD
     except (ManifestError, ReminderError) as exc:
         run.error = str(exc)
