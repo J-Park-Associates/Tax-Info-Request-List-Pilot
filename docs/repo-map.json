@@ -2,7 +2,7 @@
   "schema": 2,
   "generated": "2026-11-08",
   "generator": "tools/repo_map.py",
-  "generator_sha256": "a394d7104da5155d",
+  "generator_sha256": "7dd7279a8992d396",
   "module_table_sha256": "60ff67a4453417fe",
   "pipeline": [
     "tracker.api / create",
@@ -4907,8 +4907,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2997c9094187244f",
-      "lines": 340,
+      "sha256": "291c0d2ebc25ed57",
+      "lines": 342,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -5079,8 +5079,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ec4df5aa4e95851a",
-      "lines": 343
+      "sha256": "a310383060894ff6",
+      "lines": 344
     },
     {
       "id": "pilot/HANDOFF-client-folder.md",
@@ -10332,8 +10332,8 @@
       "id": "tests/test_repo_map.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3c3b33dbded432a3",
-      "lines": 890,
+      "sha256": "165d8c7334d00fc4",
+      "lines": 972,
       "exports": [
         "ENFORCERS",
         "ROOT",
@@ -10350,6 +10350,10 @@
         "test_a_curated_edge_to_a_nonexistent_node_fails_loudly",
         "test_a_deleted_file_drops_out_of_the_map",
         "test_a_dotted_third_party_import_depends_on_its_package",
+        "test_a_family_file_names_the_longest_tracker_stem_and_never_a_shorter_one",
+        "test_a_family_file_of_a_stem_outside_tracker_is_not_owned",
+        "test_a_family_file_split_from_a_tracker_modules_test_owns_the_module",
+        "test_a_family_name_that_is_another_files_stem_is_left_to_that_file",
         "test_a_file_that_makes_a_stem_ambiguous_rebuilds_every_cached_edge",
         "test_a_forged_edge_is_drift",
         "test_a_fresh_map_reports_no_drift",
@@ -10409,6 +10413,7 @@
         "test_the_test_file_that_owns_a_module_by_name_gets_a_tests_edge",
         "test_the_text_rule_matches_gitattributes",
         "test_third_party_imports_become_dependency_nodes",
+        "test_two_family_files_of_one_module_are_both_its_owners",
         "test_type_comes_from_the_suffix_and_layer_from_the_directory",
         "test_update_refuses_while_a_file_is_unmerged"
       ],
@@ -13083,8 +13088,8 @@
       "id": "tools/repo_map.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "a394d7104da5155d",
-      "lines": 1234,
+      "sha256": "7dd7279a8992d396",
+      "lines": 1280,
       "cli": "python -m tools.repo_map",
       "exports": [
         "CRLF_CHECKOUT_SUFFIXES",

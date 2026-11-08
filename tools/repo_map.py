@@ -724,11 +724,31 @@ def _owner_edges(nodes: list[Node], edges: list[dict]) -> list[dict]:
 
     Only the kinds of file a test can own compete for a stem, so a stylesheet
     and a script that share one stem do not hide each other's owner test.
+
+    A module under ``tracker/`` is also owned by a family file split from its
+    test file, ``tests/test_<stem>_<family>.py`` (decision P350):
+    tests/test_api_firm.py owns tracker/api.py. A big test file can then split
+    by command family, each part its own process, and ``show tracker/api.py``
+    still lists every part as "tested by", so an affected-tests run that takes
+    a module's own test files from the map finds them all. The longest stem
+    wins, so a ``test_store_check_<family>.py`` is store_check.py's and never
+    store.py's, and a ``<stem>_<family>`` that is itself an owned file's stem
+    is left to that file: tests/test_api_entry.py stays api_entry.py's and
+    tests/test_store_check.py stays store_check.py's. The family rule stops at
+    ``tracker/`` because elsewhere a test's name with an underscore in it
+    already means something else: over every owned file it would hand
+    tests/test_pilot_installer.py and tests/test_pilot_ui.py to
+    app/renderer/pilot.js and tests/test_shell_menu.py to
+    app/renderer/shell.js, and none of the three is split from a test of
+    either. Files outside ``tracker/`` (the tools, the scripts, the
+    renderer's) keep the exact-name rule.
     """
     by_id = {node.id for node in nodes}
-    owned = _unambiguous_stems([n.id for n in nodes if n.sha256 and n.type in OWNED_TYPES])
-    for stem, target in owned.items():
-        test_path = f"tests/test_{stem}.py"
+    owned_paths = [n.id for n in nodes if n.sha256 and n.type in OWNED_TYPES]
+    owned = _unambiguous_stems(owned_paths)
+    owners = [(f"tests/test_{stem}.py", target) for stem, target in owned.items()]
+    owners += _family_owners(by_id, owned_paths, owned)
+    for test_path, target in owners:
         if test_path not in by_id or test_path == target:
             continue
         edges = [e for e in edges
@@ -739,6 +759,32 @@ def _owner_edges(nodes: list[Node], edges: list[dict]) -> list[dict]:
             edges.append({"from": test_path, "to": target, "type": "tests",
                           "source": "derived"})
     return edges
+
+
+def _family_owners(ids: set[str], owned_paths: list[str],
+                   owned: dict[str, str]) -> list[tuple[str, str]]:
+    """``(tests/test_<stem>_<family>.py, tracker/<stem>.py)`` for each family file.
+
+    A test file names the longest ``tracker/`` stem its name starts with,
+    followed by an underscore. Where that stem is shared with another owned
+    file, so that ``owned`` leaves it out, nothing is drawn: falling back to a
+    shorter stem would hand the file to a module it does not name.
+    """
+    every_stem = {Path(p).stem for p in owned_paths}
+    tracker_stems = sorted({Path(p).stem for p in owned_paths
+                            if p.rpartition("/")[0] == "tracker"}, key=len, reverse=True)
+    found = []
+    for test_path in sorted(ids):
+        folder, _, file_name = test_path.rpartition("/")
+        if folder != "tests" or not (file_name.startswith("test_") and file_name.endswith(".py")):
+            continue
+        name = file_name[len("test_"):-len(".py")]
+        if name in every_stem:
+            continue
+        stem = next((s for s in tracker_stems if name.startswith(s + "_")), None)
+        if stem is not None and owned.get(stem) == f"tracker/{stem}.py":
+            found.append((test_path, owned[stem]))
+    return found
 
 
 def build(root: Path | None = None, previous: dict | None = None) -> dict:

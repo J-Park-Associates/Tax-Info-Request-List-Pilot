@@ -514,6 +514,88 @@ def test_the_owner_test_is_found_by_name_even_without_an_import(repo):
     assert edges(graph, **{"from": "tests/test_app.py", "to": "pkg/app.py", "type": "tests"})
 
 
+def test_a_family_file_split_from_a_tracker_modules_test_owns_the_module(repo):
+    """Decision P350: tests/test_api_firm.py is tracker/api.py's coverage, not a borrower."""
+    add(repo, "tracker/api.py", "def run():\n    pass\n")
+    add(repo, "tests/test_api_firm.py",
+        "from tracker.api import run\n\n\ndef test_x():\n    assert run() is None\n")
+
+    graph = repo_map.build(repo)
+
+    assert edges(graph, **{"from": "tests/test_api_firm.py", "to": "tracker/api.py",
+                           "type": "tests"})
+    assert not edges(graph, **{"from": "tests/test_api_firm.py", "to": "tracker/api.py",
+                               "type": "exercises"})
+
+
+def test_a_family_name_that_is_another_files_stem_is_left_to_that_file(repo):
+    """test_api_entry.py is api_entry.py's and test_store_check.py store_check.py's."""
+    add(repo, "tracker/api.py", "def run():\n    pass\n")
+    add(repo, "api_entry.py", "def main():\n    pass\n")
+    add(repo, "tests/test_api_entry.py",
+        "import runpy\n\n\ndef test_x():\n    runpy.run_path('api_entry.py')\n")
+    add(repo, "tracker/store.py", "def read():\n    pass\n")
+    add(repo, "tracker/store_check.py", "def check():\n    pass\n")
+    add(repo, "tests/test_store_check.py",
+        "from tracker.store_check import check\n\n\ndef test_x():\n    assert check() is None\n")
+
+    graph = repo_map.build(repo)
+
+    assert edges(graph, **{"from": "tests/test_api_entry.py", "to": "api_entry.py",
+                           "type": "tests"})
+    assert not edges(graph, **{"from": "tests/test_api_entry.py", "to": "tracker/api.py"})
+    assert edges(graph, **{"from": "tests/test_store_check.py",
+                           "to": "tracker/store_check.py", "type": "tests"})
+    assert not edges(graph, **{"from": "tests/test_store_check.py", "to": "tracker/store.py"})
+
+
+def test_a_family_file_names_the_longest_tracker_stem_and_never_a_shorter_one(repo):
+    """store_check's family is store_check's; and where that stem is shared, nobody's."""
+    add(repo, "tracker/store.py", "def read():\n    pass\n")
+    add(repo, "tracker/store_check.py", "def check():\n    pass\n")
+    add(repo, "tests/test_store_check_export.py", "def test_x():\n    assert True\n")
+
+    graph = repo_map.build(repo)
+
+    assert edges(graph, **{"from": "tests/test_store_check_export.py",
+                           "to": "tracker/store_check.py", "type": "tests"})
+    assert not edges(graph, **{"from": "tests/test_store_check_export.py",
+                               "to": "tracker/store.py"})
+
+    add(repo, "tools/store_check.py", "def main():\n    pass\n")
+
+    graph = repo_map.build(repo)
+
+    assert not edges(graph, **{"from": "tests/test_store_check_export.py", "type": "tests"})
+
+
+def test_a_family_file_of_a_stem_outside_tracker_is_not_owned(repo):
+    """Outside tracker/ the exact-name rule holds: test_pilot_ui.py is not pilot.js's."""
+    add(repo, "app/renderer/pilot.js", "function go() {}\n")
+    add(repo, "tests/test_pilot_ui.py", "def test_x():\n    assert True\n")
+    add(repo, "tests/test_core_more.py",
+        "from pkg.core import public\n\n\ndef test_x():\n    assert public() is None\n")
+
+    graph = repo_map.build(repo)
+
+    assert not edges(graph, **{"from": "tests/test_pilot_ui.py", "type": "tests"})
+    assert not edges(graph, **{"from": "tests/test_core_more.py", "type": "tests"})
+    assert edges(graph, **{"from": "tests/test_core_more.py", "to": "pkg/core.py",
+                           "type": "exercises"})
+
+
+def test_two_family_files_of_one_module_are_both_its_owners(repo):
+    """Every part of a split test file is coverage, beside the file it was split from."""
+    add(repo, "tracker/api.py", "def run():\n    pass\n")
+    for part in ("api", "api_firm", "api_review"):
+        add(repo, f"tests/test_{part}.py", "def test_x():\n    assert True\n")
+
+    graph = repo_map.build(repo)
+
+    owners = sorted(e["from"] for e in edges(graph, to="tracker/api.py", type="tests"))
+    assert owners == ["tests/test_api.py", "tests/test_api_firm.py", "tests/test_api_review.py"]
+
+
 def test_a_dotted_third_party_import_depends_on_its_package(repo):
     add(repo, "pkg/extra.py", "from openpyxl.styles import Font\n")
     graph = repo_map.build(repo)
