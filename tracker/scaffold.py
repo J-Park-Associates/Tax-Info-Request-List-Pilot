@@ -39,7 +39,7 @@ only function that writes ``README_NAME``, and laying out folders no longer
 writes it. Since 130 the README also acknowledges what has arrived - a
 *WHAT WE HAVE RECEIVED* section after the list - and what has arrived is
 the index's to say, which this module may not read (it sits at layer 1,
-the filer at layer 3). So the section is handed in as plain data
+``readme_ack`` at layer 3). So the section is handed in as plain data
 (:class:`tracker.records.Received`, read by ``tracker.readme_ack.received_for``)
 and only rendered here; ``tracker.readme_ack.refresh_household_readme`` is the
 one call every caller makes - the household pass once after its sort, the

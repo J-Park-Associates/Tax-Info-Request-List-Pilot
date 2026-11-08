@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 413,
-    "edges": 2417,
-    "reused": 359
+    "edges": 2418,
+    "reused": 354
   },
   "node_types": [
     "artifact",
@@ -797,7 +797,7 @@
       "id": "tracker/door.py",
       "type": "module",
       "layer": "core",
-      "sha256": "d0fb7ddfa524449b",
+      "sha256": "587d159d907cc2d9",
       "lines": 258,
       "cli": "python -m tracker.door",
       "exports": [
@@ -880,7 +880,7 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f46420c7adcc7cee",
+      "sha256": "f5baaccf740d057c",
       "lines": 3712,
       "cli": "python -m tracker.filer",
       "exports": [
@@ -1240,8 +1240,8 @@
       "id": "tracker/index.py",
       "type": "module",
       "layer": "core",
-      "sha256": "6e63e3b6ed2194d0",
-      "lines": 424,
+      "sha256": "8592adff08fe8f00",
+      "lines": 425,
       "exports": [
         "BOTH_GONE_SENTENCE",
         "DUPLICATE",
@@ -3370,7 +3370,7 @@
       "id": "tracker/scaffold.py",
       "type": "module",
       "layer": "core",
-      "sha256": "5de7c1932bf58bd2",
+      "sha256": "772b5648471860a9",
       "lines": 802,
       "cli": "python -m tracker.scaffold",
       "exports": [
@@ -8993,8 +8993,8 @@
       "id": "tests/test_index.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "14d8500027d46e1b",
-      "lines": 231,
+      "sha256": "a08067040ddf3972",
+      "lines": 233,
       "exports": [
         "PRIVATE_CROSSING",
         "test_a_new_engagement_is_simply_current",
@@ -12817,8 +12817,8 @@
       "id": "tools/backtest.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "8fe431c7bde8b3d7",
-      "lines": 599,
+      "sha256": "34fa383f332658e3",
+      "lines": 601,
       "cli": "python -m tools.backtest",
       "exports": [
         "AT_BASELINE",
@@ -18532,6 +18532,12 @@
     {
       "from": "tests/test_index.py",
       "to": "tracker/ledger.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_index.py",
+      "to": "tracker/readme_ack.py",
       "type": "exercises",
       "source": "derived"
     },

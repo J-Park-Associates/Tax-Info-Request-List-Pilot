@@ -228,10 +228,12 @@ def route_corpus(folder: Path, expectations: Path, *, ocr: bool = False) -> tupl
     goes away with the pass, and a killed pass's folder is swept by its process
     number.
 
-    **The reading is in this process** (with ``ocr=True`` there is no reading
-    child), so for the pass the temp folder itself - ``TMP``, ``TEMP``,
-    ``TMPDIR`` and :data:`tempfile.tempdir` - points at that same scratch
-    folder, and is put back afterwards (decision 186's review, N5): what a
+    **The text layer is read in this process, and a scan's OCR reading in a
+    child of its own** (with ``ocr=True``: ``route_file`` → ``read_once`` →
+    ``judge_bounded`` → ``run_in_child``, one child for each document and no
+    session shared), so for the pass the temp folder itself - ``TMP``,
+    ``TEMP``, ``TMPDIR`` and :data:`tempfile.tempdir` - points at that same
+    scratch folder, and is put back afterwards (decision 186's review, N5): what a
     library writes *through the temp folder* while reading a firm document
     lands there and goes with the pass. A library that writes to a path of
     its own choosing is not caught, here or in the reading child.

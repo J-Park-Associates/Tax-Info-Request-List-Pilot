@@ -164,8 +164,8 @@ refresh itself live in :mod:`tracker.readme_ack` since P334.
 
 A person's actions on the record - filing by hand, setting aside, unfiling,
 Mark missing, putting a copy back and renaming a request - and the re-scan
-after them live in :mod:`tracker.actions` since P335. The pieces they share
-with the hand-over stay here, and this module imports neither that one nor
+after them live in :mod:`tracker.actions` since P335, and the pieces they share
+with the hand-over stay here, so this module imports neither that one nor
 the scanner.
 """
 

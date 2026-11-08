@@ -40,7 +40,8 @@ time, and the scanner never imports the filer.
 **Every reader asks this module** (P322). The filer imports from here what
 it reads itself and offers none of it on, and the API, the runner, the
 scanner and every other reader import each name from here, so a stand-in
-on ``filer.read_index`` reaches the filer's own callers and nobody else's.
+goes on each module that reads the name (P331's rule): one on
+``filer.read_index`` reaches the filer's own callers and nobody else's.
 
 **Three private names cross the boundary,** into the filer's family
 (P332), and nowhere else does one. The filer writes the moved sentences,

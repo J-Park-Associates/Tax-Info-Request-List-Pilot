@@ -163,8 +163,8 @@ def through_a_link(path: Path | str, root: Path | str) -> bool:
     and the path is judged (decision 137's review, F5): the clients root
     may itself sit under a folder that is a link - ``G:\\Shared drives`` is
     Drive for desktop's own - and that must never refuse a move. The one
-    definition since decision 188; the filer's walks and its step check
-    ask it.
+    definition since decision 188; ``inbox``' walks, ``intents``' step check,
+    ``copies``' move check and the filer's ``_prune_empty_dirs`` ask it.
     """
     below = layout.parts_below(root, path)
     if below is None:
