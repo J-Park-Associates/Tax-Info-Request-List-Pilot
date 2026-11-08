@@ -36,10 +36,9 @@ the API alone applied. Here, a command line could reach them. The handler,
 ``tracker.api._cmd_edit``, keeps its body and calls these by import: the
 body writes the command's warnings into the reply's envelope, which is the
 API's per-command state (the audit's C-3). Creation and the rollover
-command call :func:`_info_from_spec` and
-:func:`_refuse_a_list_nobody_is_asked_for` the same way, and
-``tracker.api.state`` hands each rule out through
-:func:`_rule_for_the_editor`.
+command call :func:`_info_from_spec` the same way, and creation calls
+:func:`_refuse_a_list_nobody_is_asked_for` too; ``tracker.api.state``
+hands each rule out through :func:`_rule_for_the_editor`.
 
 **Q-F, measured** (SPEC-architecture-p5 section 7). Through the one room
 function as it stood, the editor's save would also have measured the
