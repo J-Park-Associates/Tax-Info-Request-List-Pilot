@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 402,
-    "edges": 2162,
-    "reused": 348
+    "nodes": 403,
+    "edges": 2164,
+    "reused": 349
   },
   "node_types": [
     "artifact",
@@ -4976,8 +4976,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "1fe13d2a9d55bd29",
-      "lines": 2004,
+      "sha256": "4451aa17a5c8268a",
+      "lines": 2018,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -6246,6 +6246,15 @@
       "role": "The store (decision 101): one SQLite file per account, every row keyed by its clients root, in the tracker's data home (`settings.data_home()`, decision 186) on the designated machine's local disk, never beside the program or in a checkout, holding every engagement's requests, statuses, learned keywords, index rows, details and journal events under that root - all folded from each engagement's journal and from nothing else - and, since decision 107, the tier-3 verdict cache (the verdicts and the file memos), which is the one thing in it that is not a derivation of the journal: a rebuild leaves it empty and the next pass reads each document once. NEVER under the clients root and never in an engagement folder - those sync, and a synced database file is a corrupted database file. Written by tracker/store.py, and through it by the filer, the scanner and the manifest's two writes; read, through the store, by every reader of the index, the request list and the details. Disposable all the same - delete it and every fact it held is still in the journals - so it is never backed up, never synced and a person never opens it. One connection per process (connect(), close()), to the file in the data home unless TRACKER_STORE names another; the suite sets that per test. At the user_version `tracker/store.py` declares as `SCHEMA_VERSION`, raised by decisions 104 (the workbook's digest column went), 107 (the verdict cache's two tables), 116 (`override_reason`), 117 (the Filing Deadline column) 119 (the `intents` table) and later decisions, 143 the last (the documents' `container` column); a file at any other version is refused by name rather than opened, and an earlier one is deleted and rebuilt from the journals."
     },
     {
+      "id": "tests/after_install_cases.json",
+      "type": "file",
+      "layer": "tests",
+      "sha256": "0d4c4fcc28721997",
+      "lines": 100,
+      "role": "The after-install step's case table (SPEC-architecture-p5 R5.12.1): one row per case of after_install._run with every job and every read stood in - the base case, each factor's every other level varied alone, and the crossings that change what is said - each with the calls _run made in order, the record it wrote (null when the write was refused), its lines, its failures and its reply. Short names a case chooses, never a value of the machine.",
+      "notes": "P5.12. Written once at the job's base by tests/test_after_install.py with TRACKER_WRITE_AFTER_INSTALL_CASES=1 (the command is in the table test's docstring) and compared by that file without it; never edited by hand, and not by the restructure that is held to it (R5.12.5). Not under tests/golden/, which no job of the refactor changes. One row to a line, under 200 KB; test_the_case_table_holds_every_level_and_every_named_crossing fails if a level or a named crossing loses its row."
+    },
+    {
       "id": "tests/api_driver.py",
       "type": "test",
       "layer": "tests",
@@ -7125,10 +7134,18 @@
       "id": "tests/test_after_install.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "adf4d6ec6a3b4a8b",
-      "lines": 1831,
+      "sha256": "b312c23f7893b234",
+      "lines": 2142,
       "exports": [
+        "BASE_CASE",
+        "CASES_FILE",
+        "CASES_LIMIT_BYTES",
+        "CASE_CLOCK",
+        "CASE_PREFERENCE",
+        "CASE_PRODUCT",
+        "CASE_PROGRAM",
         "ELSEWHERE",
+        "ENV_WRITE_CASES",
         "HERE",
         "Said",
         "TRACEBACK",
@@ -7201,6 +7218,7 @@
         "test_an_unreadable_choice_is_a_recorded_failure_and_no_task_is_registered",
         "test_an_unreadable_designation_changes_no_schedule",
         "test_another_computer_registers_nothing_and_removes_its_own_task",
+        "test_each_jobs_outcomes_and_their_crossings_give_todays_record_lines_and_reply",
         "test_every_door_registers_the_launchd_agent_on_a_mac",
         "test_every_door_registers_the_saved_choice_not_the_defaults",
         "test_every_task_the_step_removes_is_noted_with_why",
@@ -7225,6 +7243,7 @@
         "test_setup_makes_the_overview_ready_after_its_other_jobs",
         "test_setup_registers_the_schedule_on_the_designated_computer",
         "test_setup_removes_the_retired_verdict_cache_from_every_record_folder_and_says_so_once",
+        "test_the_case_table_holds_every_level_and_every_named_crossing",
         "test_the_designation_asks_is_this_host",
         "test_the_first_computer_to_register_claims_the_schedule",
         "test_the_installer_is_told_when_the_overview_could_not_be_prepared_and_setup_bat_is_not",
@@ -7246,7 +7265,11 @@
       "constants": {
         "HERE": "'office-pc'",
         "ELSEWHERE": "'front-desk'",
-        "TRACEBACK": "'Traceback'"
+        "TRACEBACK": "'Traceback'",
+        "ENV_WRITE_CASES": "'TRACKER_WRITE_AFTER_INSTALL_CASES'",
+        "CASE_PRODUCT": "'product-name'",
+        "CASE_PROGRAM": "'program-id'",
+        "CASE_CLOCK": "(2026, 1, 2, 3, 4, 5)"
       }
     },
     {
@@ -14913,9 +14936,21 @@
     },
     {
       "from": "tests/test_after_install.py",
+      "to": "tests/after_install_cases.json",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "tests/test_after_install.py",
       "to": "tracker/after_install.py",
       "type": "tests",
       "source": "derived"
+    },
+    {
+      "from": "tests/test_after_install.py",
+      "to": "tests/after_install_cases.json",
+      "type": "writes",
+      "source": "curated"
     },
     {
       "from": "tests/test_api.py",

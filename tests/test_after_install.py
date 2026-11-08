@@ -9,12 +9,15 @@ designation is judged exactly as it is on the office computer.
 
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import platform
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -1829,3 +1832,311 @@ def test_a_launch_on_a_mac_is_not_stopped_by_another_run_of_the_step_that_never_
     finally:
         release_lock(held)
     assert not removed and "was still going" in said
+
+
+# ------------------------------------ each job's outcomes, held to a table (P5.12, R5.12.1) ----
+
+#: The committed case table: one row per case, each the outcome today's
+#: ``_run`` gave it at P5.12's base.
+CASES_FILE = Path(__file__).resolve().parent / "after_install_cases.json"
+#: Set to "1" to write :data:`CASES_FILE` from this run instead of comparing
+#: against it (the generator's command is in the table test's docstring).
+ENV_WRITE_CASES = "TRACKER_WRITE_AFTER_INSTALL_CASES"
+#: The table's ceiling, so it stays a file a reviewer can read (R5.12.1).
+CASES_LIMIT_BYTES = 200 * 1024
+
+#: Each factor R5.12.1 names, with its levels; the first is the base case's.
+#: The levels past the SPEC's own are this job's: a reason other than setup,
+#: no root saved, a choice named and saved, a refused choice over an unreadable
+#: file, a Mac with no record, a schedule registered elsewhere, a Time Machine
+#: job that excluded nothing new, two failures that say the same sentence, no
+#: designation file, and a checkout a caller named.
+CASE_FACTORS: dict[str, tuple[str, ...]] = {
+    "reason": ("setup", "launch", "root", "repair"),
+    "root": ("good", "refused", "unset"),
+    "preference": ("good", "missing", "unusable", "named", "unusable-and-missing"),
+    "switched_off": ("no", "yes"),
+    "host": ("windows", "mac-kick-due", "mac-kicked", "mac-no-record"),
+    "schedule": ("registered", "failed", "elsewhere"),
+    "first_pass": ("kicked", "refused", "as-is"),
+    "time_machine": ("none", "sentence", "failed", "quiet", "failed-shared"),
+    "check": ("clean", "findings", "failed"),
+    "check_sentence": ("its-own", "the-schedules"),
+    "cache": ("none", "cleared", "failed", "failed-shared"),
+    "retired": ("none", "sentence"),
+    "overview": ("none", "sentence"),
+    "record": ("writable", "refused"),
+    "designation": ("named", "not-a-name", "none"),
+    "checkout": ("none", "named"),
+}
+BASE_CASE = {factor: levels[0] for factor, levels in CASE_FACTORS.items()}
+
+#: What the stand-ins hand back: short names a case chooses, never a value
+#: read from this machine, so a row reads the same on every computer.
+CASE_PRODUCT = "product-name"
+CASE_PROGRAM = "program-id"
+CASE_PREFERENCE = scheduling.SchedulePreference(enabled=True, start="06:15", every=45)
+CASE_CLOCK = (2026, 1, 2, 3, 4, 5)
+
+
+def _case(**levels: str) -> dict[str, str]:
+    """The base case with ``levels`` in place of its own."""
+    unknown = {factor for factor in levels if factor not in CASE_FACTORS}
+    assert not unknown, unknown
+    for factor, level in levels.items():
+        assert level in CASE_FACTORS[factor], (factor, level)
+    return {**BASE_CASE, **levels}
+
+
+def _the_case_rows() -> list[tuple[str, dict[str, str]]]:
+    """Every case the table holds, by kind, in order, each once (a crossing
+    that is also a factor varied alone keeps the first kind it was given)."""
+    cases: list[tuple[str, dict[str, str]]] = [("base", _case())]
+    cases += [("one factor varied alone", _case(**{factor: level}))
+              for factor, levels in CASE_FACTORS.items() for level in levels[1:]]
+    cases += [("the schedule x the check's sentence x the check", _case(schedule=schedule, check_sentence=said,
+                                                                         check=check))
+              for schedule in ("registered", "failed") for said in ("its-own", "the-schedules")
+              for check in ("clean", "failed")]
+    alone = ({"schedule": "failed"}, {"time_machine": "failed"}, {"check": "failed"}, {"cache": "failed"})
+    all_four = ({"schedule": "failed", "time_machine": "failed", "check": "failed",
+                 "check_sentence": "the-schedules", "cache": "failed"},
+                {"schedule": "failed", "time_machine": "failed-shared", "check": "failed",
+                 "cache": "failed-shared"})
+    cases += [("each failure alone and all four, x the record", _case(record=record, **failures))
+              for failures in (*alone, *all_four) for record in ("writable", "refused")]
+    refused_with = [("time_machine", level) for level in CASE_FACTORS["time_machine"][1:]]
+    refused_with += [("cache", level) for level in CASE_FACTORS["cache"][1:]]
+    refused_with += [("retired", "sentence"), ("record", "refused")]
+    refused_with += [("host", level) for level in CASE_FACTORS["host"][1:]]
+    # Past the SPEC's list: what a refused root skips or outranks.
+    refused_with += [("check", "findings"), ("check", "failed"), ("overview", "sentence"),
+                     ("preference", "missing"), ("preference", "unusable"), ("switched_off", "yes"),
+                     ("designation", "not-a-name"), ("designation", "none"), ("reason", "launch")]
+    cases += [("the refused root x a level", _case(root="refused", **{factor: level}))
+              for factor, level in refused_with]
+    branches = ({"preference": "missing"}, {"preference": "unusable"}, {"preference": "unusable-and-missing"},
+                {"switched_off": "yes"})
+    cases += [("a branch that registers nothing x a Mac", _case(host=host, **branch))
+              for branch in branches for host in ("mac-kick-due", "mac-kicked", "mac-no-record")]
+    cases += [("a failed sentence already in lines and one not", _case(schedule="failed", cache="failed")),
+              ("a failed sentence already in lines and one not", _case(check="failed", time_machine="failed"))]
+    # Past the SPEC's list: the kick and its record, and the branches' order.
+    cases += [("the kick x the schedule's outcome", _case(host="mac-kick-due", schedule=schedule,
+                                                           first_pass=first))
+              for schedule in CASE_FACTORS["schedule"] for first in CASE_FACTORS["first_pass"]]
+    cases += [("the kick x the record", _case(host="mac-kick-due", record="refused")),
+              ("the kick x the record", _case(host="mac-kick-due", first_pass="refused", record="refused")),
+              ("the kick already done x a refused kick", _case(host="mac-kicked", first_pass="refused")),
+              ("the switched-off branch x a refused choice", _case(switched_off="yes", preference="missing")),
+              ("the switched-off branch x a refused choice", _case(switched_off="yes", preference="unusable")),
+              ("findings x the check's sentence", _case(check="findings", check_sentence="the-schedules")),
+              ("findings x the record", _case(check="findings", record="refused")),
+              ("no root saved x the jobs that take it", _case(root="unset", check="findings",
+                                                              retired="sentence", overview="sentence")),
+              ("a named checkout x the cache", _case(checkout="named", cache="cleared"))]
+    seen: list[dict[str, str]] = []
+    rows = []
+    for kind, case in cases:
+        if case not in seen:
+            seen.append(case)
+            rows.append((kind, case))
+    return rows
+
+
+def _the_schedules_sentence(case: dict[str, str]) -> str:
+    """The sentence the schedule's step carries in ``case``: what a check
+    whose sentence is "the-schedules" says, so the two are equal."""
+    if case["root"] == "refused":
+        return "root-refused"
+    if case["preference"] in ("unusable", "unusable-and-missing"):
+        return "choice-unusable"
+    if case["preference"] == "missing":
+        return "preference-unreadable"
+    if case["switched_off"] == "yes":
+        return after_install.SCHEDULE_SWITCHED_OFF.format(product=CASE_PRODUCT)
+    if case["host"] == "mac-kick-due" and case["first_pass"] == "refused":
+        return "first-pass-refused"
+    return {"registered": "schedule-registered", "failed": "schedule-failed",
+            "elsewhere": "schedule-elsewhere"}[case["schedule"]]
+
+
+class _RecordFile:
+    """``record_path``'s stand-in: a file named by the case, whose folder is
+    already there, so a row never names a folder of this machine."""
+
+    parent = SimpleNamespace(mkdir=lambda parents, exist_ok: None)
+
+    def __str__(self) -> str:
+        return "record-file"
+
+
+def _named(value: object) -> object:
+    """An argument a stand-in was handed, as the row records it."""
+    if value is None or isinstance(value, (str, int)):
+        return value
+    if isinstance(value, Path):
+        return value.as_posix()
+    if isinstance(value, _RecordFile):
+        return str(value)
+    if isinstance(value, dict):
+        return "record"
+    if isinstance(value, scheduling.SchedulePreference):
+        return "preference"
+    if isinstance(value, after_install._Step):
+        return f"step:{value.key}:{value.sentence}"
+    raise TypeError(f"no name for {value!r}")
+
+
+def _outcome(case: dict[str, str], patch: pytest.MonkeyPatch) -> dict:
+    """What today's ``_run`` does in ``case``, with every job and every
+    read it makes stood in on the module: the calls it made, in order, the
+    record it wrote (``None`` when the write was refused), its lines, its
+    failures and its reply."""
+    calls: list[list[object]] = []
+    written: list[dict] = []
+
+    def asked(name: str, answer):
+        def stand_in(*args):
+            calls.append([name, *(_named(arg) for arg in args)])
+            return answer(*args)
+        return stand_in
+
+    step = after_install._Step
+    said = _the_schedules_sentence(case) if case["check_sentence"] == "the-schedules" else ""
+    root = {"good": (Path("good-root"), ""), "refused": (None, "root-refused"), "unset": (None, "")}[case["root"]]
+    preference = ((None, "preference-unreadable") if case["preference"] in ("missing", "unusable-and-missing")
+                  else (CASE_PREFERENCE, ""))
+    choice = {"unusable": "choice-unusable", "unusable-and-missing": "choice-unusable"}.get(case["preference"], "")
+    previous = {"windows": {"kicked": "older-program"}, "mac-kick-due": {"kicked": "older-program"},
+                "mac-kicked": {"kicked": CASE_PROGRAM}, "mac-no-record": None}[case["host"]]
+    schedule = {"registered": step(scheduling.REGISTERED, "schedule-registered", command=("register-command",),
+                                   xml="schedule-xml"),
+                "failed": step(scheduling.REGISTERED, "schedule-failed", failed=True),
+                "elsewhere": step(scheduling.ELSEWHERE, "schedule-elsewhere", host="other-pc")}[case["schedule"]]
+    first_pass = {"kicked": lambda done: replace(done, kicked=True),
+                  "refused": lambda done: replace(done, sentence="first-pass-refused", failed=True),
+                  "as-is": lambda done: done}[case["first_pass"]]
+    excluded = {"none": None, "sentence": step(after_install.TIME_MACHINE_KEY, "time-machine-excluded"),
+                "failed": step(after_install.TIME_MACHINE_KEY, "time-machine-refused", failed=True),
+                "quiet": step(after_install.TIME_MACHINE_KEY, ""),
+                "failed-shared": step(after_install.TIME_MACHINE_KEY, "shared-failure", failed=True),
+                }[case["time_machine"]]
+    check = {"clean": step(after_install.CHECK_CLEAN_KEY, said or "check-clean"),
+             "findings": step(after_install.CHECK_FOUND_KEY, said or "check-found",
+                              findings=("finding-one", "finding-two")),
+             "failed": step(after_install.CHECK_FAILED_KEY, said or "check-failed", failed=True)}[case["check"]]
+    cache = {"none": None, "cleared": step(after_install.CACHE_CLEARED_KEY, "cache-cleared"),
+             "failed": step(after_install.CACHE_FAILED_KEY, "cache-failed", failed=True),
+             "failed-shared": step(after_install.CACHE_FAILED_KEY, "shared-failure", failed=True)}[case["cache"]]
+    retired = {"none": None, "sentence": step(after_install.RETIRED_CACHE_KEY, "retired-removed")}[case["retired"]]
+    overview = {"none": "", "sentence": "overview-ready"}[case["overview"]]
+    designated = {"named": "designated-pc", "not-a-name": object(), "none": None}[case["designation"]]
+
+    def write(path, record):
+        if case["record"] == "refused":
+            raise OSError("the record's folder refused the write")
+        written.append(json.loads(json.dumps(record)))
+
+    clock = SimpleNamespace(datetime=SimpleNamespace(now=asked("now", lambda: datetime.datetime(*CASE_CLOCK))))
+    patch.setattr(after_install, "dt", clock)
+    patch.setattr(after_install, "_saved_root", asked("_saved_root", lambda: root))
+    patch.setattr(after_install, "_saved_preference", asked("_saved_preference", lambda: preference))
+    patch.setattr(after_install, "_save_choice", asked("_save_choice", lambda start, every: choice))
+    patch.setattr(settings, "host_system", asked("host_system",
+                                                 lambda: "nt" if case["host"] == "windows" else "darwin"))
+    patch.setattr(settings, "product_name", asked("product_name", lambda: CASE_PRODUCT))
+    patch.setattr(after_install, "program_identity", asked("program_identity", lambda: CASE_PROGRAM))
+    patch.setattr(after_install, "read_record", asked("read_record", lambda: previous))
+    patch.setattr(after_install, "_schedule", asked("_schedule", lambda root_, preference_: schedule))
+    patch.setattr(after_install, "_first_pass", asked("_first_pass", first_pass))
+    patch.setattr(after_install, "_time_machine", asked("_time_machine", lambda: excluded))
+    patch.setattr(after_install, "_check", asked("_check", lambda root_: check))
+    patch.setattr(after_install, "_clear_test_cache", asked("_clear_test_cache", lambda checkout: cache))
+    patch.setattr(after_install, "_remove_the_retired_caches", asked("_remove_the_retired_caches",
+                                                                     lambda root_: retired))
+    patch.setattr(after_install, "_ready_the_overview", asked("_ready_the_overview",
+                                                              lambda root_, reason, check_: overview))
+    patch.setattr(after_install, "designation_now", asked("designation_now", lambda root_: designated))
+    patch.setattr(after_install, "record_path", asked("record_path", _RecordFile))
+    patch.setattr(after_install, "write_json_atomically", asked("write_json_atomically", write))
+
+    start = {"named": "07:30", "unusable-and-missing": "07:30"}.get(case["preference"])
+    every = {"unusable": 90, "unusable-and-missing": 90}.get(case["preference"])
+    checkout = Path("checkout-folder") if case["checkout"] == "named" else None
+    ran = after_install._run(reason=case["reason"], start=start, every=every, checkout=checkout,
+                             switched_off=case["switched_off"] == "yes")
+    return {"calls": calls, "record": written[0] if written else None, "lines": list(ran.lines),
+            "failed": list(ran.failed), "reply": ran.reply()}
+
+
+def _a_row(kind: str, case: dict[str, str]) -> dict:
+    with pytest.MonkeyPatch.context() as patch:
+        return {"kind": kind, "case": case, **_outcome(case, patch)}
+
+
+def _row_text(row: dict) -> str:
+    return json.dumps(row, separators=(",", ":"))
+
+
+def test_each_jobs_outcomes_and_their_crossings_give_todays_record_lines_and_reply():
+    """Every case in ``tests/after_install_cases.json`` gives today's calls,
+    record, lines, failures and reply (P5.12, R5.12.1): each job's every
+    outcome varied alone, and the crossings that change what is said. The
+    table was written once, at P5.12's base, from that day's ``_run``; the
+    rewrite of ``_run`` into one table of jobs (R5.12.2) is held to it, and no
+    later commit of that job edits it. Its stand-ins are set on the module
+    after import, so a job a table entry reached by a reference it captured
+    at import would miss its stand-in and this test would fail.
+
+    The generator's command, run from the checkout at the job's base::
+
+        TRACKER_WRITE_AFTER_INSTALL_CASES=1 python -m pytest -q -p no:cacheprovider tests/test_after_install.py -k each_jobs_outcomes
+    """
+    if os.environ.get(ENV_WRITE_CASES) == "1":
+        rows = [_row_text(_a_row(kind, case)) for kind, case in _the_case_rows()]
+        CASES_FILE.write_text("[\n" + ",\n".join(rows) + "\n]\n", encoding="utf-8", newline="\n")
+        pytest.skip(f"wrote {len(rows)} cases to {CASES_FILE.name}")
+    rows = json.loads(CASES_FILE.read_text(encoding="utf-8"))
+    differ = [row["case"] for row in rows if _row_text(_a_row(row["kind"], row["case"])) != _row_text(row)]
+    assert not differ, f"{len(differ)} of {len(rows)} cases differ from the table, the first: {differ[0]}"
+
+
+def test_the_case_table_holds_every_level_and_every_named_crossing():
+    """The table cannot shrink silently (R5.12.1): every level of every
+    factor has its row varied alone from the base case, and every crossing
+    R5.12.1 names has its row; a check said to share the schedule's
+    sentence does share it wherever the check ran; and the file is the
+    generator's cases exactly, one row to a line, under its ceiling."""
+    text = CASES_FILE.read_text(encoding="utf-8")
+    assert len(text.encode("utf-8")) < CASES_LIMIT_BYTES
+    rows = json.loads(text)
+    lines = text.splitlines()
+    assert lines[0] == "[" and lines[-1] == "]" and len(lines) == len(rows) + 2, "one row to a line"
+    cases = [row["case"] for row in rows]
+    assert [(row["kind"], row["case"]) for row in rows] == _the_case_rows()
+
+    wanted = [_case(**{factor: level}) for factor, levels in CASE_FACTORS.items() for level in levels]
+    wanted += [_case(schedule=schedule, check_sentence=said, check=check)
+               for schedule in ("registered", "failed") for said in ("its-own", "the-schedules")
+               for check in ("clean", "failed")]
+    failures = [{"schedule": "failed"}, {"time_machine": "failed"}, {"check": "failed"}, {"cache": "failed"},
+                {"schedule": "failed", "time_machine": "failed", "check": "failed",
+                 "check_sentence": "the-schedules", "cache": "failed"},
+                {"schedule": "failed", "time_machine": "failed-shared", "check": "failed",
+                 "cache": "failed-shared"}]
+    wanted += [_case(record=record, **failed) for failed in failures for record in ("writable", "refused")]
+    wanted += [_case(root="refused", **{factor: level})
+               for factor in ("time_machine", "cache", "retired", "record", "host")
+               for level in CASE_FACTORS[factor][1:]]
+    wanted += [_case(host="mac-kick-due", **branch)
+               for branch in ({"preference": "missing"}, {"preference": "unusable"}, {"switched_off": "yes"})]
+    wanted += [_case(schedule="failed", cache="failed")]
+    missing = [case for case in wanted if case not in cases]
+    assert not missing, missing
+
+    shared = [row for row in rows if row["case"]["check_sentence"] == "the-schedules"
+              and row["case"]["root"] != "refused"]
+    assert shared and all(row["reply"]["check_sentence"] == row["reply"]["schedule_sentence"] for row in shared)
+    assert any(row["reply"]["schedule_sentence"] in row["failed"] for row in rows
+               if row["case"] == _case(schedule="failed", cache="failed")), "a failed sentence already in lines"

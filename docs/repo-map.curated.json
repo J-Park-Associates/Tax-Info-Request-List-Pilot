@@ -322,6 +322,10 @@
       "role": "One Sort & Scan over tests/samples.py's pile: each index row's original name, decision word, reason code and destination relative to the return, in the index's order, and the event kinds of the return's record and its household's, in order. No clock, no sentence, no absolute path.",
       "notes": "SPEC-architecture J4 (R4.3). Written by `pytest tests/test_golden.py --record-golden` and compared by that file without it; never edited by hand. A change to it is a change in behaviour, read in review."
     },
+    "tests/after_install_cases.json": {
+      "role": "The after-install step's case table (SPEC-architecture-p5 R5.12.1): one row per case of after_install._run with every job and every read stood in - the base case, each factor's every other level varied alone, and the crossings that change what is said - each with the calls _run made in order, the record it wrote (null when the write was refused), its lines, its failures and its reply. Short names a case chooses, never a value of the machine.",
+      "notes": "P5.12. Written once at the job's base by tests/test_after_install.py with TRACKER_WRITE_AFTER_INSTALL_CASES=1 (the command is in the table test's docstring) and compared by that file without it; never edited by hand, and not by the restructure that is held to it (R5.12.5). Not under tests/golden/, which no job of the refactor changes. One row to a line, under 200 KB; test_the_case_table_holds_every_level_and_every_named_crossing fails if a level or a named crossing loses its row."
+    },
     "tools/learned_keywords.py": {
       "role": "Lists what the staff taught the router: every keyword a person taught one engagement's request that no catalog row with the same identifier and document carries, across every engagement under the clients root, grouped by request row with the number of engagements that typed it.",
       "notes": "Decision 79. A keyword a filing teaches lives in that one engagement's record, so fifty engagements hold fifty private vocabularies and the catalog is the only one tests/test_catalog.py and tests/test_irs_forms.py defend; this is the season's list of candidates to promote. Read-only in the strong sense: no lock is taken, nothing in an engagement folder is written or moved, and a report path inside the repository is refused - an engagement folder name is a client's name and the report names them on request. The engagement's details have recorded the catalog form since decision 86, but this tool does not read it: a row is compared against every catalog holding it and the report says which matched; a row no catalog holds is a custom request, listed apart with all its keywords. An engagement whose record could not be read is a problem line, never a silent skip. It borrows shipped_catalogs() and corpus_documents() from tools/vocab_report.py, so the catalogs it compares against - built through manifest.validated() over template_items() since decision 104 - and the corpus a candidate can be run over are the coverage report's. manifest_rows() reads through manifest.load_manifest(), which is what puts a taught keyword in front of any reader at all. Decision 185: the default output carries no root, folder or problem text; --engagements names them, and only into a file --out names outside the repository, never onto a console (Jason's J1 (b))."
@@ -1913,6 +1917,16 @@
     {
       "from": "tests/test_golden.py",
       "to": "tests/golden/pass.samples.json",
+      "type": "writes"
+    },
+    {
+      "from": "tests/test_after_install.py",
+      "to": "tests/after_install_cases.json",
+      "type": "reads"
+    },
+    {
+      "from": "tests/test_after_install.py",
+      "to": "tests/after_install_cases.json",
       "type": "writes"
     },
     {
