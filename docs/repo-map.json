@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 413,
     "edges": 2417,
-    "reused": 0
+    "reused": 358
   },
   "node_types": [
     "artifact",
@@ -4976,7 +4976,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "f992f7b948ec2203",
+      "sha256": "bb43b162cb34193c",
       "lines": 2058,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -6258,7 +6258,7 @@
       "id": "tests/api_driver.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0d1e2ca88b9d22bc",
+      "sha256": "a9d85d68504a463f",
       "lines": 545,
       "exports": [
         "COUNTS",
@@ -6285,7 +6285,7 @@
         "HOUSEHOLD": "'Test Household'",
         "DEEPER_ROOT_LENGTH": "108"
       },
-      "role": "The command line as main.js drives it: run(capsys, *argv) calls api.main and reads the one JSON reply back (a create spec that names no household is given the suite's, an edit carries the list's version), scan() is Sort & Scan as the app runs it, sample_engagement() is a 1040 created through the API with the sample pile dropped in, and where() is the return a spec named, from the layout., with the helpers the API's family files share: the demo_root fixture (a clients root recorded the way the app records it), the counts' bound, the reminder card and the households, practices and firm replies several of them build.",
+      "role": "The command line as main.js drives it: run(capsys, *argv) calls api.main and reads the one JSON reply back (a create spec that names no household is given the suite's, an edit carries the list's version), scan() is Sort & Scan as the app runs it, sample_engagement() is a 1040 created through the API with the sample pile dropped in, and where() is the return a spec named, from the layout; and the helpers the API's family files share: the demo_root fixture (a clients root recorded the way the app records it), the counts' bound, the reminder card and the households, practices and firm replies several of them build.",
       "notes": "SPEC-architecture J2 (R2.1, E-4). Moved with their words from tests/test_api.py, which test_shell and test_rollover borrowed run, scan and sample_engagement from; the household, the people and where() they lean on went with them, and test_api imports them back by name. SPEC-architecture-p5 R5.14.2 (P5.14): when tests/test_api.py was split into tests/test_api_<family>.py, the helpers two or more of the files read came here byte for byte with their words (twenty-eight names, among them the demo_root fixture, COUNTS, said_by_class, payload_of_state and the reminder, household and firm builders), and each user names demo_root once by assignment."
     },
     {

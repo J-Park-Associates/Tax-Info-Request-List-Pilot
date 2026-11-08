@@ -17,7 +17,7 @@ another (``tests/test_suite_shape.py``).
 
 When ``tests/test_api.py`` was split by its section banners into ``tests/test_api_<family>.py``
 (SPEC-architecture-p5 P5.14, E-3), every module-level helper two or more of the resulting files
-read came here, byte for byte with its words and left where it was: ``COUNTS``, the ``demo_root``
+read came here, byte for byte with their words, and were deleted where they were: ``COUNTS``, the ``demo_root``
 fixture, ``said_by_class``, ``payload_of_state``, ``_raw``, ``_rows_of``, ``_typed_as_a_string``,
 ``_on_the_office_computer``, ``_parked_row``, ``a_moved_row``, ``chased_engagement``, ``reminder_card``,
 ``two_households``, ``waiting_document``, ``client_readme``, ``_a_deeper_root`` (with
