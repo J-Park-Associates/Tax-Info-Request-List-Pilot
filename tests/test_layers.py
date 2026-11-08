@@ -284,7 +284,10 @@ LAYERS: dict[int, frozenset[str]] = {
     # ``reminder``, ``review``, ``registry``, ``run_log`` (``why_skipped``,
     # since P345) and ``view`` (L3), ``containers`` (L2), L1 and L0; never
     # ``screen_words``.
-    4: frozenset({"runner", "scheduling", "after_install", "firm_view"}),
+    # ``pass_order`` joins L4 with P347 (SPEC-architecture-p5 P5.10): the
+    # household order hint, out of ``runner`` - ``run_log`` (L3), ``store``
+    # (L1) and ``fsio`` (L0); never ``scheduling`` or ``api``.
+    4: frozenset({"runner", "scheduling", "after_install", "firm_view", "pass_order"}),
     # ``resident`` joins L5 with P276: the engine's loop over ``api.main``; it
     # imports ``api``, ``errlog``, ``locking``, ``reader_child`` and the
     # standard library; nothing imports it but ``api_entry.py``, at call time.
@@ -319,7 +322,7 @@ DOMAINS: dict[str, frozenset[str]] = {
     # year it rolls over, the reminder it drafts, what it reports and how it
     # is watched.
     "pass": frozenset({"progress", "registry", "rollover", "reminder", "runner", "scheduling",
-                       "after_install", "run_log"}),
+                       "after_install", "run_log", "pass_order"}),
     # The one way the app reaches the rest, the engine that answers it, what
     # an error is called, where its words are kept, the words it sends the
     # screen and the shape of every reply it prints.

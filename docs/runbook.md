@@ -959,7 +959,7 @@ household, the app says so and starts nothing. Households are
 taken **least recently completed first**, not in folder order, so the
 one that ran out of time, or was stopped, does not go first and stop the
 same clients every pass: a household the last pass was stopped in goes
-last. The order is kept in `tracker.runner.PASS_ORDER_FILENAME`
+last. The order is kept in `tracker.pass_order.PASS_ORDER_FILENAME`
 (`pass-order.json`) beside the database; it is a hint and safe to delete
 — the next pass goes in folder order and starts counting again. A
 household skipped because another run held its lock is tried once more
@@ -2157,7 +2157,7 @@ already.
 (`record-heads.db`, `tracker.checkpoint.CHECKPOINT_FILENAME`, and, while a
 command runs, its `-wal` and `-shm` beside it), the folder
 `recovered` beside them if a recovery was ever run, the last-pass file
-(`last-pass.json`), the pass-order hint (`tracker.runner.PASS_ORDER_FILENAME`),
+(`last-pass.json`), the pass-order hint (`tracker.pass_order.PASS_ORDER_FILENAME`),
 the error log (`tracker.errlog.ERROR_LOG_FILENAME`) and the `passes`
 folder (`tracker.progress.PASSES_DIRNAME`) beside it, and the task's file),
 the scheduled task, the app folder itself, and the graphics card pack if

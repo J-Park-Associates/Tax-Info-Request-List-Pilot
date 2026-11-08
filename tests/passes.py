@@ -16,7 +16,11 @@ Two households with a W-2 in each inbox (``_two_households``) and the
 practice page's text as a person reads it (``_page``) joined them when
 ``tests/test_status_page.py`` was split out of ``test_runner``
 (SPEC-architecture-p5 R5.9.8, P346), for the same reason: both files draw
-the page and read it back.
+the page and read it back. The order hint's file beside the store
+(``_hint_file``) and its lines (``_hint_lines``) joined them when
+``tests/test_pass_order.py`` was split out of ``test_runner``
+(SPEC-architecture-p5 R5.10.5, P347): both files write the hint and read it
+back.
 """
 
 import datetime as dt
@@ -25,6 +29,7 @@ from pathlib import Path
 
 import pytest
 
+import tracker.runner as runner_module
 from tests.builders import make_engagement, seed_index
 from tests.samples import DEMO_ITEMS, SCRATCH_PEOPLE, YEAR, build_samples
 from tracker import store
@@ -153,3 +158,13 @@ def _two_households(tmp_path, samples):
 
 def _page(root) -> str:
     return html.unescape((root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8"))
+
+
+def _hint_file() -> Path:
+    path = store.store_path().parent / runner_module.PASS_ORDER_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _hint_lines(path: Path) -> list[str]:
+    return path.read_text(encoding="ascii").splitlines()

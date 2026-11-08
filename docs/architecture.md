@@ -26,7 +26,7 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of sixty-one modules in six layers.
+`tracker/` is one Python package of sixty-two modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The scanner never imports the filer; a person's actions
@@ -236,8 +236,9 @@ the package but each other.
 
 **Layer 4: the unattended run.**
 
-- `runner.py`: the whole scheduled task: for every engagement, file, scan,
-  and on the draft day draft; the status page over the whole practice,
+- `runner.py`: the whole scheduled task: for every engagement, household by
+  household in the order `pass_order.py` keeps, file, scan, and on the
+  draft day draft; the status page over the whole practice,
   drawn by `status_page.py`; the run log of counts and codes, written
   through `run_log.py`.
 - `scheduling.py`: the Task Scheduler XML, or on a Mac the launchd agent.
@@ -251,6 +252,14 @@ the package but each other.
   at launch (P344). It sits beside the runner, whose draft-day rule it
   reads; the API's `firm` and `firm-last` call it and shape the reply, and
   the pass fills the cache through that same `firm`, in a child.
+- `pass_order.py`: the household order hint beside the store, so each pass
+  serves the household least recently completed first and one a pass was
+  killed in last: read within its bound and never trusted past its version
+  (an unreadable hint is the walk's order and one sentence), a mark
+  appended and synced as each household starts, the whole written once a
+  pass, and every household not served two passes running named
+  (decisions 186, 189, P217, P347). Out of the runner, which imports back
+  what it calls and gives the exit code.
 
 **Layer 5: the door the shell knocks on.**
 

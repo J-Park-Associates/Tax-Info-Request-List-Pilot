@@ -2005,7 +2005,7 @@ def test_the_last_pass_reply_and_its_line_agree_on_an_oversized_file(tmp_path, m
     import datetime as dt
     import json
 
-    from tracker import api, run_log, runner
+    from tracker import api, pass_order, run_log, runner
     from tracker.settings import ENV_SETTINGS_DIR
 
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
@@ -2014,7 +2014,7 @@ def test_the_last_pass_reply_and_its_line_agree_on_an_oversized_file(tmp_path, m
                            result=runner.PASS_SUCCEEDED)
     data = json.loads(runner.last_pass_path().read_text(encoding="utf-8"))
     padded = json.dumps(data) + " " * run_log.LAST_PASS_MAX_BYTES
-    assert len(padded) < runner.PASS_ORDER_MAX_BYTES
+    assert len(padded) < pass_order.PASS_ORDER_MAX_BYTES
     runner.last_pass_path().write_text(padded, encoding="utf-8")
     reply = api._last_pass()
     assert reply["level"] == run_log.LEVEL_ERR

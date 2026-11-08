@@ -26,6 +26,8 @@ from tests.passes import (
     SATURDAY,
     SUNDAY,
     _a_parked_file,
+    _hint_file,
+    _hint_lines,
     _lines,
     _page,
     _run_now,
@@ -39,7 +41,7 @@ from tests.passes import (
 )
 from tests.samples import DEMO_ITEMS, PRIOR_YEAR, SCRATCH_PEOPLE, YEAR, text_pdf
 from tests.source_pins import PACKAGE, py_function
-from tracker import ledger, run_log, status_page, store
+from tracker import fsio, ledger, pass_order, run_log, status_page, store
 from tracker.index import NEEDS_REVIEW, read_index
 from tracker.layout import household_of, inbox_of, originals_of, root_of
 from tracker.manifest import (
@@ -2933,7 +2935,8 @@ def test_households_run_least_recently_completed_first(tmp_path, samples, monkey
 
 
 def test_a_missing_or_broken_pass_order_file_falls_back_to_folder_order(tmp_path, samples, monkeypatch):
-    from tracker.runner import ORDER_HINT_UNREADABLE, PASS_ORDER_FILENAME
+    from tracker.pass_order import ORDER_HINT_UNREADABLE
+    from tracker.runner import PASS_ORDER_FILENAME
 
     _three_households(tmp_path, samples)
     walk = ["Alder Household", "Birch Household", "Cedar Household"]
@@ -3003,7 +3006,8 @@ def test_a_household_not_served_twice_running_exits_three_and_is_named_on_the_pa
     tmp_path, samples, monkeypatch, capsys,
 ):
     from tracker.locking import LOCK_FILENAME
-    from tracker.runner import NOT_SERVED_TWICE, NOT_SERVED_TWICE_EXIT_CODE, WHY_HELD_LOCK
+    from tracker.pass_order import NOT_SERVED_TWICE, WHY_HELD_LOCK
+    from tracker.runner import NOT_SERVED_TWICE_EXIT_CODE
 
     root = tmp_path / "Clients"
     alder, _birch = _two_households(root, samples)
@@ -3057,7 +3061,8 @@ def test_a_nested_pass_order_file_is_only_a_hint(tmp_path, samples, monkeypatch)
     runs out of memory each give the walk's order and the one sentence -
     none stops the pass before its first household."""
     import tracker.runner as runner
-    from tracker.runner import ORDER_HINT_UNREADABLE, PASS_ORDER_FILENAME, PASS_ORDER_MAX_BYTES
+    from tracker.pass_order import ORDER_HINT_UNREADABLE, PASS_ORDER_MAX_BYTES
+    from tracker.runner import PASS_ORDER_FILENAME
 
     _three_households(tmp_path, samples)
     walk = ["Alder Household", "Birch Household", "Cedar Household"]
@@ -4081,14 +4086,14 @@ def test_the_practice_page_is_written_after_its_readings_end(tmp_path, samples, 
     root = tmp_path / "Clients"
     _three_households(root, samples)
     held = []
-    real = runner_module.write_text_atomically
+    real = fsio.write_text_atomically
 
     def write(path, *args, **kwargs):
         if Path(path).name == STATUS_PAGE_FILENAME:
             held.append(hold._HELD is None)
         return real(path, *args, **kwargs)
 
-    for module in (runner_module, status_page):
+    for module in (pass_order, status_page):
         monkeypatch.setattr(module, "write_text_atomically", write)
     assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER) == 0
     assert held == [True]
@@ -4186,7 +4191,8 @@ def test_a_stopped_scan_keeps_the_status_the_record_holds_for_the_rest(tmp_path,
 
 
 def test_a_stopped_household_says_so_and_is_not_drafted(tmp_path, samples):
-    from tracker.runner import CANCELLED_NO_DRAFT, WHY_CANCELLED, _why_not_served
+    from tracker.pass_order import WHY_CANCELLED, _why_not_served
+    from tracker.runner import CANCELLED_NO_DRAFT
 
     engagement = build_engagement(tmp_path / "Clients", samples, drops=THREE_DROPS)
     run = a_pass(engagement, today=SATURDAY, reminders=REMINDERS_ALWAYS,
@@ -4681,7 +4687,7 @@ def test_every_pass_warning_carries_a_code(tmp_path, samples, monkeypatch):
     assert len(report.warning_codes) == len(report.warnings) == 4
     assert sorted(report.warning_codes) == sorted([
         runner_module.CODE_LEFT_BEHIND, runner_module.CODE_READER_PATH_WARNING,
-        runner_module.CODE_ORDER_HINT_UNREADABLE, runner_module.CODE_READER_COULD_NOT_START])
+        run_log.CODE_ORDER_HINT_UNREADABLE, runner_module.CODE_READER_COULD_NOT_START])
     text = append_log(tmp_path / LOG_FILENAME, report).read_text(encoding="utf-8")
     assert _log_line(text, "codes") == {code: "1" for code in report.warning_codes}
     assert "one.pdf" not in text
@@ -5046,14 +5052,14 @@ def test_the_page_is_written_outside_the_reading(tmp_path, samples, monkeypatch)
 
     _two_households(tmp_path, samples)
     holding = []
-    real = runner_module.write_text_atomically
+    real = fsio.write_text_atomically
 
     def watched(path, *args, **kwargs):
         if Path(path).name == STATUS_PAGE_FILENAME:
             holding.append(hold._HOLDING)
         return real(path, *args, **kwargs)
 
-    for module in (runner_module, status_page):
+    for module in (pass_order, status_page):
         monkeypatch.setattr(module, "write_text_atomically", watched)
     assert _the_scheduled_job(tmp_path, monkeypatch, "--reminders", "never") == 0
     assert holding == [""]
@@ -5063,20 +5069,10 @@ def test_the_page_is_written_outside_the_reading(tmp_path, samples, monkeypatch)
 # ------------------------------------------ the pass-order hint (P217) ----
 
 
-def _hint_file() -> Path:
-    path = store.store_path().parent / runner_module.PASS_ORDER_FILENAME
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def _hint_lines(path: Path) -> list[str]:
-    return path.read_text(encoding="ascii").splitlines()
-
-
 def _whole_writes_of_the_hint(monkeypatch, *, refuse: bool = False) -> list[Path]:
     """Every whole write of the hint from here on; ``refuse`` makes each fail."""
     writes = []
-    real = runner_module.write_text_atomically
+    real = fsio.write_text_atomically
 
     def watched(path, *args, **kwargs):
         if Path(path).name == runner_module.PASS_ORDER_FILENAME:
@@ -5085,25 +5081,9 @@ def _whole_writes_of_the_hint(monkeypatch, *, refuse: bool = False) -> list[Path
                 raise PermissionError(13, "fabricated: the file is held")
         return real(path, *args, **kwargs)
 
-    for module in (runner_module, status_page):
+    for module in (pass_order, status_page):
         monkeypatch.setattr(module, "write_text_atomically", watched)
     return writes
-
-
-def test_a_hint_for_a_thousand_households_is_read_back_whole(tmp_path):
-    """P217: at 64 KiB the hint was unreadable from about 370 households up,
-    and decision 189's order was lost. A thousand households' hint - one
-    compact line - is read back whole, settled, with no warning."""
-    hint = {f"Household {n:04d} of a Fabricated Firm": {
-        "completed": "2026-10-07T02:14:09", "ended": "2026-10-07T02:14:09",
-        "started": "2026-10-07T02:13:58", "not_served": 0} for n in range(1000)}
-    path = _hint_file()
-    assert runner_module._write_order_hint(path, hint)
-    assert len(_hint_lines(path)) == 1
-    assert 65_536 < path.stat().st_size < runner_module.PASS_ORDER_MAX_BYTES
-    report = RunReport(today=FRIDAY)
-    assert runner_module._read_order_hint(report) == (path, hint, True)
-    assert report.warnings == []
 
 
 def test_each_household_start_is_one_appended_line_and_the_hint_is_written_once_a_pass(
@@ -5129,7 +5109,7 @@ def test_each_household_start_is_one_appended_line_and_the_hint_is_written_once_
         assert set(last) == {"started", "household"} and last["household"] == name
     assert writes == [path]                                              # once, at the end
     (whole,) = _hint_lines(path)
-    assert json.loads(whole)["version"] == runner_module.PASS_ORDER_VERSION == 2
+    assert json.loads(whole)["version"] == pass_order.PASS_ORDER_VERSION == 2
 
 
 def test_a_pass_killed_in_a_household_leaves_its_mark_and_the_next_pass_puts_it_last(
@@ -5160,22 +5140,6 @@ def test_a_pass_killed_in_a_household_leaves_its_mark_and_the_next_pass_puts_it_
     assert len(_hint_lines(path)) == 1
 
 
-def test_a_torn_last_mark_is_skipped_without_a_warning(tmp_path, caplog):
-    path = _hint_file()
-    path.write_text(
-        '{"version":2,"households":{"Alder Household":{"completed":"2026-10-06T02:00:00"}}}\n'
-        '{"started":"2026-10-07T02:00:00","household":"Alder Household"}\n'
-        '{"started":"2026-10-07T02:00:05","household":"Birch Household"}\n'
-        '{"started":"2026-10-07T02:00:1', encoding="ascii")
-    report = RunReport(today=FRIDAY)
-    with caplog.at_level("WARNING"):
-        found, hint, settled = runner_module._read_order_hint(report)
-    assert found == path and not settled
-    assert hint == {"Alder Household": {"completed": "2026-10-06T02:00:00", "started": "2026-10-07T02:00:00"},
-                    "Birch Household": {"started": "2026-10-07T02:00:05"}}
-    assert report.warnings == [] and caplog.records == []
-
-
 def test_an_earlier_versions_hint_is_read_and_settled_before_the_first_mark(tmp_path, samples, monkeypatch):
     _three_households(tmp_path, samples)
     path = _hint_file()
@@ -5193,7 +5157,7 @@ def test_an_earlier_versions_hint_is_read_and_settled_before_the_first_mark(tmp_
     monkeypatch.setattr(runner_module, "run_household", watched)
     report = run_registry(discover_engagements(tmp_path), today=FRIDAY)
 
-    assert runner_module.ORDER_HINT_UNREADABLE not in report.warnings
+    assert pass_order.ORDER_HINT_UNREADABLE not in report.warnings
     first, mark = seen[0]
     settled = json.loads(first)
     assert settled["version"] == 2
@@ -5240,7 +5204,7 @@ def _an_idle_pass_counted(tmp_path, samples, monkeypatch) -> dict:
         return real_execute(self, *args, **kwargs)
 
     real_rules, real_connect = store.rules, checkpoint._connect
-    real_write = runner_module.write_text_atomically
+    real_write = fsio.write_text_atomically
     real_resolved, real_data_home = hold.resolved, settings.data_home
 
     def rules(conn, folder):
@@ -5265,7 +5229,7 @@ def _an_idle_pass_counted(tmp_path, samples, monkeypatch) -> dict:
         patch.setattr(store._Cursor, "execute", execute)
         patch.setattr(store, "rules", rules)
         patch.setattr(checkpoint, "_connect", connect)
-        for module in (runner_module, status_page):
+        for module in (pass_order, status_page):
             patch.setattr(module, "write_text_atomically", write)
         patch.setattr(hold, "resolved", unheld(real_resolved))
         patch.setattr(settings, "data_home", unheld(real_data_home))
@@ -5388,18 +5352,6 @@ def test_a_scheduled_pass_off_windows_stops_itself_before_the_run_limit(tmp_path
     monkeypatch.setattr(SelfLimitedWatch, "say", real_say)
     assert main([runner_module.SETTINGS_FLAG, str(tmp_path / "settings"), "--reminders", REMINDERS_NEVER]) == 0
     assert not [p for p in inbox_of(engagement.path).iterdir() if p.name in THREE_DROPS], "the next pass took them"
-
-
-def test_a_household_the_run_limit_cut_off_is_not_said_to_be_stopped_by_a_person():
-    """A pass nobody stopped is not "stopped by a person": the run has its own reason word."""
-    from tracker.runner import WHY_CANCELLED, WHY_RUN_LIMIT, EngagementRun, _why_not_served
-
-    assert WHY_RUN_LIMIT == "reached the run limit" != WHY_CANCELLED
-    run = EngagementRun(engagement=Engagement(path=Path("x")))
-    run.run_limit = True
-    assert _why_not_served([run]) == WHY_RUN_LIMIT and not run.cancelled
-    run.cancelled = True
-    assert _why_not_served([run]) == WHY_CANCELLED
 
 
 def test_a_pass_before_the_run_limit_is_not_stopped_early(tmp_path, samples, monkeypatch):
