@@ -193,8 +193,14 @@ LAYERS: dict[int, frozenset[str]] = {
     # and the export out of ``store`` - ``admission``, ``ledger``, ``records``
     # and ``store`` (L1), ``locking`` (L0); ``fsio`` at call time; the store's
     # command line asks it at call time.
+    # ``screen_words`` joins L1 with P340 (SPEC-architecture-p5 P5.3): the words
+    # the API sends the screen, out of ``api``, which imports them back -
+    # ``manifest`` and ``records`` (L1), ``errlog`` and ``settings`` (L0); nothing
+    # the runner loads may import it (``SCREEN`` reads the product's name at
+    # import).
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
-                  "templates", "validators", "index", "admission", "store_check"}),
+                  "templates", "validators", "index", "admission", "store_check",
+                  "screen_words"}),
     # ``copies`` joins L2 with P331 (SPEC-architecture-p4 P4.4): the filer's
     # naming, room, byte-proved copy and rename-only move, the client README's
     # lock and the stranded-temp sweep - L1 and L0, and ``containers`` and
@@ -283,9 +289,9 @@ DOMAINS: dict[str, frozenset[str]] = {
     "pass": frozenset({"progress", "registry", "rollover", "reminder", "runner", "scheduling",
                        "after_install"}),
     # The one way the app reaches the rest, the engine that answers it, what
-    # an error is called, where its words are kept and the shape of every
-    # reply it prints.
-    "door": frozenset({"errors", "errlog", "api", "resident", "replies"}),
+    # an error is called, where its words are kept, the words it sends the
+    # screen and the shape of every reply it prints.
+    "door": frozenset({"errors", "errlog", "api", "resident", "replies", "screen_words"}),
     # What a person opens: the pages, their kept rows and the firm's view.
     "shell": frozenset({"page", "page_rows", "firm_cache", "firm_pages", "view"}),
 }
@@ -645,6 +651,27 @@ def test_the_package_init_imports_nothing_at_load_time():
 def test_the_runner_never_imports_the_scheduler_or_the_api():
     load, call = import_edges()
     assert not {"scheduling", "api"} & (load["runner"] | call["runner"])
+
+
+def test_nothing_the_scheduled_pass_loads_reads_the_products_name_at_import():
+    """SPEC-architecture-p5 R5.3.5 (P340): the scheduled task starts the
+    runner with no product name in its environment (``api_entry.py``'s
+    docstring; P220), and there ``settings.product_name()`` raises. Three
+    modules read the name at their top level - ``screen_words`` (``SCREEN``'s
+    side panel), ``scheduling`` (``TASK_NAME``, P220) and ``api``, which imports
+    both - so none of them may be in what the runner loads. The test above
+    checks the runner's own imports; this one follows its load-time imports
+    to every module they load in turn, so a word module imported two steps
+    down would still be caught before it stopped the scheduled pass."""
+    load, _ = import_edges()
+    loaded: set[str] = set()
+    waiting = ["runner"]
+    while waiting:
+        for module in load[waiting.pop()] - loaded:
+            loaded.add(module)
+            waiting.append(module)
+    reached = {"screen_words", "scheduling", "api"} & loaded
+    assert reached == set(), sorted(reached)
 
 
 def test_the_scanner_never_imports_the_filer_or_a_persons_actions_and_they_reach_it_only_at_call_time():

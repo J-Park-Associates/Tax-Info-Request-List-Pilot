@@ -610,8 +610,9 @@ def test_the_side_panel_names_the_product_from_its_one_home():
 
     assert api.SCREEN["side"]["product"] == product_name() == json.loads(read("app/package.json"))["productName"]
     assert api.vocab()["screen"]["side"]["product"] == product_name()
-    assert '"product": product_name(),' in read("tracker/api.py")
+    assert '"product": product_name(),' in read("tracker/screen_words.py")
     assert product_name() not in read("tracker/api.py")
+    assert product_name() not in read("tracker/screen_words.py")
 
 
 def test_the_version_is_0_4_in_the_badge_and_the_release_steps():
@@ -1120,11 +1121,11 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
     # heading and note, the folded table's name and heading, the rollover's
     # label and line, the one refusal, the column's help and the rollover's
     # notes. None is typed in the renderer or the page, quoted or not.
-    from tracker import rollover
+    from tracker import rollover, screen_words
     from tracker.manifest import ALSO_RECEIVED_LABEL, COLUMN_HELP, NOT_ASKED_LABEL
 
     added = (NOT_ASKED_LABEL, ALSO_RECEIVED_LABEL, api_module.ASK_THE_CLIENT,
-             api_module.ASK_THE_CLIENT_NOTE, api_module.NOT_ASKED_TABLE_LABEL,
+             screen_words.ASK_THE_CLIENT_NOTE, api_module.NOT_ASKED_TABLE_LABEL,
              api_module.ROLL_TEMPLATE_LABEL, api_module.NOTHING_ASKED, COLUMN_HELP["asked"],
              api_module.NEW_NOT_ASKED_CARRIED.split("{n}")[1].split(" - ")[0].strip(),
              rollover.NEW_NOT_ASKED_NOTE, rollover.NOT_ASKED_NOTE,

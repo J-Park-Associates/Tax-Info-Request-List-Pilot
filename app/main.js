@@ -968,8 +968,8 @@ ipcMain.handle("pick-folder", async (event, title) => {
 
 // ---- The menu bar and the right-click menus (SPEC-shell 5) ----------------
 // Built here from the API's words (vocab.menu): these defaults are word for
-// word tracker.api's MENU, so the menu is there from the first frame, and a
-// test keeps the two equal. `&` marks an access key.
+// word tracker.screen_words.MENU, so the menu is there from the first frame,
+// and a test keeps the two equal. `&` marks an access key.
 const DEFAULT_MENU_WORDS = {
   file: "&File",
   new_household: "New Household…",

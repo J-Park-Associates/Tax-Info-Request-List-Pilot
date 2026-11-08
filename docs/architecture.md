@@ -26,7 +26,7 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of fifty-four modules in six layers.
+`tracker/` is one Python package of fifty-five modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The scanner never imports the filer; a person's actions
@@ -103,6 +103,13 @@ the package but each other.
 - `validators.py`: tiers one and two: does the file exist, is the extension
   allowed, is the PDF readable, does the photo open, is it a cloud
   placeholder.
+- `screen_words.py`: the words the API sends the screen - every label,
+  heading, notice and refusal a person reads that Python owns, the menus,
+  the screen's own words and a Mac's - in one home, so a wording change is
+  an edit here (decision 42, P66, P340). Layer 1 because it reads the
+  request list's labels and the record's `NO`; `api.py` imports back the
+  words its code reads, and nothing the scheduled pass loads may import it,
+  because `SCREEN` reads the product's name at import.
 
 **Layer 2: reading a document.**
 
@@ -200,7 +207,9 @@ the package but each other.
 **Layer 5: the door the shell knocks on.**
 
 - `api.py`: the JSON command layer; `COMMANDS` is the list and the module
-  docstring is pinned to it. The editor's words live here.
+  docstring is pinned to it. The words it sends the screen, the editor's
+  among them, live in `screen_words.py` (P340); it imports back the ones its
+  code reads.
 - `resident.py`: the loop over the API that keeps one engine alive for an app
   session.
 

@@ -23,7 +23,7 @@ from tests.node_harness import RENDERER_SCRIPTS, js_function, read, renderer_tex
 from tests.samples import PRIOR_YEAR, text_pdf
 from tests.source_pins import py_function
 from tests.wording import title_case
-from tracker import layout, ledger, manifest, reasons, reminder, store, view
+from tracker import layout, ledger, manifest, reasons, reminder, screen_words, store, view
 from tracker.bounds import (
     COUNT_BOUNDS,
     MAX_EXPECTED_COUNT,
@@ -1186,7 +1186,7 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
     assert vocab["editor"]["yes_no_fields"] == ["named", "asked"]
     html = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "index.html").read_text(
         encoding="utf-8")
-    for word in (NOT_ASKED_LABEL, api.ASK_THE_CLIENT, api.ASK_THE_CLIENT_NOTE,
+    for word in (NOT_ASKED_LABEL, api.ASK_THE_CLIENT, screen_words.ASK_THE_CLIENT_NOTE,
                  api.NOT_ASKED_TABLE_LABEL, api.ROLL_TEMPLATE_LABEL, api.NOTHING_ASKED,
                  api.NEW_NOT_ASKED_CARRIED.split("{n}")[1].split(" - ")[0].strip(),
                  view.SET_ASIDE_SECTION.split("{")[0].strip()):
@@ -10440,7 +10440,7 @@ def test_only_the_task_name_and_the_programs_own_place_are_fixed_at_import():
     from the environment the shell gives both alike, and the program's own
     place, twice. Nothing reads the clock, the settings file, the data
     folder or the clients root at import."""
-    assert _fixed_at_import() == {("scheduling.py", "TASK_NAME"), ("api.py", "SCREEN"),
+    assert _fixed_at_import() == {("scheduling.py", "TASK_NAME"), ("screen_words.py", "SCREEN"),
                                   ("settings.py", "PACKAGE_JSON"), ("after_install.py", "CHECKOUT")}
 
 

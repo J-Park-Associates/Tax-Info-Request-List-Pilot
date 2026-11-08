@@ -51,6 +51,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - reasons       : every refusal said once: the note, the client's ask, whose problem it is
 - errors        : an error named by its class where a person sees it; its words kept apart
 - api           : the desktop app's command layer, one JSON command in, one JSON reply out
+- screen_words  : the words the API sends the screen - every label, heading, notice and refusal a person reads that Python owns, the menus and the Mac's words - in one home
 - replies       : the shape of every reply the API prints, written down once - the one error envelope and each command's reply
 - resident      : the app's engine - one process for the session that answers the commands the app hands it, one after another, and ends itself when anything about it is in doubt
 - firm_cache    : the firm view's cache in the data folder - its head, each household's fingerprint, and a damaged or stale file never used

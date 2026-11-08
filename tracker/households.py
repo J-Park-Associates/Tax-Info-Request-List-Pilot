@@ -182,9 +182,9 @@ def mark_shared(household_dir: Path | str) -> None:
     ``sharing_confirmed`` line carrying nothing but the day (decision 126).
 
     The caller holds the household's lock and has already refused a
-    household with no link (the API's ``SHARE_LINK_FIRST``), because what
-    to refuse is the door's decision and what to write is this module's
-    (P327).
+    household with no link (the API says
+    ``tracker.screen_words.SHARE_LINK_FIRST``), because what to refuse is
+    the door's decision and what to write is this module's (P327).
     """
     from tracker import ledger, store
 
@@ -333,7 +333,7 @@ def resolve_feeds(
 def fed_by(registry: object, household_dir: Path | str) -> list[object]:
     """The households whose drop folders feed a return of this one.
 
-    What the **destination's** card says (``tracker.api.FED_BY_LINE``):
+    What the **destination's** card says (``tracker.screen_words.FED_BY_LINE``):
     anyone who can drop into one of these folders can drop for a return
     that lives here, so the household whose documents rest here is told
     who else may send them. The evidence and the record name a return by
