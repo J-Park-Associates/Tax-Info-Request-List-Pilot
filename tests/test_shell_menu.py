@@ -50,7 +50,7 @@ def test_the_menus_default_words_are_the_apis_word_for_word(monkeypatch):
 
     monkeypatch.setattr(settings, "host_system", lambda: "posix")
     assert _menu_words_in_main() == api.MENU
-    assert api._vocab()["menu"] == api.MENU
+    assert api.vocab()["menu"] == api.MENU
 
 
 def test_the_menu_has_no_reload_zoom_or_developer_tools():

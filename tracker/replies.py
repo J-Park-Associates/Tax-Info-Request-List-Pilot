@@ -69,7 +69,7 @@ class StateReply(TypedDict):
     """``state``: everything the app draws one return from (decision 194).
 
     Every write that redraws the return carries the same dict as its
-    ``state`` (``api._state`` builds both). There ``warnings`` is the
+    ``state`` (``api.state`` builds both). There ``warnings`` is the
     editor's rule warnings; on the ``state`` command itself ``main`` writes
     the envelope's over it."""
 

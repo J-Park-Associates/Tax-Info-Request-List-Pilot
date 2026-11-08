@@ -582,7 +582,7 @@ def test_unlearn_records_one_event_re_scans_and_the_state_no_longer_lists_the_ke
     assert run(capsys, "create", stdin=spec)[0] == 0
     folder = where(demo_root, "Smith")
     teach(folder, "A01", "lender")
-    state = api._state(folder)
+    state = api.state(folder)
     assert state["learned"] == {"A01": ["lender"]}
     assert not any(item["status"] for item in state["items"])      # nothing has scanned it
 
@@ -620,7 +620,7 @@ def test_unlearn_refuses_a_blank_or_unknown_pair_by_name(capsys, demo_root):
     assert code == 1
     assert payload["error"] == UNLEARN_REFUSED.format(identifier="A01", keyword="escrow")
     assert ledger.head(folder) == head
-    assert api._state(folder)["learned"] == {"A01": ["lender"]}
+    assert api.state(folder)["learned"] == {"A01": ["lender"]}
 
 
 def test_the_renderer_types_no_unlearn_word(capsys, demo_root):
@@ -672,12 +672,12 @@ def test_the_state_the_app_reads_carries_no_deferred_index(capsys, demo_root, tm
     spec = {"household": HOUSEHOLD, "return_name": "Smith 2025", "form": "1040", "client": "John Smith",
             "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    state = api._state(where(demo_root, "Smith 2025"))
+    state = api.state(where(demo_root, "Smith 2025"))
 
     assert "index_deferred" not in state
     assert "index" not in state["paths"] and "manifest" not in state["paths"]
     assert not hasattr(EngagementRun(engagement=None), "index_deferred")
-    assert "index_deferred" not in json.dumps(api._vocab())
+    assert "index_deferred" not in json.dumps(api.vocab())
 
 
 def test_dismiss_records_that_nothing_asks_for_a_parked_document(capsys, demo_root, tmp_path):
@@ -704,7 +704,7 @@ def test_dismiss_records_that_nothing_asks_for_a_parked_document(capsys, demo_ro
     assert not [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
     [row] = [e for e in payload["state"]["index"] if e["decision"] == NOT_REQUESTED]
     assert (engagement / row["prepared_location"]).is_file()
-    assert api._vocab()["decisions"]["dismissed"] == NOT_REQUESTED
+    assert api.vocab()["decisions"]["dismissed"] == NOT_REQUESTED
 
 
 def test_unfile_sends_a_filed_document_back_for_review_and_the_status_with_it(capsys, demo_root, tmp_path):
@@ -1622,7 +1622,7 @@ def test_the_editor_shows_the_persons_rows_and_never_a_taught_keyword_as_a_typed
     engagement = where(demo_root, "Smith")
     text_pdf(inbox_of(engagement) / "scan0012.pdf", "nothing the rules recognise")
     assert scan(capsys, engagement)[0] == 0
-    [parked] = api._state(engagement)["index"]
+    [parked] = api.state(engagement)["index"]
     code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"original": "scan0012.pdf", "identifier": "A01",
                                "keyword": "wage statement", "seq": parked["seq"]})
@@ -1877,7 +1877,7 @@ def test_scan_is_no_longer_a_command():
     a door left open and a second definition of Run now."""
     assert "scan" not in api.COMMANDS
     assert api.PASS_COMMAND in api.COMMANDS
-    assert api._vocab()["pass_command"] == api.PASS_COMMAND
+    assert api.vocab()["pass_command"] == api.PASS_COMMAND
 
 
 def payload_of_state(capsys, engagement):
@@ -2071,7 +2071,7 @@ def test_the_list_names_no_last_pass_file_when_the_data_home_cannot_be_had(capsy
 def test_the_scheduled_sorting_word_is_in_the_screen_vocabulary():
     """Pilot P256: a pass the schedule is running is drawn as ``Sorting``, a
     word the page does not type; its row is in the wording table."""
-    screen = api._vocab()["screen"]
+    screen = api.vocab()["screen"]
     assert screen["last_sort"]["scheduled"] == "Sorting"
     rows = [line.split("\t") for line in
             (Path(__file__).resolve().parents[1] / "pilot" / "wording-shell.tsv").read_text(
@@ -2083,7 +2083,7 @@ def test_the_scheduled_sorting_word_is_in_the_screen_vocabulary():
 def test_the_details_word_is_in_the_screen_vocabulary():
     """Pilot P257: the closed disclosure under a notice's one line is headed
     by the API's word; the page types none."""
-    screen = api._vocab()["screen"]
+    screen = api.vocab()["screen"]
     assert screen["notices"]["details"] == "Details"
     rows = [line.split("\t") for line in
             (Path(__file__).resolve().parents[1] / "pilot" / "wording-shell.tsv").read_text(
@@ -2585,15 +2585,15 @@ def test_without_a_data_home_the_pages_error_never_points_at_an_error_log_that_i
     named to the shell; the page's own-error line is the same short line
     either way (SPEC-shell 11.2), and the details are not kept."""
     from tracker import store
-    from tracker.api import PAGE_ERROR, _vocab
+    from tracker.api import PAGE_ERROR, vocab
     from tracker.settings import ENV_DATA_HOME
 
-    shell = _vocab()["shell"]
+    shell = vocab()["shell"]
     assert shell["error_log"] and shell["page_error"] == PAGE_ERROR
     store.close()
     monkeypatch.delenv(store.ENV_STORE, raising=False)
     monkeypatch.setenv(ENV_DATA_HOME, "relative-data")
-    shell = _vocab()["shell"]
+    shell = vocab()["shell"]
     assert shell["error_log"] == ""
     assert shell["page_error"] == PAGE_ERROR == "The App Hit an Error"
     assert not hasattr(api, "PAGE_ERROR_NO_LOG")
@@ -2694,7 +2694,7 @@ def test_a_mac_removes_its_schedule_from_the_tools_menu_and_nothing_else(capsys,
     assert designation_file(demo_root).read_text(encoding="utf-8") == designated and demo_root.is_dir()
     assert "remove-schedule-here" in api.WRITING_COMMANDS and "remove-schedule-here" in api.COMMANDS
     assert "remove-schedule-here" in run(capsys, "list")[1]["vocab"]["writing_commands"]
-    assert api._vocab()["schedule"]["remove_confirm"] == "Remove the Schedule From This Mac?"
+    assert api.vocab()["schedule"]["remove_confirm"] == "Remove the Schedule From This Mac?"
     here = Path(__file__).resolve().parent.parent / "app" / "renderer"
     js, shell = (here / "app.js").read_text(encoding="utf-8"), (here / "shell.js").read_text(encoding="utf-8")
     assert "confirm(vocab.schedule.remove_confirm)" in js and 'call(["remove-schedule-here"]' in js
@@ -3211,7 +3211,7 @@ def test_the_state_carries_a_file_moved_row_in_the_index_and_in_no_list(capsys, 
     assert moved["pbc_location"] not in [t["pbc_location"] for t in state["review"]]
     assert not [e for e in state["index"]
                 if e["decision"] == FILED and e["pbc_location"] == moved["pbc_location"]]
-    assert api._vocab()["decisions"]["file_moved"] == FILE_MOVED
+    assert api.vocab()["decisions"]["file_moved"] == FILE_MOVED
     # And the request it left is the firm's to sort out, not an ask.
     assert payload["run"]["warnings"]
 
@@ -3337,7 +3337,7 @@ def test_restore_is_a_command_that_re_scans_and_the_moved_list_empties(
     assert payload["state"]["moved"] == []
     now = {i["identifier"]: i["status"] for i in payload["state"]["items"]}
     assert now[filed["identifier"]] == Status.RECEIVED
-    assert "restore" in api._vocab()["commands"]
+    assert "restore" in api.vocab()["commands"]
 
 
 def test_restore_refuses_without_a_seq_and_with_a_stale_one(capsys, demo_root, tmp_path):
@@ -3600,7 +3600,7 @@ def test_the_card_shows_the_inbox_hold_in_the_apis_words_and_offers_no_approve(c
     assert list(folder.glob("reminder-draft*")) == []
 
     # The household card says the same hold beside the return.
-    [one] = api._state(folder)["household"]["returns"]
+    [one] = api.state(folder)["household"]["returns"]
     assert one["reminder"]["unsorted"] == 1
 
     vocab = run(capsys, "list")[1]["vocab"]
@@ -3942,19 +3942,19 @@ def test_the_returns_details_carry_household_year_and_return_name_and_the_editor
         "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
     engagement = where(demo_root, "1040 - John Park", year=2026, household="Park Family")
 
-    details = api._state(engagement)["engagement"]
+    details = api.state(engagement)["engagement"]
     assert details["household"] == "Park Family"
     assert details["tax_year"] == 2026
     assert details["return_name"] == "1040 - John Park"
 
-    rows = api._state(engagement)["rules"]
+    rows = api.state(engagement)["rules"]
     for field in ("household", "tax_year", "return_name"):
         assert field in {name for _, name in ENGAGEMENT_FIELDS}
         assert field not in ENGAGEMENT_EDITABLE
         code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
                             stdin={"items": rows, "engagement": {field: "something else"}})
         assert code == 1 and payload["error"] == f"'{field}' is not edited here"
-    assert api._state(engagement)["engagement"]["household"] == "Park Family"
+    assert api.state(engagement)["engagement"]["household"] == "Park Family"
 
 
 def test_edit_household_saves_members_contact_and_link_as_one_event(capsys, demo_root):
@@ -4024,7 +4024,7 @@ def test_state_carries_the_household_its_open_years_its_returns_and_the_queue_co
         (inbox_of(personal) / name).write_bytes((samples / name).read_bytes())
     assert scan(capsys, business)[0] == 0
 
-    state = api._state(personal)
+    state = api.state(personal)
     household = state["household"]
     assert household["name"] == "Park Family"
     assert household["members"] == ["John Park"] and household["contact"] == "John"
@@ -4209,7 +4209,7 @@ def test_the_household_card_names_the_year_it_rolls_to_and_each_returns_form_and
     the records the card is already drawn from."""
     john, sofia, llc = a_park_household(capsys, demo_root)
     _calendar_a_year_on(monkeypatch)
-    household = api._state(john)["household"]
+    household = api.state(john)["household"]
     assert household["open_years"] == [default_tax_year()]
     assert household["roll_year"] == next_tax_year(default_tax_year())
     assert [r["path"] for r in household["returns"]] == [str(john), str(sofia), str(llc)]
@@ -4233,13 +4233,13 @@ def test_each_return_says_whether_the_offered_roll_carries_it(capsys, demo_root,
     rolled = Path(payload["rolled"][0]["created"])
     # Mid-season for the year just rolled into: nothing is carried.
     _calendar_a_year_on(monkeypatch)
-    household = api._state(rolled)["household"]
+    household = api.state(rolled)["household"]
     assert household["roll_year"] is None
     assert not any(one["rollable"] for one in household["returns"])
     # Once that year has ended, the new return alone is carried: John's
     # prior was rolled on, Sofia's and the LLC's were retired.
     monkeypatch.setattr(api, "default_tax_year", lambda today=None: year + 1)
-    household = api._state(rolled)["household"]
+    household = api.state(rolled)["household"]
     assert household["roll_year"] == next_tax_year(year)
     assert {one["path"]: one["rollable"] for one in household["returns"]} == {
         str(john): False, str(sofia): False, str(llc): False, str(rolled): True}
@@ -4259,7 +4259,7 @@ def test_no_roll_is_offered_mid_season_on_a_paused_household_or_with_two_open_ye
     assert run(capsys, "create", stdin={"household": "Lee Family", "return_name": "1040 - Ann Lee",
                                         "items": items})[0] == 0
     ann = where(demo_root, "1040 - Ann Lee", household="Lee Family")
-    assert api._state(ann)["household"]["roll_year"] is None
+    assert api.state(ann)["household"]["roll_year"] is None
 
     # Two open years: a return for the year before sits beside it.
     assert run(capsys, "create", stdin={
@@ -4267,14 +4267,14 @@ def test_no_roll_is_offered_mid_season_on_a_paused_household_or_with_two_open_ye
         "return_name": "1040 - Ben Lee", "year": default_tax_year() - 1, "items": items})[0] == 0
     with monkeypatch.context() as later:
         _calendar_a_year_on(later)
-        household = api._state(ann)["household"]
+        household = api.state(ann)["household"]
         assert len(household["open_years"]) == 2 and household["roll_year"] is None
 
     # Paused: the folder renamed under its record (the 188 fixture), with
     # the calendar where a roll would otherwise be offered.
     renamed = _a_renamed_household(capsys, demo_root)
     _calendar_a_year_on(monkeypatch)
-    household = api._state(renamed)["household"]
+    household = api.state(renamed)["household"]
     assert household["pause"]["sentence"] and household["roll_year"] is None
 
 
@@ -4380,7 +4380,7 @@ def test_the_sharing_words_are_the_apis_and_the_renderer_types_none(capsys, demo
     """Every word of the checklist, the two lines about the firm's word and
     the sentence about a return left unticked is Python's; the page shows
     what it is handed and types none of it (decision 126)."""
-    words = api._vocab()["household"]
+    words = api.vocab()["household"]
     assert words["sharing_heading"] == api.SHARING_HEADING
     assert words["sharing_note"] == api.SHARING_NOTE
     assert words["mark_shared"] == api.MARK_SHARED_LABEL
@@ -4412,7 +4412,7 @@ def test_teaching_a_spelling_from_a_filing_rides_the_filings_transaction_and_a_o
     engagement = sample_engagement(capsys, demo_root, tmp_path,
                                    f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf")
     assert scan(capsys, engagement)[0] == 0
-    state = api._state(engagement)
+    state = api.state(engagement)
     [parked] = [e for e in state["index"] if e["decision"] == NEEDS_REVIEW]
     spec = {"original": parked["pbc_location"], "identifier": "A01", "seq": parked["seq"]}
 
@@ -4426,7 +4426,7 @@ def test_teaching_a_spelling_from_a_filing_rides_the_filings_transaction_and_a_o
                         stdin={**spec, "spelling": {"person": "Nobody Here",
                                                     "spelling": "Nobody Here"}})
     assert code == 1 and "Nobody Here is not on this return" in payload["error"]
-    assert [e["decision"] for e in api._state(engagement)["index"]] == [NEEDS_REVIEW]
+    assert [e["decision"] for e in api.state(engagement)["index"]] == [NEEDS_REVIEW]
 
     # And the real thing: one event, in the filing's own transaction.
     before = len(ledger.read_events(engagement))
@@ -4452,7 +4452,7 @@ def test_teaching_a_spelling_from_a_filing_rides_the_filings_transaction_and_a_o
                 )[ledger.INFO_KEY].keys() == {"people"}
 
     # Teaching the same spelling again is a note, not a second event.
-    state = api._state(engagement)
+    state = api.state(engagement)
     [again] = [e for e in state["index"] if e["decision"] == NEEDS_REVIEW] or [None]
     assert again is None
 
@@ -4479,7 +4479,7 @@ def test_create_refuses_a_return_with_no_people_and_the_editor_saves_people_as_o
     engagement = where(demo_root, "No People")
     before = len(ledger.read_events(engagement))
 
-    state = api._state(engagement)
+    state = api.state(engagement)
     assert state["engagement"]["people"] == list(PEOPLE)
     edited = [*PEOPLE, {"kind": "spouse", "name": "Maria Park",
                         "spellings": ["Maria Park", "Park, Maria"]}]
@@ -4546,7 +4546,7 @@ def test_the_household_card_shows_every_returns_reminder_state(capsys, demo_root
         "items": [{"identifier": "B01", "document": "Trial Balance", "named": "no"}]})[0] == 0
     personal = where(demo_root, "1040 - John Park", household="Park Family")
 
-    returns = api._state(personal)["household"]["returns"]
+    returns = api.state(personal)["household"]["returns"]
 
     assert [one["return_name"] for one in returns] == [
         "1040 - John Park", "1120S - Park Landscaping"]
@@ -4611,7 +4611,7 @@ def test_edit_household_saves_feeds_and_the_state_carries_feeds_and_fed_by_with_
     assert [one["name"] for one in other["household"]["fed_by"]] == ["Park Family"]
     assert other["household"]["feeds"] == []
 
-    words = api._vocab()["household"]
+    words = api.vocab()["household"]
     assert words["feed_warning"] == api.FEED_WARNING
     assert words["return_warning"] == api.RETURN_WARNING
     assert words["feed_warning"] == "Its Members Can Drop Here"   # P84: no placeholder left
@@ -4853,7 +4853,7 @@ def test_the_renderer_types_none_of_the_feed_words(capsys, demo_root):
                  api.FILE_WHERE_IT_WAITS_LABEL):
         assert f'"{word}"' not in js and f"'{word}'" not in js, word
         assert word not in html, word
-    words = api._vocab()
+    words = api.vocab()
     assert words["household"]["feeds_line"] == api.FEEDS_LINE
     assert words["household"]["fed_by_line"] == api.FED_BY_LINE
     assert words["household"]["add_feed"] == api.ADD_FEED_LABEL
@@ -5013,7 +5013,7 @@ def test_fed_by_names_no_household_whose_record_is_gone(capsys, demo_root, tmp_p
     moved aside, and the card does not name it - each row is held to a
     journal that is still where the row says."""
     father, llc = two_households(capsys, demo_root)
-    assert [one["name"] for one in api._state(llc)["household"]["fed_by"]] == ["Park Family"]
+    assert [one["name"] for one in api.state(llc)["household"]["fed_by"]] == ["Park Family"]
     father.parent.parent.rename(tmp_path / "aside")
     walked = _count_walks(monkeypatch)
 
@@ -5992,7 +5992,7 @@ def test_the_returning_client_page_picks_the_returns_recorded_form_by_default(ca
     [prior] = run(capsys, "priors")[1]["priors"]
     assert prior["form"] == "1040"
     engagement = where(demo_root, "Recorded")
-    assert [r["form"] for r in api._state(engagement)["household"]["returns"]] == ["1040"]
+    assert [r["form"] for r in api.state(engagement)["household"]["returns"]] == ["1040"]
 
     js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
     assert ": r.form;" in js and "const known = forms.some((f) => f.id === picked);" in js
@@ -7493,7 +7493,7 @@ def test_run_now_that_filed_keeps_its_counts_whatever_the_redraw_raises(capsys, 
     def cannot_redraw(folder):
         raise raised("a fabricated redraw failure")
 
-    monkeypatch.setattr(api, "_state", cannot_redraw)
+    monkeypatch.setattr(api, "state", cannot_redraw)
     code, payload = scan(capsys, engagement)
     assert code == 0, payload
     assert payload["state"] is None and "error" not in payload
@@ -7554,7 +7554,7 @@ def test_a_reminder_that_cannot_be_read_is_an_error_and_one_not_yet_scanned_is_a
     engagement = where(demo_root, "Smith")
     code, payload = run(capsys, "reminder", api.ENGAGEMENT_FLAG, str(engagement), stdin={})
     assert code == 0 and payload["reminder"] is None
-    assert payload["not_yet"] == reminder.REMINDER_NOT_YET == api._vocab()["reminder"]["not_yet"]
+    assert payload["not_yet"] == reminder.REMINDER_NOT_YET == api.vocab()["reminder"]["not_yet"]
 
     folder = chased_engagement(capsys, demo_root, name="Unreadable")
 
@@ -8230,7 +8230,7 @@ def test_the_state_builder_triages_once(capsys, demo_root, monkeypatch):
 
     monkeypatch.setattr(reminder, "triage", counted)
     state = payload_of_state(capsys, folder)
-    assert callers.count("_state") == 1 and "_reminder_payload" not in callers
+    assert callers.count("state") == 1 and "_reminder_payload" not in callers
     assert [row["identifier"] for row in state["reminder"]["held"]] == ["C01"]
 
 
@@ -8302,7 +8302,7 @@ def test_a_card_parked_for_an_unnamed_issuer_offers_the_next_free_issuer_row(cap
 
     engagement, row = _issuer_return(capsys, demo_root)
     assert row["code"] == reasons.ISSUER_NOT_NAMED.code
-    [card] = api._state(engagement)["review"]
+    [card] = api.state(engagement)["review"]
     assert card["issuer"] == {"identifier": "F03"}
 
 
@@ -8312,7 +8312,7 @@ def test_a_card_parked_for_any_other_reason_offers_no_issuer_box(capsys, demo_ro
 
     text_pdf(inbox_of(engagement) / "notice.pdf", ["an agency notice nothing asks for"], style="padded")
     scan(capsys, engagement)
-    cards = {card["original_name"]: card for card in api._state(engagement)["review"]}
+    cards = {card["original_name"]: card for card in api.state(engagement)["review"]}
     assert cards["notice.pdf"]["issuer"] is None
     assert cards["k-1 dunmore.pdf"]["issuer"] == {"identifier": "F03"}
 
@@ -8321,9 +8321,9 @@ def test_the_state_marks_which_rows_came_from_the_catalog(capsys, demo_root):
     """A custom row is one no catalog row of the return's form has
     (decision 201): the editor draws its Document with the plain boxes."""
     engagement, _ = _issuer_return(capsys, demo_root)
-    marked = {item["identifier"]: item["catalog_row"] for item in api._state(engagement)["items"]}
+    marked = {item["identifier"]: item["catalog_row"] for item in api.state(engagement)["items"]}
     assert marked == {"F01": True, "F02": False}
-    assert all("catalog_row" not in rule for rule in api._state(engagement)["rules"])
+    assert all("catalog_row" not in rule for rule in api.state(engagement)["rules"])
 
 
 def test_adding_the_issuer_and_filing_is_one_command_writing_two_events_in_one_transaction(
@@ -8370,7 +8370,7 @@ def test_a_locked_rescan_after_adding_the_issuer_is_said_by_its_class_never_its_
     note = payload["added_and_filed"]["assigned"]["scan_note"]
     assert note == api.ISSUER_NOT_RESCANNED
     assert "private" not in note
-    assert api._vocab()["review_labels"]["issuer_not_rescanned"] == api.ISSUER_NOT_RESCANNED
+    assert api.vocab()["review_labels"]["issuer_not_rescanned"] == api.ISSUER_NOT_RESCANNED
 
 
 def test_the_reply_names_the_row_added_and_the_document_filed(capsys, demo_root):
@@ -8437,7 +8437,7 @@ def test_a_card_no_longer_waiting_for_an_issuer_is_refused(capsys, demo_root):
     engagement, _ = _issuer_return(capsys, demo_root)
     text_pdf(inbox_of(engagement) / "notice.pdf", ["an agency notice nothing asks for"], style="padded")
     scan(capsys, engagement)
-    [notice] = [e for e in api._state(engagement)["index"] if e["original_name"] == "notice.pdf"]
+    [notice] = [e for e in api.state(engagement)["index"] if e["original_name"] == "notice.pdf"]
     before = _as_it_stands(engagement)
     code, payload = _add_issuer(capsys, engagement, notice)
     assert code == 1 and payload["error"] == NOT_AN_ISSUER_CARD.format(name="notice.pdf")
@@ -8510,13 +8510,13 @@ def test_an_editor_opened_before_the_issuer_was_added_is_refused_on_save(capsys,
     from tracker.manifest import LIST_MOVED
 
     engagement, row = _issuer_return(capsys, demo_root)
-    opened = api._state(engagement)
+    opened = api.state(engagement)
     code, payload = _add_issuer(capsys, engagement, row)
     assert code == 0, payload
     code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"items": opened["rules"], "engagement": {}, "head": opened["list_head"]})
     assert code == 1 and payload["error"] == LIST_MOVED
-    assert "F03" in {rule["identifier"] for rule in api._state(engagement)["rules"]}
+    assert "F03" in {rule["identifier"] for rule in api.state(engagement)["rules"]}
 
 
 def _hold_a_twin(engagement):
@@ -8589,7 +8589,7 @@ def test_an_edit_of_a_list_already_holding_one_issuer_name_twice_saves_and_warns
 
     engagement, _ = _issuer_return(capsys, demo_root)
     _hold_a_twin(engagement)
-    rules = api._state(engagement)["rules"]
+    rules = api.state(engagement)["rules"]
     rules[0] = {**rules[0], "expected_count": 2}
     code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"items": rules, "engagement": {}})
@@ -8603,7 +8603,7 @@ def test_an_edit_of_a_list_already_holding_one_issuer_name_twice_saves_and_warns
 
 
 def test_the_vocabulary_carries_every_word_201_shows():
-    words = api._vocab()
+    words = api.vocab()
     assert words["dialogs"] == {"unsaved": "Unsaved Changes",
                                 "keep_editing": "Keep Editing", "discard": "Discard My Changes"}
     editor = words["editor"]
@@ -8809,7 +8809,7 @@ def test_a_moved_files_open_key_is_where_it_is_now_and_empty_when_it_is_nowhere(
 
 
 def test_the_firms_paths_name_each_path_under_one_key_and_one_kind(capsys, demo_root, tmp_path):
-    _engagement, _state, firm = _firm_of_a_scanned_pile(capsys, demo_root, tmp_path)
+    _engagement, _scanned_state, firm = _firm_of_a_scanned_pile(capsys, demo_root, tmp_path)
     kinds_of = {}
     for key, path in firm["paths"].items():
         assert api.PATH_KINDS[key.split(" ", 1)[0]] in ("file", "reveal"), key
@@ -8824,7 +8824,7 @@ def test_a_real_firm_replys_paths_reveal_a_firm_file_and_refuse_an_unreported_on
     ``app/main.js`` under node (which learns a reply's top-level ``paths``)."""
     from tests.node_harness import run_menu
 
-    engagement, _state, firm = _firm_of_a_scanned_pile(capsys, demo_root, tmp_path)
+    engagement, _scanned_state, firm = _firm_of_a_scanned_pile(capsys, demo_root, tmp_path)
     [one] = [f for f in firm["files"] if f["open_key"].startswith("shown_copy ")][:1]
     path = firm["paths"][one["open_key"]]
     stranger = str(engagement / "Prepared" / "never reported.pdf")
@@ -8869,7 +8869,7 @@ def test_list_state_and_firm_agree_on_a_returns_year(capsys, demo_root):
 
 def test_the_after_install_heading_is_the_specs_words():
     assert api.AFTER_INSTALL_HEADING == "Setup Needs Attention"
-    assert api._vocab()["after_install"]["heading"] == "Setup Needs Attention"
+    assert api.vocab()["after_install"]["heading"] == "Setup Needs Attention"
 
 
 def test_firm_lists_every_file_it_counts_and_buckets_a_return_with_only_a_file(capsys, demo_root):
@@ -9332,7 +9332,7 @@ def test_the_vocabulary_carries_the_shell_join_words_and_keeps_the_dismiss_icon(
     """S5's editor words (two proposed for Jason), the one Close word (S5
     review F9), and the Bad Year reason (ruling 18a); the notice's Dismiss
     icon stays."""
-    words = api._vocab()
+    words = api.vocab()
     screen = words["screen"]
     assert screen["close"] == "Close" and screen["icons"]["dismiss"] == "Dismiss"
     assert screen["notices"]["pick_request"] == "Pick a Request First"
@@ -9435,7 +9435,7 @@ def test_list_reports_the_clients_root_and_the_firm_report_as_openable(capsys, d
 
 
 def test_the_vocabulary_carries_the_menu_the_screen_and_the_short_words(capsys):
-    words = api._vocab()
+    words = api.vocab()
     assert words["menu"] == api.MENU and words["screen"] == api.SCREEN
     # The key shape of SPEC-shell 11.4, flat: the harness and the renderer read these.
     assert set(words["screen"]["sort"]) == {"now", "stop", "locked", "stopping", "tip"}
@@ -9669,7 +9669,7 @@ def test_no_return_or_household_row_carries_an_open_key_and_their_words_navigate
     from tracker import settings
 
     monkeypatch.setattr(settings, "host_system", lambda: "posix")   # a Mac says Finder (R11)
-    screen = api._vocab()["screen"]
+    screen = api.vocab()["screen"]
     assert screen["navigate_client"] == "Navigate to Household"
     assert screen["navigate_return"] == "Navigate to Return"
     assert screen["show_in_explorer"] == "Show in File Explorer"
@@ -9678,8 +9678,8 @@ def test_no_return_or_household_row_carries_an_open_key_and_their_words_navigate
 def test_the_short_reason_and_the_section_words_are_capitalised_as_jason_asked():
     assert reasons.SHORT_REASONS["unmatched"] == "Could Not Sort"
     assert api.MENU["needs_review"] == "Needs Review"
-    assert api._vocab()["screen"]["sections"]["needs_review"] == "Needs Review"
-    assert api._vocab()["screen"]["empty"]["needs_review"] == "Nothing Needs Review"
+    assert api.vocab()["screen"]["sections"]["needs_review"] == "Needs Review"
+    assert api.vocab()["screen"]["empty"]["needs_review"] == "Nothing Needs Review"
 
 
 # ----------------------------------------- Title Case for every drawn word (Jason, 2026-09-29) ----
@@ -9763,7 +9763,7 @@ def _drawn_words(vocab):
 
 def test_every_drawn_word_the_vocabulary_carries_is_in_title_case(capsys, demo_root):
     bad = []
-    for path, text in _drawn_words(api._vocab()):
+    for path, text in _drawn_words(api.vocab()):
         if len(text.split()) > 5 or " " not in text.strip():
             continue        # one word is a name or a key; over five words is a sentence
         if path.endswith((".key", ".value")) or any(part in path for part in _TITLE_EXEMPT_BRANCHES):
@@ -9796,7 +9796,7 @@ def test_no_word_the_window_draws_says_client_but_a_folders_own_name(capsys, dem
     # fails here instead of being exempted silently (SPEC-error-handling-small
     # section 14).
     assert _STORED_REASON_WITH_CLIENT in manifest.OVERRIDE_REASONS
-    vocab = api._vocab()
+    vocab = api.vocab()
     drawn = [("menu", vocab["menu"]), ("screen", vocab["screen"]), ("reasons", vocab["reasons"]),
              ("ask_the_client", vocab["ask_the_client"]),
              ("engagement_fields", [f["label"] for f in vocab["editor"]["engagement_fields"]]),
@@ -9817,14 +9817,14 @@ def test_no_word_the_window_draws_says_client_but_a_folders_own_name(capsys, dem
 def test_the_editor_says_taxpayer_where_the_record_keeps_client():
     """P196 R7: the record and the files it writes keep their label; only
     the editor's word for the greeting name changes."""
-    [field] = [f for f in api._vocab()["editor"]["engagement_fields"] if f["key"] == "client"]
+    [field] = [f for f in api.vocab()["editor"]["engagement_fields"] if f["key"] == "client"]
     assert field["label"] == "Taxpayer"
     assert ENGAGEMENT_LABELS["client"] == "Client"
 
 
 def test_the_notices_carry_a_short_word_for_every_kind_the_pages_show():
     """S4's missing keys: each notice has five words or fewer, in Title Case, and no path."""
-    notices = api._vocab()["screen"]["notices"]
+    notices = api.vocab()["screen"]["notices"]
     assert {k: notices[k] for k in ("reader", "machine", "renamed", "paused", "feed", "drive")} == {
         "reader": "Install Folder Name Too Long", "machine": "Machine Needs Attention",
         "renamed": "Folder Renamed", "paused": "Two Years Open; Sorting Paused",
@@ -9835,7 +9835,7 @@ def test_the_notices_carry_a_short_word_for_every_kind_the_pages_show():
 
 
 def test_every_title_exception_is_an_exact_string_that_is_really_drawn_with_a_reason():
-    drawn = set(_drawn_words(api._vocab()))
+    drawn = set(_drawn_words(api.vocab()))
     for (path, text), reason in _TITLE_EXEMPT_STRINGS.items():
         assert (path, text) in drawn, (path, text)
         assert len(reason) > 20, (path, text)
@@ -9851,7 +9851,7 @@ def test_the_title_case_test_can_fail(monkeypatch):
 
 
 def test_list_carries_each_misfits_code_and_the_vocabulary_words_it(capsys, demo_root):
-    from tracker.api import _vocab
+    from tracker.api import vocab
 
     (demo_root / "Archive").mkdir()
     code, payload = run(capsys, "list")
@@ -9859,7 +9859,7 @@ def test_list_carries_each_misfits_code_and_the_vocabulary_words_it(capsys, demo
     [misfit] = [m for m in payload["misfits"] if Path(m["path"]).name == "Archive"]
     assert misfit["code"] == "not_a_tree"
     assert misfit["sentence"] and misfit["where"]
-    assert _vocab()["screen"]["misfits"]["reasons"][misfit["code"]] == "Unknown Folder"
+    assert vocab()["screen"]["misfits"]["reasons"][misfit["code"]] == "Unknown Folder"
 
 
 def test_a_record_rewritten_at_its_own_size_and_time_is_seen_once_anything_else_moves(
@@ -10047,8 +10047,8 @@ def test_a_related_household_is_written_on_both_records_and_removed_from_both(ca
     assert load_household_info(lee_dir).related == ()
     assert load_household_info(park_dir).related == ("Park & Lee LLC",)
     assert load_household_info(llc_dir).related == ("Park Family",)
-    assert api._vocab()["household"]["related_label"] == "Related Households"
-    assert api._vocab()["household"]["add_related"] == "Add Related Household"
+    assert api.vocab()["household"]["related_label"] == "Related Households"
+    assert api.vocab()["household"]["add_related"] == "Add Related Household"
 
 
 def test_a_related_list_refuses_itself_a_blank_a_repeat_and_a_household_that_is_not_there(capsys, demo_root):
@@ -10524,7 +10524,7 @@ def test_an_overview_read_in_batches_is_the_whole_walks_answer(capsys, demo_root
 def test_the_speed_round_words_are_in_the_screen_vocabulary():
     """P222's two words, approved by Jason 2026-10-08: the shell types
     neither; it fills ``reading_households`` with a count line's numbers."""
-    screen = api._vocab()["screen"]
+    screen = api.vocab()["screen"]
     assert screen["updating"] == "Updating"
     assert screen["reading_households"] == "Reading {n} of {total} Households"
     rows = [line.split("\t") for line in
@@ -10783,7 +10783,7 @@ def test_the_last_counts_write_nothing(capsys, demo_root, monkeypatch):
 def test_the_last_counts_words_are_in_the_screen_vocabulary():
     """P229's word, approved by Jason 2026-10-08 as written: the shell fills
     ``updating_as_of`` with ``firm-last``'s ``as_of``, said as a time."""
-    screen = api._vocab()["screen"]
+    screen = api.vocab()["screen"]
     assert screen["updating_as_of"] == "Updating, as of {time}"
     rows = [line.split("\t") for line in
             (Path(__file__).resolve().parents[1] / "pilot" / "wording-shell.tsv").read_text(
@@ -10815,7 +10815,7 @@ def test_a_mac_says_protected_view_does_not_exist_each_time_a_macro_copy_opens(
 
     assert fsio.mark_from_internet(tmp_path / "budget.xlsm", _opener=lambda *a, **k: None) is False
     # The sentence is learned from the API, as the shell's others are.
-    assert api._vocab()["shell"]["protected_view_mac"] == api.PROTECTED_VIEW_MAC
+    assert api.vocab()["shell"]["protected_view_mac"] == api.PROTECTED_VIEW_MAC
     assert api.PROTECTED_VIEW_MAC.startswith("Protected View does not exist on a Mac")
 
     engagement = tmp_path / "return"
@@ -10880,11 +10880,11 @@ def test_a_mac_is_never_shown_a_windows_word(monkeypatch):
 
     changed = {"menu.show_in_explorer", "screen.show_in_explorer", "scan.reasons.lock-held"}
     monkeypatch.setattr(settings, "host_system", lambda: "posix")
-    windows = dict(_every_string(api._vocab()))
+    windows = dict(_every_string(api.vocab()))
     assert {path for path, text in windows.items() if WINDOWS_WORDS.search(text)} == changed
     assert after_install.schedule_unreachable() == after_install.SCHEDULE_UNREACHABLE
     monkeypatch.setattr(settings, "host_system", lambda: "darwin")
-    mac = dict(_every_string(api._vocab()))
+    mac = dict(_every_string(api.vocab()))
     assert [path for path, text in mac.items() if WINDOWS_WORDS.search(text)] == []
     assert mac["menu.show_in_explorer"] == mac["screen.show_in_explorer"] == "Show in Finder"
     assert mac["scan.reasons.lock-held"] == "Another Mac Sorting"
@@ -10963,7 +10963,7 @@ def test_the_household_card_words_are_in_the_screen_vocabulary_and_the_wording_t
     the existing Shared and Not Shared); the page types none. Each has a row in
     the wording table, and Contact {name}, which nothing reads once the caption
     is the card, is gone."""
-    screen = api._vocab()["screen"]
+    screen = api.vocab()["screen"]
     card = screen["household_card"]
     assert card == {"contact": "Contact", "shared_with": "Shared With", "inbox_link": "Inbox Link", "link_saved": "Saved", "no_link": "Not Saved"}
     assert screen["shared"] == "Shared" and screen["not_shared"] == "Not Shared"
@@ -11181,8 +11181,8 @@ def test_a_view_that_cannot_be_saved_answers_the_page_without_a_token_and_the_ne
 
 
 def test_the_firm_words_are_the_vocabulary_the_window_reads():
-    """The keys' words are handed in from the same sources ``_vocab()`` serves, never typed twice."""
-    vocab = api._vocab()
+    """The keys' words are handed in from the same sources ``vocab()`` serves, never typed twice."""
+    vocab = api.vocab()
     words = api._firm_words()
     counts = vocab["screen"]["counts"]
     assert (words["need"], words["waiting"], words["complete"]) == (counts["need"], counts["waiting"], counts["complete"])

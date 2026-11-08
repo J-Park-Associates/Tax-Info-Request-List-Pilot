@@ -588,7 +588,7 @@ def test_the_shell_says_protected_view_does_not_exist_each_time_a_macro_copy_ope
     main_js = read("app/main.js")
     says = main_js.split("const shellSays = {", 1)[1].split("\n};\n", 1)[0]
     assert _joined_string(says, "protected_view_mac:") == api.PROTECTED_VIEW_MAC
-    assert api._vocab()["shell"]["protected_view_mac"] == api.PROTECTED_VIEW_MAC
+    assert api.vocab()["shell"]["protected_view_mac"] == api.PROTECTED_VIEW_MAC
     assert main_js.count("shell.openPath(") == 1                       # the one door, still
     assert "showMessageBox(" not in main_js.replace("showMessageBoxSync(", "")
     assert "said.says" in read("app/renderer/shell.js")
@@ -609,7 +609,7 @@ def test_the_side_panel_names_the_product_from_its_one_home():
     from tracker.settings import product_name
 
     assert api.SCREEN["side"]["product"] == product_name() == json.loads(read("app/package.json"))["productName"]
-    assert api._vocab()["screen"]["side"]["product"] == product_name()
+    assert api.vocab()["screen"]["side"]["product"] == product_name()
     assert '"product": product_name(),' in read("tracker/api.py")
     assert product_name() not in read("tracker/api.py")
 
@@ -1109,7 +1109,7 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
     # two patterns the dialog's previews fill (decision 125).
     import tracker.api as api_module
 
-    words = api_module._vocab()
+    words = api_module.vocab()
     for literal in (*words["household"].values(), *words["layout"].values()):
         if not isinstance(literal, str):
             continue
@@ -1352,7 +1352,7 @@ def test_every_word_of_roll_forward_add_a_return_and_new_household_is_the_apis()
 
     js = read("app/renderer/app.js")
     html = read("app/renderer/index.html")
-    words = api_module._vocab()["household"]
+    words = api_module.vocab()["household"]
     assert "existing" not in words
     for key in ROLL_AND_ADD_KEYS:
         assert isinstance(words[key], str) and words[key], key
@@ -2572,7 +2572,7 @@ def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind()
     assert "vocab.path_kinds" in main and "shellSays.not_opened" in opener
     # One call site of each, both behind openChecked (after the lstat and the kind check).
     assert main.count("shell.openPath(") == 1 and main.count("shell.showItemInFolder(") == 1
-    vocab = api._vocab()
+    vocab = api.vocab()
     assert vocab["shell"]["not_opened"] == api.SHELL_NOT_OPENED
     assert set(vocab["path_kinds"].values()) == {"folder", "file", "reveal"}
     # A reveal-only kind is refused unless the call asked to reveal (F1).
@@ -3093,7 +3093,7 @@ def test_run_now_is_cut_off_only_at_the_run_limit_its_own_first_line_states():
     assert str(RUN_TIME_LIMIT_SECONDS) not in main_js and "2 * 60 * 60" not in main_js
     assert "said.limit_seconds * 1000" in main_js
     assert "vocab.pass_command" in main_js and f'"{api.PASS_COMMAND}"' not in main_js
-    assert api._vocab()["pass_command"] == api.PASS_COMMAND
+    assert api.vocab()["pass_command"] == api.PASS_COMMAND
     main = py_function("_pass")
     assert "limit_seconds=RUN_TIME_LIMIT_SECONDS)" in main[:main.index('watch.say("started"')]
     assert f'"{api.PASS_COMMAND}"' not in renderer_text()
@@ -3215,8 +3215,8 @@ def test_a_command_killed_at_the_cap_says_whether_it_was_a_sort_a_change_or_a_re
     at = " " + api.SHELL_KILLED_AT.format(household="Sample Household", name="A01")
     assert ran["out"][1]["reply"]["error"] == f"{api.SHELL_KILLED_WRITE} {api.SHELL_KILLED_WRITE_NOTE}{at}"
     assert ran["out"][2]["reply"]["error"] == f"{api.SHELL_KILLED_READ}{at}"
-    assert "rename" in api._vocab()["writing_commands"] and api.PASS_COMMAND not in api._vocab()["writing_commands"]
-    assert "state" not in api._vocab()["writing_commands"]
+    assert "rename" in api.vocab()["writing_commands"] and api.PASS_COMMAND not in api.vocab()["writing_commands"]
+    assert "state" not in api.vocab()["writing_commands"]
     for said in (api.SHELL_KILLED, api.SHELL_KILLED_WRITE, api.SHELL_KILLED_WRITE_NOTE, api.SHELL_KILLED_READ,
                  api.SHELL_KILLED_AT):
         assert len(said.split()) <= 5, said
@@ -3391,7 +3391,7 @@ def test_the_shells_default_words_are_the_apis_word_for_word():
     assert default("could_not_send") == api.SHELL_COULD_NOT_SEND
     assert default("no_log") == api.SHELL_NO_LOG
     assert default("not_opened") == api.SHELL_NOT_OPENED
-    shell = api._vocab()["shell"]
+    shell = api.vocab()["shell"]
     assert (shell["killed"], shell["killed_at"], shell["no_reply"], shell["could_not_start"]) == (
         api.SHELL_KILLED, api.SHELL_KILLED_AT, api.SHELL_NO_REPLY, api.SHELL_COULD_NOT_START)
 
@@ -3410,7 +3410,7 @@ def test_the_notice_buttons_are_the_apis_labels_word_for_word():
     icon = re.search(r'<button[^>]*data-act="dismiss"[^>]*>', template).group(0)
     assert 'data-tip-key="screen.icons.dismiss"' in icon and f'aria-label="{api.NOTICE_LABELS["dismiss"]}"' in icon
     assert "look" not in template
-    assert api._vocab()["notices"]["labels"] == api.NOTICE_LABELS
+    assert api.vocab()["notices"]["labels"] == api.NOTICE_LABELS
 
 
 def test_no_failure_is_toasted():
@@ -3605,7 +3605,7 @@ def test_every_word_a_scan_reply_is_said_in_is_the_apis():
     js = read("app/renderer/app.js")
     body = js.split("function scanSummary(run, others, summary) {", 1)[1].split("\n}\n", 1)[0]
     body += js.split("function scanFailed(run) {", 1)[1].split("\n}\n", 1)[0]
-    words = api._vocab()["scan"]
+    words = api.vocab()["scan"]
     for key, literal in words.items():
         if key == "scanning":
             continue        # the sort icon and the last-sort line say a running sort now (SPEC 8.3)
@@ -3634,7 +3634,7 @@ def test_an_error_of_the_page_or_the_shell_is_said_by_class_and_its_message_only
     assert "shellFailure(fill(shellSays.could_not_send" in run and "`The app could not send" not in run
     assert "err.message" not in run.split("keepInLog(", 1)[0]
     assert 'ipcMain.handle("log-error"' in main_js
-    assert api._vocab()["shell"]["page_error"] == api.PAGE_ERROR
+    assert api.vocab()["shell"]["page_error"] == api.PAGE_ERROR
 
 
 # ============= one spawn per click (decision 194) ===========================
@@ -3728,7 +3728,7 @@ def test_a_warning_about_another_return_is_said_under_its_label():
     body = js_function("takeReply", "app.js")
     assert "vocab.notices.about" in body and "labelOfState(result)" in body
     assert js.count("ofAnother: true") == 1
-    assert api._vocab()["notices"]["about"] == api.NOTICE_ABOUT
+    assert api.vocab()["notices"]["about"] == api.NOTICE_ABOUT
     assert set(re.findall(r"{(\w+)}", api.NOTICE_ABOUT)) == {"label", "sentence"}
 
 
@@ -4174,7 +4174,7 @@ def test_the_roll_banner_says_a_failed_retirement_and_turns_warn(tmp_path):
     warning = ROLLOVER_NOT_RETIRED.format(year=2027, rolled="1040 - Pat Lee",
                                           retired="none", left="1120S - Lee LLC",
                                           why="a fabricated failure")
-    words = api._vocab()
+    words = api.vocab()
     seen = _run_renderer(tmp_path, "roll_banner", (
         "function fill(pattern, values) {", "async function rollFromCard() {"), f"""
 const vocab = {json.dumps({key: words[key] for key in (
@@ -4491,7 +4491,7 @@ def test_the_four_safeguard_words_are_pinned_word_for_word_and_reach_the_app():
     import tracker.api as api
 
     assert tracker.SAFEGUARDS == ("No AI Reads Documents", "Originals Never Changed", "Nothing Is Guessed", "Nothing Is Ever Sent")
-    assert [rule["short"] for rule in api._vocab()["rules"]] == list(tracker.SAFEGUARDS)
+    assert [rule["short"] for rule in api.vocab()["rules"]] == list(tracker.SAFEGUARDS)
 
 
 def test_the_runbook_says_where_the_fallback_error_log_is_and_to_delete_it_by_hand():
@@ -4568,7 +4568,7 @@ def test_no_sentence_the_app_shows_calls_it_the_tracker():
     import tracker
     import tracker.api as api
 
-    said = {f"vocab: {s}": s for s in _strings(api._vocab())}
+    said = {f"vocab: {s}": s for s in _strings(api.vocab())}
     for module in pkgutil.iter_modules(tracker.__path__):
         loaded = importlib.import_module(f"tracker.{module.name}")
         for name, value in vars(loaded).items():

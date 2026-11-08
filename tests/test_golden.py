@@ -7,7 +7,7 @@ claim reads, or a document that files under another request, can pass all of
 them. So this file keeps three kinds of recording in ``tests/golden/`` and
 holds the program to them (J4, R4.3; findings E-2, E-7):
 
-- ``vocab.keys.json``: the key tree of ``api._vocab()``, the words the app
+- ``vocab.keys.json``: the key tree of ``api.vocab()``, the words the app
   draws, as keys and value types.
 - ``replies.<command>.keys.json``: the key tree of the reply to each command
   the app's screens are drawn from - ``list``, ``state``, ``edit-household``,
@@ -204,7 +204,7 @@ def _the_pass(engagement: Path) -> dict:
 
 
 def test_the_vocabulary_has_the_recorded_key_tree(record):
-    _verdict(held_to("vocab.keys.json", shape(api._vocab()), record))
+    _verdict(held_to("vocab.keys.json", shape(api.vocab()), record))
 
 
 def test_the_replies_and_a_pass_over_the_sample_pile_are_the_recorded_ones(capsys, scratch_root, samples, record):

@@ -1579,7 +1579,7 @@ def api_state(engagement):
     """The state the app reads for one return."""
     import tracker.api as api_module
 
-    return api_module._state(Path(engagement))
+    return api_module.state(Path(engagement))
 
 
 def test_after_any_pass_nothing_under_the_client_tree_is_a_record_a_copy_a_draft_a_lock_or_a_page(

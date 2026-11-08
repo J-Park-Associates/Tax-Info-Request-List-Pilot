@@ -359,7 +359,7 @@ def run_notices(probe: str, tmp_path: Path, vocab_notices: str = "{}"):
     lifted = "\n".join([js_function(name, "app.js") for name in NOTICE_FUNCTIONS] + [js_function("shortNotice", "shell.js"),
                                                                                        js_function("pagesHouseholdNotices", "pages.js")])
     harness = (REPO / "pilot" / "harness" / "stub.js").read_text(encoding="utf-8")
-    mirror = json.dumps(api._vocab())
+    mirror = json.dumps(api.vocab())
     script = tmp_path / "notices_probe.js"
     script.write_text(f"""
 const vm = require("vm");

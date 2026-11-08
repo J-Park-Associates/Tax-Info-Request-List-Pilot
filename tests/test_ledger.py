@@ -779,7 +779,7 @@ def test_the_app_shows_a_persons_filing_the_moment_they_make_it(engagement):
     parked = sort(engagement, today=DAY1).review[0]
     assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
 
-    [row] = api._state(engagement)["index"]
+    [row] = api.state(engagement)["index"]
     assert row["decision"] == FILED and row["identifier"] == "C01"
     # One copy, one answer: what the app shows is the row the person's
     # decision was recorded as, in the same transaction as the move.

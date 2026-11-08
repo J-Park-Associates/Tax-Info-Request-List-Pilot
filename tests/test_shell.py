@@ -1697,7 +1697,7 @@ def test_no_toast_types_a_sentence_and_the_words_it_asks_for_are_five_title_case
     for name in ("app.js", "pages.js", "shell.js", "sheet.js"):
         text = stripped_js(name)
         assert not re.search(r"\btoast\(\s*[\"'`]", text), f"{name} types a toast"
-    notices = api._vocab()["screen"]["notices"]
+    notices = api.vocab()["screen"]["notices"]
     keys = set(re.findall(r"toastWord\(\"(\w+)\"\)", stripped_js("app.js")))
     assert keys == {"pick_request", "name_requests"}, keys
     for key in keys | {"no_log"}:
@@ -2446,7 +2446,7 @@ def _stub_replies(scenario: str) -> dict:
     stub = (REPO / "pilot" / "harness" / "stub.js").read_text(encoding="utf-8")
     script = f"""
 const vm = require("vm");
-const window = {{ __VOCAB__: {json.dumps(api._vocab())} }};
+const window = {{ __VOCAB__: {json.dumps(api.vocab())} }};
 vm.runInContext({json.dumps(stub)}, vm.createContext({{ window, location: {{ search: "?scenario={scenario}" }}, URLSearchParams, setTimeout, console, Date, Intl }}));
 (async () => {{
   const list = await window.tracker.call(["list"]);
@@ -2480,10 +2480,10 @@ def _stub_code() -> str:
 
 def test_the_harness_stub_speaks_the_apis_vocabulary(tmp_path):
     """SPEC 14.1 and 14.4. No snapshot: ``make_vocab.py`` dumps
-    ``api._vocab()`` of this tree, the stub hands it on unchanged, and every
+    ``api.vocab()`` of this tree, the stub hands it on unchanged, and every
     word the stub reads by name is a key the API has."""
     assert not (REPO / "pilot" / "harness" / "vocab-mirror.json").exists()
-    live = json.loads(json.dumps(api._vocab()))
+    live = json.loads(json.dumps(api.vocab()))
     dumped = tmp_path / "vocab.json"
     # The child answers the question of the same computer as this process
     # does: the suite's pin of ``settings.host_system`` (tests/plugin_fakes.py)
@@ -2548,8 +2548,8 @@ def test_the_harness_stub_replies_have_the_shape_of_the_engines(capsys, scratch_
     assert _keys(stub["list"]["misfits"]) == _keys(real["list"]["misfits"]) == {"path", "sentence", "code", "where"}
     codes = {row["code"] for row in stub["list"]["misfits"]} | {row["code"] for row in real["list"]["misfits"]}
     # The stub sends one code the vocabulary has no word for, on purpose: the page draws the name alone.
-    assert codes - set(api._vocab()["screen"]["misfits"]["reasons"]) == {"unwritten_code"}, codes
-    assert {row["code"] for row in real["list"]["misfits"]} <= set(api._vocab()["screen"]["misfits"]["reasons"])
+    assert codes - set(api.vocab()["screen"]["misfits"]["reasons"]) == {"unwritten_code"}, codes
+    assert {row["code"] for row in real["list"]["misfits"]} <= set(api.vocab()["screen"]["misfits"]["reasons"])
     assert set(stub["list"]["paths"]) == set(real["list"]["paths"])
 
     # firm: paused on every return, an open key on every file, one paths table
@@ -2617,7 +2617,7 @@ def test_the_three_info_dialogs_close_with_the_apis_close_word():
     for name in ("safeguards", "about", "misfits"):
         assert f'$("{name}-close").textContent = words.close;' in app, name
     assert "-close\").textContent = words.icons.dismiss" not in app
-    screen = api._vocab()["screen"]
+    screen = api.vocab()["screen"]
     assert screen["close"] == "Close" and screen["icons"]["dismiss"] == "Dismiss"
 
 
@@ -2680,7 +2680,7 @@ def test_a_failed_sort_says_a_short_approved_reason_and_never_a_path(tmp_path):
     engine does not tell apart is "Unexpected Error"."""
     from tests.wording import title_case
 
-    words = api._vocab()["scan"]
+    words = api.vocab()["scan"]
     setup = ("const fill = (p, v) => p.replace(/\\{(\\w+)\\}/g, (_, k) => v[k] ?? '');\n"
              f"const vocab = {{ scan: {json.dumps(words)} }};")
     probe = """
@@ -2720,7 +2720,7 @@ def test_a_sort_asked_for_an_inactive_return_says_why_nothing_was_done(tmp_path,
     [skipped] = [one for one in runs if one["path"] == str(prior.path)]
     assert skipped["skipped"] and skipped["code"] == "inactive" and not skipped["error"]
 
-    words = api._vocab()["scan"]
+    words = api.vocab()["scan"]
     setup = ("const fill = (p, v) => p.replace(/\\{(\\w+)\\}/g, (_, k) => v[k] ?? '');\n"
              f"const vocab = {{ scan: {json.dumps(words)} }};")
     probe = f"""
@@ -2734,7 +2734,7 @@ def test_a_sort_asked_for_an_inactive_return_says_why_nothing_was_done(tmp_path,
     for line in said:
         assert len(line.split()) <= 5 and title_case(line) == line, line
     assert set(words["skipped"]) == {"inactive", "rolled-forward", "no-room"}
-    screen = api._vocab()["screen"]
+    screen = api.vocab()["screen"]
     assert (words["skipped"]["inactive"], words["skipped"]["rolled-forward"]) == (screen["inactive"], screen["rolled"])
 
 
@@ -2912,7 +2912,7 @@ def test_the_sorts_answer_is_built_line_by_line_from_the_pass(tmp_path):
     A pass that failed as a whole is one line, whole (its lock kept), with
     Retry; a skip names its reason; a summary for a return no longer shown
     carries its label on the first line only; a good Sort says nothing."""
-    words = api._vocab()["scan"]
+    words = api.vocab()["scan"]
     setup = ("const fill = (p, v) => p.replace(/\\{(\\w+)\\}/g, (_, k) => v[k] ?? '');\n"
              f"const vocab = {{ scan: {json.dumps(words)} }};\n") + r"""
       let scanning = null, active = "r25", viewGeneration = 1, kept = [];
@@ -3010,7 +3010,7 @@ def test_a_failed_or_locked_household_sort_draws_no_engine_sentence_and_no_path(
     assert {one["code"] for one in held} == {"lock-held"} and {one["code"] for one in failed} == {"client-folder-missing"}
     assert all(one["skipped"] for one in held) and all(one["error"] for one in failed), "the engine did say its long sentences"
 
-    words = api._vocab()["scan"]
+    words = api.vocab()["scan"]
     setup = ("const fill = (p, v) => p.replace(/\\{(\\w+)\\}/g, (_, k) => v[k] ?? '');\n"
              f"const vocab = {{ scan: {json.dumps(words)} }};\nfunction shellReturn() {{ return null; }}")
     probe = "return scanSummary(runs[0], runs.slice(1), '').text;"
@@ -4137,7 +4137,7 @@ def test_another_returns_line_keeps_its_bullet_and_says_the_return_by_its_fields
     begins with its bullet and says the return as the lists do (P194-P196):
     the year, the taxpayer and the form, each once; the household is the
     page's own. A return the list does not hold keeps its label."""
-    words = api._vocab()
+    words = api.vocab()
     setup = (f"const vocab = {{ scan: {json.dumps(words['scan'])}, layout: {json.dumps(words['layout'])} }};\n"
              + SORT_SAID + js_function("pagesTaxpayer", "pages.js") + r"""
       let scanning = null, active = "r25", viewGeneration = 1, kept = [];
@@ -4180,7 +4180,7 @@ def test_a_sort_that_finds_nothing_to_do_says_nothing_to_sort(tmp_path):
     all. It now says "Nothing to Sort"; with a file still arriving it says
     "Nothing Done: 1 Still Syncing." in words already approved; a Sort that
     did anything is unchanged."""
-    words = api._vocab()["scan"]
+    words = api.vocab()["scan"]
     setup = f"const vocab = {{ scan: {json.dumps(words)} }};\n" + SORT_SAID
     probe = """
       return [scanSummary(run({}), [], ""), scanSummary(run({ waiting: 1 }), [], ""), scanSummary(run({ filed: 1 }), [], ""),
@@ -4205,7 +4205,7 @@ def test_nothing_to_sort_is_said_only_when_no_return_of_the_household_received_a
     where no return filed, sent to review, met a file it could not sort or
     was stopped still says it, and a file arriving for another return is
     still the syncing words."""
-    words = api._vocab()["scan"]
+    words = api.vocab()["scan"]
     setup = f"const vocab = {{ scan: {json.dumps(words)} }};\n" + SORT_SAID
     probe = """
       const other = (over) => run({ path: "r24", label: "Smith Family 2024 1040 - John A. Smith", ...over });
@@ -5415,7 +5415,7 @@ def test_the_harness_stub_answers_last_pass_with_the_pass_its_list_carries(tmp_p
     script.write_text(f"""
 const vm = require("vm");
 const stubSource = {json.dumps(harness)};
-const mirror = JSON.parse({json.dumps(json.dumps(api._vocab()))});
+const mirror = JSON.parse({json.dumps(json.dumps(api.vocab()))});
 (async () => {{
   const out = {{}};
   for (const scenario of ["normal", "failed", "setup"]) {{
@@ -8219,7 +8219,7 @@ def test_the_engines_taxpayer_form_and_count_words_are_the_pages(tmp_path):
     from tracker import firm_pages
 
     words = api._firm_words()
-    vocab_words = api._vocab()
+    vocab_words = api.vocab()
     names = [("1040 - John & Maria Park", "1040"), ("1120-S - Rivera Design LLC", "1120S"), ("1120S - Rivera Design LLC", "1120-S"), ("1040 - John Park", "1065"),
              ("John Park 1040", "1040"), ("1040 - John Park", ""), ("1040 -", "1040"), ("1040 - 1040 - Twice", "1040"), ("990 - Trust of A - B", "990"), ("", "1040")]
     counts = [({"needs_you": 2, "waiting": 1}, ""), ({"needs_you": 0, "waiting": 4}, ""), ({"needs_you": 0, "waiting": 0}, ""), ({"needs_you": 0, "waiting": 0}, "Could Not Be Read"),

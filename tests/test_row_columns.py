@@ -408,7 +408,7 @@ def _run_editor_rows(rules: list[dict], ctx) -> list[dict]:
         f"{js_function('editorRow', 'app.js')}\n"
         "process.stdout.write(JSON.stringify(input.rules.map(editorRow)));\n",
         encoding="utf-8", newline="\n")
-    done = subprocess.run([node, str(script)], input=json.dumps({"vocab": api._vocab(), "rules": rules}),
+    done = subprocess.run([node, str(script)], input=json.dumps({"vocab": api.vocab(), "rules": rules}),
                           capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
@@ -711,7 +711,7 @@ def test_the_plain_view_and_the_routing_fold_partition_the_columns():
     is the API's answer, and between them they are the request list's
     columns - ``RULE_FIELDS`` without the two a person never types -
     exactly once each (decision 201; decision 104's one schema)."""
-    editor = api._vocab()["editor"]
+    editor = api.vocab()["editor"]
     plain, routing = editor["plain_columns"], editor["routing_columns"]
     typed = [column for column in records.RULE_FIELDS if column not in ("row", "date_pattern_derived")]
     assert sorted(plain + routing) == sorted(typed)

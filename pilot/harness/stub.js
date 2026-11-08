@@ -16,7 +16,7 @@
   const params = new URLSearchParams(location.search);
   const scenario = params.get("scenario") || "normal";
 
-  // The words are the engine's own: tracker.api._vocab() of this tree, dumped
+  // The words are the engine's own: tracker.api.vocab() of this tree, dumped
   // by make_vocab.py and served as window.__VOCAB__ (no snapshot since S6b).
   // The stub adds nothing to them.
   const vocab = Object.assign({}, window.__VOCAB__);

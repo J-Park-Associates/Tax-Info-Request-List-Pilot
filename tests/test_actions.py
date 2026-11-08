@@ -2199,7 +2199,7 @@ def test_a_persons_filing_unfiling_and_restore_still_work_with_originals_across_
     assert row.decision == FILE_MOVED
     put_back = restore_working_copy(engagement, row.pbc_location, today=DAY2).entry
     assert put_back.decision == FILED and home.is_file()
-    assert api_module._state(engagement)["moved"] == []
+    assert api_module.state(engagement)["moved"] == []
 
 
 @pytest.mark.parametrize("earlier", ("set aside", "working copy deleted"))

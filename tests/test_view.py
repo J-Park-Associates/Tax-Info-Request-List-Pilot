@@ -746,15 +746,15 @@ def test_a_pass_writes_no_workbook_for_a_person_to_open(engagement):
 
 
 def test_the_state_the_app_reads_carries_the_view_and_its_path(engagement):
-    from tracker.api import _state, _vocab
+    from tracker.api import state, vocab
 
-    state = _state(engagement)
-    assert state["view"] == {"state": view.UNKNOWN, "path": str(view.path_for(engagement))}
-    assert state["paths"]["view"] == str(engagement / view.VIEW_FILENAME)
+    shown = state(engagement)
+    assert shown["view"] == {"state": view.UNKNOWN, "path": str(view.path_for(engagement))}
+    assert shown["paths"]["view"] == str(engagement / view.VIEW_FILENAME)
 
     view.write_view(engagement)
-    assert _state(engagement)["view"]["state"] == view.CURRENT
-    assert _vocab()["view"] == {"label": view.VIEW_LABEL, "open": view.VIEW_OPEN_LABEL,
+    assert state(engagement)["view"]["state"] == view.CURRENT
+    assert vocab()["view"] == {"label": view.VIEW_LABEL, "open": view.VIEW_OPEN_LABEL,
                                 "states": list(view.VIEW_STATES)}
 
 

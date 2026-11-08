@@ -507,7 +507,7 @@ SCAN_REASONS = {
 #: Why a return skipped for want of room did nothing: "Nothing Done: Names
 #: Too Long." (P134; Jason chose it, 2026-09-30, SPEC-wincheck-fixes Q1).
 #: The other skip words, Inactive and Rolled Forward, are the screen's own
-#: (``SCREEN``), referenced in :func:`_vocab`'s ``scan.skipped``, never
+#: (``SCREEN``), referenced in :func:`vocab`'s ``scan.skipped``, never
 #: restated. A lock held elsewhere says :data:`SCAN_REASONS`'s word; a kind
 #: listed nowhere is :data:`SCAN_NOTHING_DONE_BARE` (P117).
 SCAN_NO_ROOM = "Names Too Long"
@@ -1328,7 +1328,7 @@ MENU: dict[str, str] = {
 #: What a Mac says where the words above name a Windows program or place
 #: (SPEC-mac R11): File Explorer is Finder, and another computer sorting is
 #: another Mac, because the Mac is the one machine (P238). One small table per
-#: place the words are kept, laid over the Windows words by :func:`_vocab` on a
+#: place the words are kept, laid over the Windows words by :func:`vocab` on a
 #: Mac and nowhere else, so a Windows or Linux reply is unchanged and no Mac
 #: is ever shown a Windows word (``test_a_mac_is_never_shown_a_windows_word``).
 MAC_MENU = {"show_in_explorer": "Show in Finder"}
@@ -1663,7 +1663,7 @@ PROTECTED_VIEW_MAC = ("Protected View does not exist on a Mac, so this file open
                       "Security > Disable all macros without notification.")
 
 
-def _vocab() -> dict:
+def vocab() -> dict:
     """Every word and number the renderer shows or compares, from its owner.
 
     The app never types a status, an override, a decision, a default or a
@@ -3064,12 +3064,12 @@ def file_group(entry: IndexEntry) -> str:
     return GROUP_RECEIVED
 
 
-def _state(engagement: Path) -> dict:
+def state(engagement: Path) -> dict:
     """Everything the app draws one return from, in one read (decision 194).
 
     **Two rules hold for every key, so the comments below do not repeat
     them.** The renderer types none of the words (they come from
-    :func:`_vocab`) and works none of the facts out: a count, a group, a
+    :func:`vocab`) and works none of the facts out: a count, a group, a
     side, a year or a key arrives computed. And the shell opens only the
     paths ``paths`` holds - it lstats before it acts - so every folder or
     file a button opens is named there, each by a key the row carries, never
@@ -3369,7 +3369,7 @@ def _last_pass_file() -> str | None:
 
 
 def _cmd_state(argv: list[str]) -> dict:
-    return _state(_engagement_dir(argv))
+    return state(_engagement_dir(argv))
 
 
 #: Sort & Scan's command (decision 203): the scheduled runner for this
@@ -3490,7 +3490,7 @@ def _cmd_edit(argv: list[str]) -> dict:
     """Save the request list and the engagement's details from the editor.
 
     JSON on stdin: {"items": [row, ...], "engagement": {...}}. Each row is
-    the editor's row, keyed by the column keys ``_vocab()['columns']``
+    the editor's row, keyed by the column keys ``vocab()['columns']``
     names: the two numbers as typed, the file types and keywords as a
     comma-separated string or a list, the date pattern blank, ``*`` or a
     regex, the override blank or one of its two values. The rows are
@@ -3554,7 +3554,7 @@ def _cmd_edit(argv: list[str]) -> dict:
     saved = save_rules(engagement, items, info, head=head,
                        check=lambda: _refuse_taking_away_documents(engagement, recorded, items))
     _refresh_readmes(engagement)
-    state = _state(engagement)
+    fresh = state(engagement)
     # What the list already held and this save did not touch - two issuer
     # rows of one name (decision 201) - is the envelope's to say: a notice
     # that stays until dismissed (decision 193).
@@ -3565,7 +3565,7 @@ def _cmd_edit(argv: list[str]) -> dict:
                   "engagement": list(saved.info_fields), "recorded": saved.recorded},
         # The editor's rule warnings are ``state.warnings``; the reply's own
         # ``warnings`` is the envelope's, with one meaning (decision 193).
-        "state": state,
+        "state": fresh,
     }
     # ``active`` is the one field saved here that the list shows - the
     # feed picker reads it - so only a save that changed it walks (R6,
@@ -3708,7 +3708,7 @@ def _cmd_unlearn(argv: list[str]) -> dict:
             "keyword": taken.keyword,
             "scan_note": _rescan(engagement),
         },
-        "state": _state(engagement),
+        "state": state(engagement),
     }
 
 
@@ -3738,7 +3738,7 @@ def _cmd_rename(argv: list[str]) -> dict:
     return {
         "renamed": {"old": done.old, "new": done.new, "moved": done.moved, "rows": done.rows,
                     "left": list(done.left), "head": done.head, "scan_note": done.scan_note},
-        "state": _state(engagement),
+        "state": state(engagement),
     }
 
 
@@ -3747,7 +3747,7 @@ def _cmd_unlock(argv: list[str]) -> dict:
     engagement = _engagement_dir(argv)
     status = clear_stale_lock(engagement)
     return {"cleared": True, "age_minutes": int(status.age_seconds // 60),
-            "state": _state(engagement)}
+            "state": state(engagement)}
 
 
 def _machine_warnings(root: Path | None) -> list[str]:
@@ -3816,7 +3816,7 @@ def _cmd_list(argv: list[str]) -> dict:
         root = _saved_root()
     except door.DoorError as exc:
         return {**empty, "needs_root": True, "root": str(clients_root() or ""),
-                "root_problem": str(exc), "vocab": _vocab()}
+                "root_problem": str(exc), "vocab": vocab()}
     except SettingsError:
         # A data home that cannot be had (decision 186's review, M1): the root
         # cannot be held to its rule without it, so it is not walked - but the
@@ -3824,22 +3824,22 @@ def _cmd_list(argv: list[str]) -> dict:
         # built above with no root) already carries the sentence. The root
         # is kept, not asked for again: it is the machine that needs fixing.
         return {**empty, "needs_root": False, "root": str(clients_root() or ""),
-                "vocab": _vocab()}
+                "vocab": vocab()}
     if root is None or not root.is_dir():
-        return {**empty, "needs_root": True, "root": str(root or ""), "vocab": _vocab()}
+        return {**empty, "needs_root": True, "root": str(root or ""), "vocab": vocab()}
     try:
         registry = discover_engagements(root)
     except EmptyRoot:
         # An empty root is a practice nobody has set up yet, not a failure.
-        return {**empty, "needs_root": False, "root": str(root), "vocab": _vocab(),
+        return {**empty, "needs_root": False, "root": str(root), "vocab": vocab(),
                 "paths": _list_paths(root), "machine_warnings": _machine_warnings(root)}
     except RegistryError as exc:
         # One that could not be walked is said, never answered as empty
         # (decision 193): the class to the log, the sentence to the page.
         return {**empty, "needs_root": False, "root": str(root),
-                "root_problem": _not_walked("_cmd_list", exc), "vocab": _vocab(),
+                "root_problem": _not_walked("_cmd_list", exc), "vocab": vocab(),
                 "paths": _list_paths(root), "machine_warnings": _machine_warnings(root)}
-    return {**empty, **_list_payload(root, registry), "needs_root": False, "vocab": _vocab(),
+    return {**empty, **_list_payload(root, registry), "needs_root": False, "vocab": vocab(),
             "paths": _list_paths(root), "machine_warnings": _machine_warnings(root)}
 
 
@@ -4233,7 +4233,7 @@ def _cmd_create(argv: list[str]) -> dict:
         raise
     _refresh_readmes(engagement)
     reply = {"created": _label(engagement, household_dir, info),
-             "state": _state(engagement),
+             "state": state(engagement),
              "link_dropped": link_dropped}
     # A household's **first** return is the moment the two grants have to
     # be made, so the checklist comes back with it and the app shows it
@@ -4466,7 +4466,7 @@ def _cmd_edit_household(argv: list[str]) -> dict:
         for name in _mirror_related(household_dir, info.related):
             _warn(SCREEN["notices"]["related_pending"].format(household=name))
     # The household's members, contact and link are in the list (decision 194).
-    return _with_list({"saved": {"household": list(saved.fields)}, "state": _state(engagement)})
+    return _with_list({"saved": {"household": list(saved.fields)}, "state": state(engagement)})
 
 
 def _cmd_priors(argv: list[str]) -> dict:
@@ -4610,7 +4610,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
             "target_year": report.target_year,
             **_carried_payload(report, prior),
         },
-        "state": _state(engagement),
+        "state": state(engagement),
     })
 
 
@@ -4716,7 +4716,7 @@ def _cmd_roll_household(argv: list[str]) -> dict:
         "not_retired": [_label(one, household_dir) for one in not_retired],
         "warning": warning,
         "target_year": target_year,
-        "state": _state(landed),
+        "state": state(landed),
     })
 
 
@@ -4745,7 +4745,7 @@ def _cmd_mark_shared(argv: list[str]) -> dict:
         # is written, which is what load_household_info() has just done.
         mark_shared(household_dir)
     marked = shared_on(household_dir)
-    return {"shared_on": marked.isoformat() if marked else None, "state": _state(engagement)}
+    return {"shared_on": marked.isoformat() if marked else None, "state": state(engagement)}
 
 
 def _cmd_accept_folder_name(argv: list[str]) -> dict:
@@ -4814,7 +4814,7 @@ def _cmd_accept_folder_name(argv: list[str]) -> dict:
                 accept_folder_name(conn, one, folder_name, return_name=one.name)
             written.append(str(one))
     # An accepted name is the list's name now (decision 194).
-    return _with_list({"accepted": written, "state": _state(engagement)})
+    return _with_list({"accepted": written, "state": state(engagement)})
 
 
 def _originals_under_another_name(household_dir: Path, returns: list[Path]) -> bool:
@@ -4890,7 +4890,7 @@ def _row_reply(engagement: Path, key: str, entry, *, full: bool = True, **extra)
     if full:
         row["prepared_location"] = entry.prepared_location
     row.update(extra)
-    return {key: row, "state": _state(engagement)}
+    return {key: row, "state": state(engagement)}
 
 
 def _shortlist_now(engagement: Path, original: str) -> list[str]:
@@ -4919,7 +4919,7 @@ def _fed_returns(engagement: Path, household: dict | None = None) -> dict[Path, 
     """Every return this return's drop folder feeds, by folder, with its
     label (decision 129).
 
-    ``household`` is the payload :func:`_state` already built, so a state
+    ``household`` is the payload :func:`state` already built, so a state
     builds it once (decision 192); the two clicks that write through the
     list pass none and build it fresh.
 
@@ -4977,7 +4977,7 @@ def _hand_over(engagement: Path, original: str, target: Path, identifier: str, *
             "left_in_review": result.left_in_review,
             "scan_note": scan_note,
         },
-        "state": _state(engagement),
+        "state": state(engagement),
     }
 
 
@@ -5099,7 +5099,7 @@ def _cmd_assign(argv: list[str]) -> dict:
                                    if result.spelling else ""),
             },
         },
-        "state": _state(engagement),
+        "state": state(engagement),
     }
 
 
@@ -5167,7 +5167,7 @@ def _cmd_add_issuer_and_file(argv: list[str]) -> dict:
             "said": ISSUER_ADDED_AND_FILED.format(identifier=row.identifier, document=row.document,
                                                   name=result.entry.original_name),
         },
-        "state": _state(engagement),
+        "state": state(engagement),
     }
 
 
@@ -5891,7 +5891,7 @@ def _cmd_acknowledge_foreign(argv: list[str]) -> dict:
     engagement = _engagement_dir(argv)
     with engagement_lock(engagement):
         acknowledged = store.acknowledge_foreign(engagement)
-    return {"acknowledged": acknowledged, "state": _state(engagement)}
+    return {"acknowledged": acknowledged, "state": state(engagement)}
 
 
 def _firm_draft(engagement: Path, due: dt.date | None, held_rows: int, today: dt.date) -> dict:

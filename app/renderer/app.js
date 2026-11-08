@@ -32,7 +32,7 @@ function appOnMac(nav) {
 document.documentElement.classList.toggle("on-mac", appOnMac(navigator));
 
 // Every word the app compares or shows comes from the API's vocabulary
-// (tracker.api._vocab): statuses, overrides, decisions, defaults, patterns.
+// (tracker.api.vocab): statuses, overrides, decisions, defaults, patterns.
 // Nothing here is typed twice; the CSS classes are derived from the keys.
 let vocab = null;
 
