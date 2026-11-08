@@ -126,7 +126,9 @@ REQUIREMENTS_FILES = ("requirements.txt", "requirements-build.txt")
 #: prevent - so it is refused.
 DERIVED_EDGE_TYPES = frozenset({"imports", "imports_at_call", "tests", "exercises",
                                 "depends_on"})
-#: The node types a ``tests/test_<stem>.py`` can own (the owner edge).
+#: The node types a ``tests/test_<stem>.py`` can own (the owner edge), or,
+#: for a ``tracker/`` module, a family file ``tests/test_<stem>_<family>.py``
+#: (decision P350).
 OWNED_TYPES = frozenset({"module", "tool", "workflow", "script"})
 CURATED_EDGE_TYPES = frozenset({"writes", "reads", "precedes", "runs", "documents",
                                 "spawns", "loads", "schedules", "calls", "freezes",
@@ -373,8 +375,11 @@ def test_edge_kind(test_path: str, target: str) -> str:
     One import can mean two very different things, and collapsing them
     overstates coverage — the failure the map exists to prevent:
 
-    - ``tests``     — the test file that owns this module by name. This is
-      coverage, and renders as "tested by".
+    - ``tests``     — the test file that owns this module by name: for a
+      ``tracker/`` module, ``tests/test_<stem>.py`` or a family file
+      ``tests/test_<stem>_<family>.py`` (decision P350; the owner pass draws
+      the family's edge after this one). This is coverage, and renders as
+      "tested by".
     - ``exercises`` — any other test importing it. Real and worth knowing
       (many test files import manifest.py, so its schema is load-bearing
       across the suite) but it is not that module's coverage. A test
