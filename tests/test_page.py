@@ -2,7 +2,7 @@
 
 The module has values in and markup out, and it is exercised end to end
 through the two pages that draw with it (tests/test_view.py,
-tests/test_runner.py). What is pinned here is the one thing it does that is
+tests/test_runner_reports.py). What is pinned here is the one thing it does that is
 not markup: the console made to take what it cannot encode (decision 108);
 the policy each page carries (decision 190); and, since SPEC-architecture
 P2.8, the skeleton both pages are written in, line for line.

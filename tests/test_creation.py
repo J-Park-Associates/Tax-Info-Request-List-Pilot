@@ -2,7 +2,8 @@
 refusals it meets, and decision 137's undo of what a failed create or
 rollover made.
 
-Most of what the module promises is held by tests/test_api.py, whose tests
+Most of what the module promises is held by tests/test_api.py and the test_api_<family> files split from it
+(SPEC-architecture-p5 P5.14), whose tests
 drive the create and rollover commands and so are about the command: a
 name that is not one folder, a year out of bounds, a return or a household
 name already taken, a list past the room, and every refusal and failure

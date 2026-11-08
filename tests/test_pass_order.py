@@ -1,7 +1,8 @@
 """Tests for tracker/pass_order.py - the household order hint beside the
 store: which household a pass serves first, and who was not served.
 
-Most of what the module promises is held by tests/test_runner.py, whose tests
+Most of what the module promises is held by tests/test_runner.py and the test_runner_<family> files split from it
+(SPEC-architecture-p5 P5.14), whose tests
 run a pass and read the hint it left: households least recently completed
 first, a missing or broken hint the walk's order with one sentence, a nested,
 oversized or memory-hungry file only a hint, a household held by a lock tried

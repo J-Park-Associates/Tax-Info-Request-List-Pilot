@@ -1,7 +1,8 @@
 """Tests for tracker/firm_view.py - the Overview's rows, their cache and the
 group rule the return's own page shares.
 
-Most of what the module promises is held by tests/test_api.py, whose tests
+Most of what the module promises is held by tests/test_api.py and the test_api_<family> files split from it
+(SPEC-architecture-p5 P5.14), whose tests
 drive the firm, firm-last and state commands and so are about the command:
 the counts by group, the files waiting, the draft's state, a record that
 cannot be read said as its own row, the cached reply held to the whole

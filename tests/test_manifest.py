@@ -96,7 +96,7 @@ def placed(info: EngagementInfo) -> EngagementInfo:
     Creation writes where the return is into its own details - the
     household, the tax year and the return name (decision 125) - so a
     record read back carries three fields nobody typed. They are not
-    editable, and ``tests/test_api.py`` is where that is claimed; here they
+    editable, and ``tests/test_api_editor.py`` is where that is claimed; here they
     are simply what a round trip has to allow for. The people the return is
     for (decision 128) are the fourth: the suite's helper gives every
     return the one test person, as the wizard makes a person give it one.

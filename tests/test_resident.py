@@ -8,7 +8,7 @@ process unlike it found it. Its state register (SPEC-architecture R5.1) is held
 to the package's source: every module-level name a function rebinds or changes
 in place is in exactly one of its tables, and a second command finds every
 per-command name as a process of its own would. The engine is driven in this process through
-``serve`` and a byte stream, as ``tests/test_api.py`` drives ``api.main``; the
+``serve`` and a byte stream, as ``tests/test_api.py`` and its family files drive ``api.main``; the
 two claims about real descriptors (the input only the engine can read, the
 process end to end) start a real process.
 """

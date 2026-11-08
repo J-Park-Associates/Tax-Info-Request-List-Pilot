@@ -1,7 +1,8 @@
 """Tests for tracker/run_log.py - what one pass reports: its records, the run
 log's codes, the run log and the last-pass file the app reads.
 
-Most of what the module promises is held by tests/test_runner.py, whose tests
+Most of what the module promises is held by tests/test_runner.py and the test_runner_<family> files split from it
+(SPEC-architecture-p5 P5.14), whose tests
 run a pass and read what it left: every failure and skip logged as a code and
 every pass warning with its code, no client's file name in any run log line,
 the run log in the data home and a relative ``--log`` refused, the line of a

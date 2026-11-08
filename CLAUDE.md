@@ -44,7 +44,7 @@ difference is the point:
 
 - **tested by** — the test file that owns the module by name
   (`tests/test_filer.py` → `tracker/filer.py`), or a family file split from
-  it (`tests/test_api_<family>.py` → `tracker/api.py`, decision P350). This
+  it (`tests/test_api_firm.py` → `tracker/api.py`, decision P350). This
   is coverage.
 - **exercised by** — some other test imports it, usually to borrow a fixture.
   Real and worth knowing (many test files import `manifest.py`, so its schema

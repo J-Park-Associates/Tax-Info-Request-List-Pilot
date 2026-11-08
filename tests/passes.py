@@ -21,6 +21,12 @@ the page and read it back. The order hint's file beside the store
 ``tests/test_pass_order.py`` was split out of ``test_runner``
 (SPEC-architecture-p5 R5.10.5, P347): both files write the hint and read it
 back.
+
+When ``tests/test_runner.py`` was split by its section banners into ``tests/test_runner_<family>.py``
+(SPEC-architecture-p5 P5.14, E-3), the helpers two or more of the resulting files read came here,
+byte for byte with their words: the ``stamped_on`` fixture (named once by assignment in each user, as
+``samples`` is), ``a_pass`` and ``pass_on``, ``drafted_events``, ``make_ambiguous`` and
+``households_in_order``. A helper one file reads moved with that file.
 """
 
 import datetime as dt
@@ -32,12 +38,13 @@ import pytest
 import tracker.runner as runner_module
 from tests.builders import make_engagement, seed_index
 from tests.samples import DEMO_ITEMS, SCRATCH_PEOPLE, YEAR, build_samples
-from tracker import store
+from tracker import ledger, store
 from tracker.index import NEEDS_REVIEW
+from tracker.layout import household_of, root_of
 from tracker.manifest import EngagementInfo, RequestItem, load_engagement_info, save_rules
 from tracker.records import IndexEntry, rule_from_json
-from tracker.registry import engagement_from
-from tracker.runner import DRAFT_WEEKDAY, SETTINGS_FLAG, main
+from tracker.registry import discover_engagements, engagement_from
+from tracker.runner import DRAFT_WEEKDAY, SETTINGS_FLAG, main, run_household
 from tracker.scaffold import scaffold_engagement
 from tracker.status_page import STATUS_PAGE_FILENAME
 
@@ -168,3 +175,69 @@ def _hint_file() -> Path:
 
 def _hint_lines(path: Path) -> list[str]:
     return path.read_text(encoding="ascii").splitlines()
+
+
+@pytest.fixture
+def stamped_on(monkeypatch):
+    """Stamp every line the record writes as if written at noon on ``day``.
+
+    Since decision 115 the pass reads the day of the last draft from the
+    ``drafted`` event's own stamp, not from a file time - so a test that
+    tells the pass today is a Saturday in March must let the record say
+    March too. ``ledger.stamp()`` is the one place a stamp is made.
+    """
+    def _on(day: dt.date) -> None:
+        noon = dt.datetime.combine(day, dt.time(12)).astimezone(dt.UTC)
+        monkeypatch.setattr(
+            ledger, "stamp", lambda: noon.isoformat(timespec="seconds").replace("+00:00", "Z"))
+    return _on
+
+
+def a_pass(engagement, **kwargs):
+    """One pass over this return's household, answering for the return.
+
+    A pass is the household's since decision 125 - one inbox feeds every
+    return of it - so this is what the scheduled job does to one folder,
+    and the claims below are about the run it hands back for the return
+    they named.
+    """
+    # A pass needs the practice (decision 132): the walk of the root this
+    # return sits under, as the scheduled job hands it.
+    kwargs.setdefault("registry", discover_engagements(root_of(engagement.path)))
+    runs = run_household(household_of(engagement.path), [engagement], **kwargs)
+    return next(run for run in runs if run.engagement.path == engagement.path)
+
+
+def pass_on(stamped_on, engagement, day, **kwargs):
+    """One pass on ``day``, with the record stamped that day."""
+    stamped_on(day)
+    return a_pass(engagement, today=day, **kwargs)
+
+
+def drafted_events(engagement_dir):
+    """The ``drafted`` lines on the record, without their stamps."""
+    return [{k: v for k, v in e.items()
+             if k not in (ledger.EVENT_KEY, ledger.AT_KEY) and k not in ledger.LINE_KEYS}
+            for e in ledger.read_events(engagement_dir) if e[ledger.EVENT_KEY] == ledger.DRAFTED]
+
+
+def make_ambiguous(engagement_dir, identifier="C01"):
+    """Edit the rule under a filed copy so the copy no longer satisfies it:
+    the fingerprint moves, the copy is re-read, and the row fails the
+    content check with a client-side reason nobody put there. The copy must
+    already be filed - a pass has run - or the edited rule simply parks it."""
+    return edit_rows(engagement_dir, **{identifier: {"required_keywords": ("form 8889",)}})
+
+
+def households_in_order(monkeypatch) -> list[str]:
+    """The households a pass takes, in the order it takes them."""
+    import tracker.runner as runner
+
+    taken, real = [], runner.run_household
+
+    def recorded(household, *args, **kwargs):
+        taken.append(household.name)
+        return real(household, *args, **kwargs)
+
+    monkeypatch.setattr(runner, "run_household", recorded)
+    return taken

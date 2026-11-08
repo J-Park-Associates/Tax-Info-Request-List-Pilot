@@ -3,7 +3,7 @@
 Since P340 (SPEC-architecture-p5 P5.3) the API's words live in their own
 module, and the API imports back the ones its code reads. What the words
 say, and that the screen is sent them, is held where it always was: by
-``tests/test_api.py`` and ``tests/test_single_source.py``, which read them
+``tests/test_api.py`` (its Title Case and vocabulary sections) and ``tests/test_single_source.py``, which read them
 through the vocabulary, and by ``tests/golden/``. No test moved here: a
 test's home is a module whose functions or classes it calls, and this one
 has neither. This file holds the module to what its docstring promises -

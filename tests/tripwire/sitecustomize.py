@@ -56,7 +56,7 @@ gives them; the outer session sees the nested run started with its own.
 
 It **does not see**:
 - children that are not Python (`node`, `git`, `cmd`, `icacls` in
-  `tests/test_single_source.py`, `tests/test_api.py:4232`, `tests/samples.py`,
+  `tests/test_single_source.py`, `tests/test_api_editor.py`'s `_editor_rows_by_the_app`, `tests/samples.py`,
   `tests/test_ocr.py`), which are never pointed at a guarded place today;
 - a Python child started by a Python child, unarmed: only the pytest process
   judges how a child starts;

@@ -3,7 +3,7 @@
 Since P341 (SPEC-architecture-p5 P5.4) the rules a save from the editor
 meets live in their own module, and the API's handlers call them by import.
 Most of what they promise is still held where it always was, by
-``tests/test_api.py`` driving the ``edit`` and ``create`` commands: a test
+``tests/test_api.py`` and the ``test_api_<family>`` files split from it, driving the ``edit`` and ``create`` commands: a test
 whose road runs through a command is about the command. Three tests moved
 here by the SPEC's section 4.1 rule, because they call
 :func:`tracker.request_edit._people_from_spec` and nothing else - the order

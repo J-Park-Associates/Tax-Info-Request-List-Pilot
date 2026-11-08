@@ -6,7 +6,7 @@ the names its walk saw and answers one page: the filter first, then the order
 page. The replies below are made up - nobody real - and the words are the
 vocabulary's own (``api._firm_words()``), so a status here reads as it does on
 screen. What the API does with the module (the saved view, the refusal, the
-paged reply of a real walk) is ``tests/test_api.py``'s claim; the window's half
+paged reply of a real walk) is ``tests/test_api_firm.py``'s claim; the window's half
 is ``tests/test_shell.py``'s.
 """
 

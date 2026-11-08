@@ -2,7 +2,8 @@
 root: every engagement with what it owes, every file waiting for a person,
 everything that failed and every folder the walk left alone.
 
-Most of what the module promises is held by tests/test_runner.py, whose tests
+Most of what the module promises is held by tests/test_runner.py and the test_runner_<family> files split from it
+(SPEC-architecture-p5 P5.14), whose tests
 run a pass and read the page it left: the review queue newest first with its
 reasons, the held and approved Drafted cell, the records that need a person
 named every pass and never deleted, the page read from the store the walk

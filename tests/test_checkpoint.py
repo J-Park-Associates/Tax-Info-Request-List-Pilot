@@ -1,8 +1,8 @@
 """Tests for tracker/checkpoint.py - what this machine last saw of each record.
 
 The checkpoint is proved against records in ``tests/test_store.py`` (where
-the store holds a record to it), ``tests/test_runner.py`` (the practice
-page names what it accepted) and ``tests/test_api.py`` (a person
+the store holds a record to it), ``tests/test_runner.py`` and ``tests/test_runner_reports.py`` (the practice
+page names what it accepted) and ``tests/test_api_root.py`` (a person
 acknowledges). What is claimed here is the file's own behaviour: where it
 lives, what it keeps, the one switch, the intent, the root it belongs to,
 its version discipline and its command line. All data is fabricated.

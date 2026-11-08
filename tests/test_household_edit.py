@@ -1,7 +1,8 @@
 """Tests for tracker/household_edit.py - a household's own edits, and the
 mirror that writes a related mark onto every other household's record.
 
-Most of what the module promises is held by tests/test_api.py, whose tests
+Most of what the module promises is held by tests/test_api.py and the test_api_<family> files split from it
+(SPEC-architecture-p5 P5.14), whose tests
 drive the create and edit-household commands and so are about the command:
 the members' one parser, the feeds' and the related list's refusals, the
 mark written on both records and a half-finished save repaired. None of

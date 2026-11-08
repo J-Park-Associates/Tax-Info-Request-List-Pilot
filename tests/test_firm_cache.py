@@ -1,7 +1,7 @@
 """The firm view's cache file (P120, ``pilot/SPEC-firm-cache.md``): where it
 lives, what its fingerprint notices, and that a damaged, foreign or stale
 file is never used. Whether a cached reply equals the whole walk's is
-``tests/test_api.py``'s claim; this file holds the parts that decide it."""
+``tests/test_api_firm.py``'s claim; this file holds the parts that decide it."""
 
 from __future__ import annotations
 
