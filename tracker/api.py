@@ -2802,9 +2802,14 @@ def _cmd_list(argv: list[str]) -> dict:
 def _return_row(one: Engagement) -> dict:
     """What every list of returns says of one: where it is, its year, its name
     and the catalog form it was cut from (pilot P172) - the form chip and the
-    Client Types, read from the record, never a folder name."""
+    Client Types, read from the record, never a folder name - and the taxpayer
+    it is for, that name without its form (P194, P195), cut with the window's
+    own trim so the page draws it as it would have cut it (P355). The firm
+    lists read a return's taxpayer from this row, as they read its name."""
+    return_name = one.info.return_name or one.path.name
     return {"path": str(one.path), "year": _year(one),
-            "return_name": one.info.return_name or one.path.name, "form": one.info.form}
+            "return_name": return_name, "form": one.info.form,
+            "taxpayer": firm_pages.taxpayer(return_name, one.info.form or "", chars=firm_pages.PAGE_TRIM)}
 
 
 def _list_payload(root: Path, registry: Registry) -> dict:

@@ -82,6 +82,7 @@
           "return_name": "str",
           "rollable": "bool",
           "superseded_by": "str",
+          "taxpayer": "str",
           "year": "int"
         }
       ],

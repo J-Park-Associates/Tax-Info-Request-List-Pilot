@@ -280,7 +280,7 @@ def test_names_order_as_the_windows_collator_orders_the_shared_list():
 
 
 def test_the_taxpayer_and_form_keys_follow_the_recorded_form_never_a_guess():
-    taxpayer = firm_pages._taxpayer
+    taxpayer = firm_pages.taxpayer
     assert taxpayer("1040 - John & Maria Park", "1040") == "John & Maria Park"
     assert taxpayer("1120-S - Rivera Design LLC", "1120S") == "Rivera Design LLC", "a hyphen inside the form number and letter case are not differences"
     assert taxpayer("1040 - John Park", "1065") == "1040 - John Park", "the name begins with another form: shown whole"

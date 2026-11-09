@@ -7,6 +7,7 @@
       "name": "str",
       "path": "str",
       "return_name": "str",
+      "taxpayer": "str",
       "year": "int"
     }
   ],
@@ -32,6 +33,7 @@
           "path": "str",
           "return_name": "str",
           "superseded_by": "str",
+          "taxpayer": "str",
           "year": "int"
         }
       ]

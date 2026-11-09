@@ -1807,6 +1807,56 @@ def test_the_engines_groups_tally_and_hand_over_list_equal_the_pages_retired_rul
     assert any(one["gap"]["page"] != by_path[one["path"]]["hand_over_targets"] for one in ran["out"])
 
 
+def test_every_list_row_carries_the_taxpayer_the_page_would_cut_from_its_own_name_and_form(capsys, scratch_root, tmp_path):
+    """The list rows' oracle (SPEC-architecture-p6 R6.6.4, P355). The engine puts
+    ``taxpayer`` on every row ``api._return_row`` makes - the list's
+    ``engagements`` and ``households[].returns``, and the state's
+    ``household.returns`` - and the page draws it where it cut that row's own
+    name and form with ``pagesTaxpayer`` (a household's return rows; the Sort's
+    line). Under node, for every such row of a made-up pile, the page's
+    ``pagesTaxpayer(row.return_name, row.form || "")`` equals ``row.taxpayer``:
+    the same text, so nothing a person sees changes.
+
+    **Why it builds its replies.** The recordings in ``tests/golden/`` hold key
+    trees only, with no values (P2.3's shape contract), so they cannot be the
+    inputs. The pile is made on a scratch root through the API, as
+    ``tests/test_golden.py`` makes its scene, and every reply is real.
+
+    **What the pile holds,** so each branch of the rule is met: a return whose
+    recorded name does not begin with its form (the sample's "Smith Family
+    2025", a 1040), a name cut at its form ("1040 - Chidi & Ada Okafor"), a
+    hyphenated form in the name beside the catalog's ("1120-S - Rivera Design
+    LLC", an 1120S), and returns created with no form ("1040 - John Park",
+    "1120S - Park & Lee LLC")."""
+    from tests.api_driver import two_households
+
+    def ok(*argv, stdin=None):
+        code, payload = run(capsys, *argv, stdin=stdin)
+        assert code == 0, (argv, payload)
+        return payload
+
+    sample_engagement(capsys, scratch_root, tmp_path)
+    two_households(capsys, scratch_root)
+    for household, contact, name, form in (("Okafor Family", "Ada", "1040 - Chidi & Ada Okafor", "1040"),
+                                           ("Rivera Design", "Marco", "1120-S - Rivera Design LLC", "1120S")):
+        ok("create", stdin={"household": household, "contact": contact, "return_name": name, "form": form,
+                            "items": [{"identifier": "A01", "document": "W-2"}]})
+    listed = ok("list")
+    engagements = listed["engagements"]
+    households = [one for household in listed["households"] for one in household["returns"]]
+    states = [one for row in engagements for one in ok("state", api.ENGAGEMENT_FLAG, row["path"])["household"]["returns"]]
+    assert len(engagements) == len(households) == 5 and len(states) == 5
+    rows = [*engagements, *households, *states]
+    ran = run_pages_dom(f"""
+      return {json.dumps(rows)}.map((row) => pagesTaxpayer(row.return_name, row.form || ""));
+    """, tmp_path, setup=f"Object.assign(vocab, {json.dumps(api.vocab())});", functions=["pagesTaxpayer"])
+    assert ran == [row["taxpayer"] for row in rows]
+    said = {(row["return_name"], row["form"] or ""): row["taxpayer"] for row in rows}
+    assert said == {("Smith Family 2025", "1040"): "Smith Family 2025", ("1040 - Chidi & Ada Okafor", "1040"): "Chidi & Ada Okafor",
+                    ("1120-S - Rivera Design LLC", "1120S"): "Rivera Design LLC", ("1040 - John Park", ""): "1040 - John Park",
+                    ("1120S - Park & Lee LLC", ""): "1120S - Park & Lee LLC"}, "the pile meets each branch of the rule"
+
+
 # ── S5: the links, the side sheet, the right-click menus and the dialogs ───────
 
 #: Jason's ruling 10 as a function (S8a's, tests/test_api.py): capitalise every word but the small ones
@@ -8448,24 +8498,41 @@ def test_the_pages_collator_orders_the_shared_list_as_the_engine_does(tmp_path):
 def test_the_engines_taxpayer_form_and_count_words_are_the_pages(tmp_path):
     """SPEC 4.9: the Python answers for a set of made-up inputs, computed in the test, against the
     window's own `pagesTaxpayer` and `pagesCounts` (the words a row says) and the order of the
-    forms the Client Types hold (what the Form Type column orders by)."""
+    forms the Client Types hold (what the Form Type column orders by).
+
+    The first claim is what makes `one.taxpayer` safe to draw in place of the page's own cut
+    (SPEC-architecture-p6 R6.6.4, P355): every list row carries `firm_pages.taxpayer` with the
+    window's trim (`PAGE_TRIM`), and that is `pagesTaxpayer` on every row of the table. Without
+    `chars` it is the firm lists' order key, Python's own trim, and equal on every row but the
+    ones whose cut meets a character the two trims part on (U+FEFF, U+0085, U+001C), named here
+    so a change to either trim fails; `PAGE_TRIM` is the characters `trim()` strips, enumerated
+    under node."""
     from tracker import firm_pages
 
     words = api._firm_words()
     vocab_words = api.vocab()
+    trims = [("1040 - ﻿John Park", "1040"), ("1040 - John Park﻿", "1040"), ("1040 - \x85John Park", "1040"), ("1040 - John Park\x85", "1040"),
+             ("1040 - \x1cJohn Park", "1040"), ("1040 - John Park\x1c", "1040")]
     names = [("1040 - John & Maria Park", "1040"), ("1120-S - Rivera Design LLC", "1120S"), ("1120S - Rivera Design LLC", "1120-S"), ("1040 - John Park", "1065"),
-             ("John Park 1040", "1040"), ("1040 - John Park", ""), ("1040 -", "1040"), ("1040 - 1040 - Twice", "1040"), ("990 - Trust of A - B", "990"), ("", "1040")]
+             ("John Park 1040", "1040"), ("1040 - John Park", ""), ("1040 -", "1040"), ("1040 - 1040 - Twice", "1040"), ("990 - Trust of A - B", "990"), ("", "1040"),
+             *trims]
     counts = [({"needs_you": 2, "waiting": 1}, ""), ({"needs_you": 0, "waiting": 4}, ""), ({"needs_you": 0, "waiting": 0}, ""), ({"needs_you": 0, "waiting": 0}, "Could Not Be Read"),
               ({"needs_you": 12, "waiting": 0}, "")]
     forms = ["1040", "1065", "990", "1041", "5500", "", "1120-S"]
     ran = run_pages_dom(f"""
       vocab.screen.counts = {json.dumps({"need": words["need"], "waiting": words["waiting"], "complete": words["complete"]})};
       const known = Object.values(vocab.client_type_forms).flat();
+      const trimmed = [];
+      for (let code = 0; code <= 0xffff; code += 1) if (String.fromCharCode(code).trim() === "") trimmed.push(code);
       return {{ taxpayer: {json.dumps(names)}.map(([name, form]) => pagesTaxpayer(name, form)),
                 counts: {json.dumps(counts)}.map(([c, problem]) => {{ const said = pagesCounts(c, problem); return [said.text, said.tone]; }}),
-                forms: {json.dumps(forms)}.map((f) => (f ? [known.indexOf(f) === -1 ? known.length : known.indexOf(f), f] : "")) }};
+                forms: {json.dumps(forms)}.map((f) => (f ? [known.indexOf(f) === -1 ? known.length : known.indexOf(f), f] : "")),
+                trimmed }};
     """, tmp_path, functions=["pagesTaxpayer", "pagesCounts", "screenWords"], setup=f"vocab.client_type_forms = {json.dumps(vocab_words['client_type_forms'])};")
-    assert ran["taxpayer"] == [firm_pages._taxpayer(name, form) for name, form in names]
+    assert ran["taxpayer"] == [firm_pages.taxpayer(name, form, chars=firm_pages.PAGE_TRIM) for name, form in names]
+    assert [ran["taxpayer"][at] for at, row in enumerate(names) if row not in trims] == [firm_pages.taxpayer(name, form) for name, form in names if (name, form) not in trims]
+    assert [row for row in names if firm_pages.taxpayer(*row) != firm_pages.taxpayer(*row, chars=firm_pages.PAGE_TRIM)] == trims, "the rows where the two trims part"
+    assert "".join(map(chr, ran["trimmed"])) == firm_pages.PAGE_TRIM, "PAGE_TRIM is what trim() strips"
     assert ran["counts"] == [list(firm_pages._counts_said(c, problem, words)) for c, problem in counts]
     assert ran["forms"] == [firm_pages._form_key(form, words) for form in forms]
 

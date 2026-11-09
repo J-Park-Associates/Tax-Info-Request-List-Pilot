@@ -136,8 +136,8 @@
       bodies[rpath] = body;
       // `label` is the engine's pattern (layout.ENGAGEMENT_LABEL_PATTERN): household, year, return name.
       const label = `${name} ${year} ${returnName}`;
-      engagements.push({ name: label, path: rpath, household: path, year, return_name: returnName, form: formOf(returnName) });
-      return { label, path: rpath, year, return_name: returnName, active: year === 2025, superseded_by: year === 2025 ? null : "next", rollable: year === 2025, form: "1040", people: [contact] };
+      engagements.push({ name: label, path: rpath, household: path, year, return_name: returnName, form: formOf(returnName), taxpayer: taxpayerOf(returnName, formOf(returnName)) });
+      return { label, path: rpath, year, return_name: returnName, active: year === 2025, superseded_by: year === 2025 ? null : "next", rollable: year === 2025, form: "1040", taxpayer: taxpayerOf(returnName, "1040"), people: [contact] };
     });
     households.push(Object.assign({
       name, path, client_folder: `/clients/Clients/${name}`, inbox: `/clients/Clients/${name}/Drop files here`,
@@ -402,7 +402,9 @@
   const collator = new Intl.Collator(undefined, { numeric: true });
   const fillIn = (pattern, values) => pattern.replace(/\{(\w+)\}/g, (_, key) => (values[key] === undefined ? "" : values[key]));
   const returnNameOf = (path) => { const one = engagements.find((e) => e.path === path); return one ? one.return_name : path.split("/").pop(); };
-  const taxpayerOf = (name, form) => {
+  // A declaration, so it is hoisted: household() above cuts each list and state row's
+  // `taxpayer` with it as it makes the row, as the engine's `_return_row` does (P355).
+  function taxpayerOf(name, form) {
     const pattern = vocab.layout.return_name_pattern;
     const at = pattern.indexOf("{client}");
     if (!form || pattern.indexOf("{form}") !== 0 || at === -1 || at + "{client}".length !== pattern.length) return name;
@@ -410,7 +412,7 @@
     const cut = sep ? name.indexOf(sep) : -1;
     const same = (text) => text.replace(/-/g, "").toLowerCase();
     return (cut > 0 && same(name.slice(0, cut)) === same(form) ? name.slice(cut + sep.length).trim() : "") || name;
-  };
+  }
   const formKey = (form) => {
     if (!form) return "";
     const known = Object.values(vocab.client_type_forms).flat();

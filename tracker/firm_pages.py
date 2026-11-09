@@ -289,13 +289,33 @@ def _folder_name(path: str) -> str:
     return next((part for part in reversed(re.split(r"[\\/]", path)) if part), "")
 
 
-def _taxpayer(name: str, form: str) -> str:
+#: The characters the window's ``trim()`` strips, and only those - its twin is
+#: JavaScript's ``String.prototype.trim`` (WhiteSpace and LineTerminator), which
+#: ``pagesTaxpayer`` cuts with. Python's ``str.strip()`` strips a different set:
+#: it keeps U+FEFF, which ``trim()`` strips, and strips U+001C-U+001F and U+0085,
+#: which ``trim()`` keeps. So a cut the window draws is made with this set
+#: (SPEC-architecture-p6 R6.6.1, P355); ``tests/test_shell.py`` holds it to the
+#: characters ``trim()`` strips, enumerated under node.
+PAGE_TRIM = ("\t\n\v\f\r          "
+             "        　﻿")
+
+
+def taxpayer(name: str, form: str, *, chars: str | None = None) -> str:
     """``pagesTaxpayer``: the return's name without the ``{form} - `` the
     naming pattern puts first, and only when the record's form is what the
     name begins with (letter case and a hyphen inside the form number are not
     differences). A return with no recorded form, or a name somebody typed
     another way, is shown whole: the form is read from the record, never from
-    a name, and a name is never cut by a guess."""
+    a name, and a name is never cut by a guess.
+
+    One rule, two readers. The firm lists order by it with Python's own trim
+    (``chars`` None), as they have since P278. :func:`tracker.api._return_row`
+    puts it on every list row with ``chars=PAGE_TRIM``, the window's trim, so
+    the taxpayer the window draws is the cut it made itself, character for
+    character (P355). ``pagesTaxpayer``, its twin, stays in the window for the
+    one row the list cannot answer - a firm row whose return the list does not
+    hold, or holds with another form, when the two replies are from different
+    moments - and ``tests/test_shell.py`` holds the two equal."""
     pattern = layout.RETURN_NAME_PATTERN
     at = pattern.find("{client}")
     if not form or pattern.find("{form}") != 0 or at == -1 or at + len("{client}") != len(pattern):
@@ -306,7 +326,7 @@ def _taxpayer(name: str, form: str) -> str:
     def same(text: str) -> str:
         return text.replace("-", "").lower()
 
-    rest = name[cut + len(sep):].strip() if cut > 0 and same(name[:cut]) == same(form) else ""
+    rest = name[cut + len(sep):].strip(chars) if cut > 0 and same(name[:cut]) == same(form) else ""
     return rest or name
 
 
@@ -443,8 +463,8 @@ class _Walk:
 def _return_cells(walk: _Walk, one: dict) -> dict:
     """``pagesReturnCells`` and ``pagesReturnKeys``: what a row of a list of
     returns orders by in its first three cells."""
-    taxpayer = _taxpayer(walk.name_of(one["path"]), one.get("form") or "")
-    return {"year": one.get("year") or "", "taxpayer": taxpayer, "form": _form_key(one.get("form") or "", walk.words)}
+    cut = taxpayer(walk.name_of(one["path"]), one.get("form") or "")
+    return {"year": one.get("year") or "", "taxpayer": cut, "form": _form_key(one.get("form") or "", walk.words)}
 
 
 def _overview(walk: _Walk, ask: Ask) -> tuple[dict, list[dict]]:
