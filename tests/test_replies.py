@@ -55,11 +55,10 @@ from typing import NamedTuple
 
 import pytest
 
-from tests.node_harness import MAIN_SCRIPTS, RENDERER_SCRIPTS, REPO, read, stripped_js
+from tests.node_harness import APP, MAIN_SCRIPTS, RENDERER_SCRIPTS, REPO, read, stripped_js
 from tracker import progress, replies
 
 GOLDEN = REPO / "tests" / "golden"
-MAIN_JS = REPO / "app" / "main.js"
 
 #: Each command ``tests/golden/`` records a reply of, and the type that reply is held to.
 REPLY_TYPES: dict[str, type] = {
@@ -451,14 +450,15 @@ def _collect(script: _Script, *, shell_failure: bool) -> list[Kind]:
 def _scripts() -> tuple[_Script, ...]:
     """Every script the guard reads: the renderer's, in the page's order, and
     the main process's."""
-    return (*(_read(name, stripped_js(name)) for name in RENDERER_SCRIPTS), _read("main.js", stripped_js(MAIN_JS)))
+    return (*(_read(name, stripped_js(name)) for name in RENDERER_SCRIPTS),
+            *(_read(name, stripped_js(APP / name)) for name in MAIN_SCRIPTS))
 
 
 @cache
 def collected() -> tuple[Kind, ...]:
     """Every kind literal the five patterns catch; ``shellFailure`` is the
     main process's alone."""
-    return tuple(kind for script in _scripts() for kind in _collect(script, shell_failure=script.name == "main.js"))
+    return tuple(kind for script in _scripts() for kind in _collect(script, shell_failure=script.side == "main process"))
 
 
 #: A kind the screen raises on its own that is never a failure, with why.
@@ -535,7 +535,7 @@ def _where(kinds) -> list[str]:
     the stripped text (its block comments gone) does not keep."""
     said = []
     for one in kinds:
-        own = (MAIN_JS.read_text(encoding="utf-8") if one.file == "main.js" else read(one.file)).split("\n")
+        own = ((APP / one.file).read_text(encoding="utf-8") if one.side == "main process" else read(one.file)).split("\n")
         lines = ",".join(str(n) for n, text in enumerate(own, start=1) if one.text.strip() in text)
         said.append(f"{one.file}:{lines} ({one.pattern}) {one.literal!r}: {one.text.strip()}")
     return said
@@ -577,7 +577,7 @@ def test_the_main_processs_own_envelope_has_the_envelope_and_failure_keys():
     no engine answered - a refused message, an engine that could not start
     or stopped mid-reply - so it carries exactly the required keys of the one
     the engine prints; its ``extra`` spread is the progress a pass had shown."""
-    [script] = [one for one in _scripts() if one.name == "main.js"]
+    [script] = [one for one in _scripts() if one.side == "main process" and re.search(r"\bfunction\s+shellFailure\s*\(", one.code)]
     [defined] = re.finditer(r"\bfunction\s+shellFailure\s*\(", script.code)
     body = script.pairs[defined.end() - 1] + 1
     while script.code[body].isspace():

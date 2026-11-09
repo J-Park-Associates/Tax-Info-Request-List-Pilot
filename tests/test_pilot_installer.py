@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.node_harness import main_text
+
 REPO = Path(__file__).resolve().parent.parent
 SETUP = REPO / "pilot" / "installer" / "setup.iss"
 BUILD = REPO / "pilot" / "Build Pilot Installer.bat"
@@ -293,9 +295,8 @@ def test_the_shortcuts_and_the_window_share_one_app_id():
     """Windows groups taskbar buttons by app id: a shortcut and the running
     process that name different ids show as two buttons, so every [Icons] line
     carries the id app/main.js gives the process."""
-    main = (REPO / "app" / "main.js").read_text(encoding="utf-8")
-    found = re.search(r'setAppUserModelId\("([^"]+)"\)', main)
-    assert found, "app/main.js no longer sets an app user model id"
+    found = re.search(r'setAppUserModelId\("([^"]+)"\)', main_text())
+    assert found, "the main process no longer sets an app user model id"
     icons = [line for line in _sections(_setup())["Icons"].splitlines() if line.strip()]
     assert icons
     for line in icons:

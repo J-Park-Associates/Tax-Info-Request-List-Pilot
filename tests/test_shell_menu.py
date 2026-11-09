@@ -21,7 +21,7 @@ import pytest
 
 import tracker.api as api
 import tracker.screen_words as screen_words
-from tests.node_harness import run_menu
+from tests.node_harness import MAIN_SCRIPTS, js_block, main_text, run_menu
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -31,13 +31,13 @@ def read(rel: str) -> str:
 
 
 def _menu_words_in_main() -> dict[str, str]:
-    block = read("app/main.js").split("const DEFAULT_MENU_WORDS = {", 1)[1].split("\n};", 1)[0]
+    block = js_block("const DEFAULT_MENU_WORDS = {", MAIN_SCRIPTS)
     return dict(re.findall(r'^\s*(\w+): "([^"]*)",$', block, flags=re.M))
 
 
 def _bar_ids_and_accelerators() -> tuple[list[str], list[str]]:
     """The menu bar's ids in order, and every accelerator, as main.js types them."""
-    block = read("app/main.js").split("const BAR = [", 1)[1].split("\n];", 1)[0]
+    block = js_block("const BAR = [", MAIN_SCRIPTS)
     ids = re.findall(r'\["([a-z_]+)"(?:, "[^"]+")?\]', block)
     return ids, re.findall(r'"((?:CmdOrCtrl\+[A-Za-z0-9]|F\d+)[^"]*)"', block)
 
@@ -55,7 +55,7 @@ def test_the_menus_default_words_are_the_apis_word_for_word(monkeypatch):
 
 
 def test_the_menu_has_no_reload_zoom_or_developer_tools():
-    main_js = read("app/main.js")
+    main_js = main_text()
     for role in ("reload", "forceReload", "toggleDevTools", "zoomIn", "zoomOut", "resetZoom",
                  "togglefullscreen", "viewMenu", "windowMenu"):
         assert not re.search(rf'role:\s*"{role}"', main_js, flags=re.I), role
@@ -83,9 +83,9 @@ def test_every_menu_id_is_in_the_apis_words_and_every_word_is_placed():
     """The template's ids are ``MENU`` keys, and each ``MENU`` key is a
     top-level label or an item of the bar or a right-click menu. (The page's
     half - it answers each id - is checked where ``shell.js`` is.)"""
-    main_js = read("app/main.js")
+    main_js = main_text()
     ids, _ = _bar_ids_and_accelerators()
-    popups = read("app/main.js").split("const POPUPS = new Map([", 1)[1].split("\n]);", 1)[0]
+    popups = js_block("const POPUPS = new Map([", MAIN_SCRIPTS)
     popup_ids = set(re.findall(r'"([a-z_]+)"', popups)) - {"household", "return", "file", "moved",
                                                           "request", "received"}
     labels = set(re.findall(r'\["(file|edit|client|view|tools|help)",', main_js))
@@ -102,7 +102,7 @@ def test_the_four_row_menus_offer_exactly_the_items_the_renderer_templates_can_a
     """The S6 join (S5 rebuild 1, F13): ``main.js`` drops an id its popup lacks,
     so a forgotten one fails silently. Show in File Explorer sits on the file,
     moved and received menus, never on a request's."""
-    popups = read("app/main.js").split("const POPUPS = new Map([", 1)[1].split("\n]);", 1)[0]
+    popups = js_block("const POPUPS = new Map([", MAIN_SCRIPTS)
     found = {name: re.findall(r'"([a-z_]+)"', items) for name, items in
              re.findall(r'^\s*\["(file|moved|request|received)", \[([^\]]*)\]\]', popups, flags=re.M)}
     assert found == {
@@ -125,7 +125,7 @@ def test_the_preload_exposes_one_menu_channel():
 
 
 def test_the_window_colours_main_reads_are_the_pages():
-    main_js = read("app/main.js")
+    main_js = main_text()
     assert '"--window-dark" : "--window-light"' in main_js
     assert 'read("pilot-ui.css")' in main_js
     assert "backgroundColor: pageBackground()" in main_js
@@ -713,8 +713,8 @@ def test_the_preload_passes_the_optional_second_argument_on_the_same_open_and_ad
     assert re.findall(r'ipcRenderer\.(?:invoke|send|on)\("([a-z-]+)"', preload) == [
         "tracker-cmd", "open-path", "pick-folder", "log-error", "tracker-progress", "after-install-done",
         "last-pass-changed", "menu", "menu"]   # P277 added the last-pass channel; open's own channel is still the one
-    main_js = read("app/main.js")
-    assert main_js.count('ipcMain.handle("open-path"') == 1
+    assert read("app/main.js").count('ipcMain.handle("open-path"') == 1
+    main_js = main_text()
     assert main_js.count("shell.showItemInFolder(") == 1 and main_js.count("shell.openPath(") == 1
 
 

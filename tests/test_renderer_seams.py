@@ -477,10 +477,6 @@ def test_the_double_defines_every_name_the_scripts_beside_it_use_of_app_js_and_o
 PLANNED = ("api-client.js", "notices.js", "dialogs.js", "reminder-card.js", "review-rows.js", "household.js", "editor.js",
            "schedule.js", "pass.js", "firm-loader.js", "shell-words.js", "logs.js", "last-pass-watch.js", "open-path.js",
            "menu.js", "engine.js")
-#: The scripts phase 6 splits whose readers are not yet retargeted: P6.2 took
-#: app.js off this list; P6.3 takes the other two, then deletes it (R6.2.1,
-#: R6.3.1).
-NOT_YET = ("shell.js", "main.js")
 #: The scripts the page loads that phase 6 does not split: a test may name them.
 NOT_SPLIT = ("tooltip.js", "pages.js", "sheet.js", "pilot-content.js", "pilot.js", "tour.js")
 
@@ -488,23 +484,29 @@ NOT_SPLIT = ("tooltip.js", "pages.js", "sheet.js", "pilot-content.js", "pilot.js
 #: about that file as a file. A place is (test file, function), the function
 #: being the outermost ``def`` the literal sits in, ``None`` for module level
 #: and ``"*"`` for the whole file. A place that no longer names a split script
-#: (or a NOT_YET one) has outlived its claim and fails until it is taken off.
+#: has outlived its claim and fails until it is taken off.
 FILE_NAMED: dict[tuple[str, str | None], str] = {
     ("node_harness.py", None):
         "APP_FAMILY is app.js and the scripts listed before it, so it names app.js as the script the family ends at.",
     ("test_repo_map.py", "*"):
         "The made-up repositories the map's tests build name their own files, app.js and main.js among them.",
     ("test_renderer_seams.py", None):
-        "SEAMS and WRITES are keyed by the scripts that share names, and PLANNED and NOT_YET name the scripts this"
-        " guard watches: tables of the page's files, re-derived by each move (SPEC-architecture-p6 section 3).",
+        "SEAMS and WRITES are keyed by the scripts that share names, and PLANNED names the scripts this guard"
+        " watches: tables of the page's files, re-derived by each move (SPEC-architecture-p6 section 3).",
     ("test_shell.py", "test_the_loading_order_is_the_specs_and_the_csp_is_unchanged"):
-        "The page's load order names app.js as the script the page starts from, after the vendored libraries and before the others.",
+        "The page's load order names app.js and the scripts after it: a claim about where each file sits in index.html.",
     ("test_shell.py", "test_one_keydown_listener_owns_the_keyboard"):
         "P76: the document's one keydown listener is app.js's own, so the claim is said of app.js itself (the count across every script stays by claim).",
     ("test_shell.py", "test_the_app_starts_only_after_every_script_has_loaded"):
-        "app.js is the script that ends with startWhenLoaded(bootstrap); and the page loads it before shell.js: a claim about the file's end and its place.",
+        "app.js is the script that ends with startWhenLoaded(bootstrap): a claim about the file's end.",
     ("test_shell.py", "test_a_mac_is_known_from_the_browsers_own_platform_and_every_other_system_keeps_segoe"):
         "The on-mac class is toggled at app.js's top level, before applyVocabulary: a claim about where in the file the statement sits.",
+    ("test_shell.py", "test_the_window_and_its_taskbar_button_carry_the_console_icon"):
+        "The entry sets the app id at its top level before app.whenReady() and names its icon file: claims about where in main.js the statements sit.",
+    ("test_shell_menu.py", "test_the_preload_passes_the_optional_second_argument_on_the_same_open_and_adds_no_channel"):
+        "SPEC-shell 5.4: every ipcMain.handle is registered in main.js alone, so the open-path registration is counted in that file.",
+    ("test_shell_menu.py", "test_a_message_from_anything_but_the_apps_window_is_refused_on_every_channel_and_logged_by_its_channel"):
+        "SPEC-shell 5.4: every ipcMain.handle is registered in main.js alone, so the registered channels are read from that file.",
     ("test_renderer_seams.py", "the_double_mode"):
         "serve.mjs's double takes app.js out of the page by its file name.",
     ("test_renderer_seams.py", "test_the_double_defines_every_name_the_scripts_beside_it_use_of_app_js_and_of_the_scripts_it_drops"):
@@ -514,7 +516,7 @@ FILE_NAMED: dict[tuple[str, str | None], str] = {
 
 def split_scripts() -> set[str]:
     """Every script phase 6 splits, or creates, whose readers are retargeted."""
-    return set(RENDERER_SCRIPTS + MAIN_SCRIPTS + PLANNED) - set(NOT_SPLIT) - set(NOT_YET)
+    return set(RENDERER_SCRIPTS + MAIN_SCRIPTS + PLANNED) - set(NOT_SPLIT)
 
 
 def script_literals(text: str, names: set[str]) -> list[tuple[str | None, str, str, int]]:
@@ -540,17 +542,16 @@ def script_literals(text: str, names: set[str]) -> list[tuple[str | None, str, s
     return sorted(found, key=lambda one: one[3])
 
 
-def file_named_reads(sources: dict[str, str], split: set[str], not_yet: set[str],
+def file_named_reads(sources: dict[str, str], split: set[str],
                      listed: dict[tuple[str, str | None], str]) -> tuple[list[str], list[tuple[str, str | None]]]:
     """The literals of ``sources`` (test file to its text) that name a split
-    script outside a ``listed`` place, and the listed places that name none
-    (a NOT_YET name counts, so a place it still holds has not rotted)."""
+    script outside a ``listed`` place, and the listed places that name none."""
     unlisted, held = [], set()
     for file, text in sources.items():
-        for function, named, literal, line in script_literals(text, split | not_yet):
+        for function, _named, literal, line in script_literals(text, split):
             places = {(file, function), (file, "*")} & set(listed)
             held |= places
-            if named in split and not places:
+            if not places:
                 unlisted.append(f"{file}:{line} ({function or 'module level'}) {literal!r}")
     return unlisted, sorted(set(listed) - held, key=str)
 
@@ -565,9 +566,9 @@ def test_no_test_reads_a_script_this_phase_splits_by_its_file_name():
     names no split script fails until it is taken off, so a read added there
     later cannot hide behind it."""
     assert len(set(PLANNED)) == len(PLANNED) == 16 and not set(PLANNED) & set(NOT_SPLIT), PLANNED
-    assert set(NOT_YET) <= set(RENDERER_SCRIPTS + MAIN_SCRIPTS) and set(NOT_SPLIT) <= set(RENDERER_SCRIPTS)
+    assert set(NOT_SPLIT) <= set(RENDERER_SCRIPTS)
     sources = {path.name: path.read_text(encoding="utf-8") for path in sorted((REPO / "tests").glob("*.py"))}
-    unlisted, rotted = file_named_reads(sources, split_scripts(), set(NOT_YET), FILE_NAMED)
+    unlisted, rotted = file_named_reads(sources, split_scripts(), FILE_NAMED)
     assert unlisted == [], f"tests that read a split script by its file name, outside FILE_NAMED: {unlisted}"
     assert rotted == [], f"FILE_NAMED places that no longer name a split script (the claim has rotted): {rotted}"
 
@@ -579,24 +580,24 @@ def test_the_named_script_guard_fails_a_read_outside_file_named_and_a_place_that
                        "@mark('fixtures/carved.js')\ndef test_named():\n    read('app/carved.js')\n\n"
                        "def test_listed():\n    def inner():\n        read('carved.js')\n\n"
                        "def test_clean():\n    read('kept.js')\n    read('uncarved.js')\n    read('carved.json')\n",
-        "test_two.py": "def one():\n    read('carved.js')\n\ndef two():\n    read('src/carved.js')\n\ndef three():\n    read('later.js')\n",
+        "test_two.py": "def one():\n    read('carved.js')\n\ndef two():\n    read('src/carved.js')\n",
     }
-    split, later = {"carved.js"}, {"later.js"}
+    split = {"carved.js"}
     every = {("test_one.py", None): "a table", ("test_one.py", "test_named"): "", ("test_one.py", "test_listed"): "",
              ("test_two.py", "*"): "the whole file"}
     # Inside a listed place a literal passes: a module-level table, a function (its decorator and a def nested in
     # it), and every function of a file listed whole.
-    assert file_named_reads(sources, split, later, every) == ([], [])
+    assert file_named_reads(sources, split, every) == ([], [])
     # Outside one it fails: the name alone or a path ending in it, at module level, in a decorator, in a nested def.
-    unlisted, _ = file_named_reads(sources, split, later, {("test_two.py", "*"): ""})
+    unlisted, _ = file_named_reads(sources, split, {("test_two.py", "*"): ""})
     assert unlisted == ["test_one.py:1 (module level) 'carved.js'", "test_one.py:3 (test_named) 'fixtures/carved.js'",
                         "test_one.py:5 (test_named) 'app/carved.js'", "test_one.py:9 (test_listed) 'carved.js'"]
-    # Without its "*" place each function of test_two fails; a not-yet name is never flagged.
-    assert file_named_reads({"test_two.py": sources["test_two.py"]}, split, later, {}) == (
+    # Without its "*" place each function of test_two fails.
+    assert file_named_reads({"test_two.py": sources["test_two.py"]}, split, {}) == (
         ["test_two.py:2 (one) 'carved.js'", "test_two.py:5 (two) 'src/carved.js'"], [])
-    # A listed place that names no split script has rotted, unless a not-yet name still holds it.
-    rotted = {**every, ("test_one.py", "test_clean"): "", ("test_three.py", "*"): "", ("test_two.py", "three"): ""}
-    assert file_named_reads(sources, split, later, rotted) == ([], [("test_one.py", "test_clean"), ("test_three.py", "*")])
+    # A listed place that names no split script has rotted.
+    rotted = {**every, ("test_one.py", "test_clean"): "", ("test_three.py", "*"): ""}
+    assert file_named_reads(sources, split, rotted) == ([], [("test_one.py", "test_clean"), ("test_three.py", "*")])
 
 
 # ── the load test (SPEC-architecture-p6 R6.1.4) ───────────────────────────

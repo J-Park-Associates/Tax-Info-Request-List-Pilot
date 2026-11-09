@@ -15,7 +15,19 @@ from pathlib import Path
 
 import pytest
 
-from tests.node_harness import APP_FAMILY, APP_SCRIPTS, js_block, js_function, lift_line, renderer_text, stripped_js
+from tests.node_harness import (
+    APP_FAMILY,
+    APP_SCRIPTS,
+    MAIN_ENTRY,
+    MAIN_SCRIPTS,
+    js_block,
+    js_function,
+    lift_line,
+    main_function,
+    main_text,
+    renderer_text,
+    stripped_js,
+)
 from tests.plugin_session import child_env
 from tests.source_pins import calls_of, py_function
 from tracker.reasons import OTHER_MACHINE
@@ -31,7 +43,7 @@ def read(rel: str) -> str:
 def test_the_electron_shell_uses_the_settings_env_names_python_defines():
     from tracker.settings import ENV_PRODUCT_NAME, ENV_SETTINGS_DIR
 
-    main_js = read("app/main.js")
+    main_js = main_text()
     assert f"{ENV_SETTINGS_DIR}:" in main_js
     assert f"{ENV_PRODUCT_NAME}:" in main_js
 
@@ -65,15 +77,14 @@ def test_the_version_and_package_name_have_one_home():
 def test_the_frozen_api_name_has_one_home():
     package = json.loads(read("app/package.json"))
     api_name = package["config"]["apiName"]
-    assert api_name not in read("app/main.js")          # read from package.json at runtime
+    assert api_name not in main_text()          # read from package.json at runtime
     assert api_name not in read("Build App.bat")         # read from package.json at build time
-    assert "config.apiName" in read("Build App.bat") and "config.apiName" in read("app/main.js")
+    assert "config.apiName" in read("Build App.bat") and "config.apiName" in main_text()
     # The frozen executable's place inside the package: Electron's resources
     # folder, a subfolder named after the API, holding <api>.exe. The shell
     # looks there and the build script copies there.
     assert "resources\\%API%" in read("Build App.bat")
-    assert 'process.resourcesPath, API_NAME, process.platform === "win32" ? `${API_NAME}.exe` : API_NAME' in read(
-        "app/main.js")
+    assert 'process.resourcesPath, API_NAME, process.platform === "win32" ? `${API_NAME}.exe` : API_NAME' in main_text()
     # On a Mac the bundle's Resources folder is that resources folder, and the
     # build copies the freeze into a subfolder named after the API, no suffix.
     assert 'ditto "$OUT/py/$API" "$APP/Contents/Resources/$API"' in read("build-mac.sh")
@@ -81,27 +92,27 @@ def test_the_frozen_api_name_has_one_home():
 
 
 def test_the_shell_and_the_preload_agree_on_every_ipc_channel():
-    handled = set(re.findall(r'ipcMain\.handle\("([a-z-]+)"', read("app/main.js")))
+    handled = set(re.findall(r'ipcMain\.handle\("([a-z-]+)"', main_text()))
     invoked = set(re.findall(r'ipcRenderer\.invoke\("([a-z-]+)"', read("app/preload.js")))
     assert handled == invoked and handled
     # The channels the shell sends on outside a reply (decision 209, the
     # review's S7; SPEC-shell 5.4): the launch step finished having run, a
     # menu item chosen, and the last-pass file changed (P277). The page
     # listens for all three.
-    sent = set(re.findall(r'const [A-Z_]+_CHANNEL = "([a-z-]+)"', read("app/main.js")))
+    sent = set(re.findall(r'const [A-Z_]+_CHANNEL = "([a-z-]+)"', main_text()))
     heard = set(re.findall(r'ipcRenderer\.on\("([a-z-]+)"', read("app/preload.js")))
     assert sent == {"after-install-done", "menu", "last-pass-changed"} and sent <= heard
     # With the pass's progress channel (decision 193), those are all it hears.
-    sent |= set(re.findall(r'event\.sender\.send\("([a-z-]+)"', read("app/main.js")))
+    sent |= set(re.findall(r'event\.sender\.send\("([a-z-]+)"', main_text()))
     assert sent == heard == {"after-install-done", "tracker-progress", "menu", "last-pass-changed"}
-    assert "webContents.send(LAUNCH_DONE_CHANNEL, {" in read("app/main.js")
-    assert "webContents.send(LAST_PASS_CHANNEL);" in read("app/main.js")
-    assert "window.tracker.onLastPassChanged(" in read("app/renderer/shell.js")
-    assert "webContents.send(MENU_CHANNEL, message)" in read("app/main.js")
+    assert "webContents.send(LAUNCH_DONE_CHANNEL, {" in main_text()
+    assert "webContents.send(LAST_PASS_CHANNEL);" in main_text()
+    assert "window.tracker.onLastPassChanged(" in renderer_text(APP_SCRIPTS)
+    assert "webContents.send(MENU_CHANNEL, message)" in main_text()
     # The menu channel goes both ways, once: the shell listens on it with
     # ipcMain.on (a one-way message, not a call that has a reply), and the
     # preload sends on it - the page's only way to the menu.
-    assert re.findall(r'ipcMain\.on\(([A-Za-z_"]+),', read("app/main.js")) == ["MENU_CHANNEL"]
+    assert re.findall(r'ipcMain\.on\(([A-Za-z_"]+),', main_text()) == ["MENU_CHANNEL"]
     assert re.findall(r'ipcRenderer\.send\("([a-z-]+)"', read("app/preload.js")) == ["menu"]
     assert "window.tracker.onAfterInstallDone(" in renderer_text(APP_SCRIPTS)
 
@@ -190,7 +201,7 @@ def test_the_shell_runs_only_commands_the_api_has():
     # command must exist in Python.
     import tracker.api as api
 
-    main_js = read("app/main.js")
+    main_js = main_text()
     bootstrap = re.search(r'const BOOTSTRAP_COMMAND = "([a-z-]+)";', main_js).group(1)
     assert bootstrap in api.COMMANDS
     first_call = re.search(r'call\(\["([a-z-]+)"\]', js_function("loadEngagements")).group(1)
@@ -211,10 +222,10 @@ def test_the_packaged_app_has_no_console_and_sends_the_api_utf8_it_serialised_fi
     person at the machine calls the API with any payload; and a payload is
     serialised before the tracker starts, in UTF-8, which is how the API
     reads it (``tracker.api._read_spec``)."""
-    main_js = read("app/main.js")
+    main_js = main_text()
     assert "devTools: !app.isPackaged" in main_js
-    run = main_js[main_js.index("function runTracker"):]
-    assert run.index("JSON.stringify(payload)") < run.index("spawn(")
+    run = main_function("spawnTracker")
+    assert run.index("JSON.stringify(payload)") < run.index("startTracker(") and "spawn(" in main_function("startTracker")
     assert 'proc.stdin.write(body, "utf8")' in run
 
 
@@ -227,8 +238,8 @@ def test_the_apps_menu_is_the_template_in_both_builds_and_the_source_app_runs_it
     that is missing it says so in the lock tool's own sentence."""
     from tools.lockfiles import NOT_SET_UP, NOT_SET_UP_MAC
 
-    main_js = read("app/main.js")
-    window = main_js[main_js.index("function createWindow"):]
+    main_js = main_text()
+    window = main_function("createWindow")
     assert window.index("buildMenu();") < window.index("new BrowserWindow(")
     assert "Menu.setApplicationMenu(Menu.buildFromTemplate(buildTemplate()))" in main_js
     assert "setApplicationMenu(null)" not in main_js and "app.isPackaged) Menu" not in main_js
@@ -349,7 +360,7 @@ def test_the_app_opens_one_window(tmp_path):
     harness.write_text(_ELECTRON_STUB, encoding="utf-8", newline="\n")
 
     def launch(which: str) -> dict:
-        done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), which],
+        done = subprocess.run([node, str(harness), str(MAIN_ENTRY), which],
                               capture_output=True, text=True, encoding="utf-8", timeout=60,
                               check=False)
         assert done.returncode == 0, done.stderr
@@ -383,7 +394,7 @@ def test_the_electron_user_data_folder_keeps_its_earlier_name(tmp_path):
     assert package["config"]["userDataName"] == EARLIER_PRODUCT_NAME != package["productName"]
     harness = tmp_path / "user_data.js"
     harness.write_text(_ELECTRON_STUB, encoding="utf-8", newline="\n")
-    done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), "second"],
+    done = subprocess.run([node, str(harness), str(MAIN_ENTRY), "second"],
                           capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
     assert done.returncode == 0, done.stderr
     [set_path] = json.loads(done.stdout)["setPaths"]
@@ -411,7 +422,7 @@ def _on_another_machine(tmp_path, system: dict, which: str = "first") -> dict:
         pytest.skip("node is not on PATH (CI installs it)")
     harness = tmp_path / "another_machine.js"
     harness.write_text(_ELECTRON_STUB, encoding="utf-8", newline="\n")
-    done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), which, json.dumps(system)],
+    done = subprocess.run([node, str(harness), str(MAIN_ENTRY), which, json.dumps(system)],
                           capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
@@ -423,7 +434,7 @@ def test_the_shell_and_the_api_say_the_mac_floor_in_the_same_words():
     itself, so its marker must be the one the Python sentence has."""
     from tracker.settings import MAC_FLOOR, MAC_FLOOR_MACOS
 
-    main_js = read("app/main.js")
+    main_js = main_text()
     assert _joined_string(main_js, "const MAC_FLOOR =") == MAC_FLOOR
     assert "{what}" in MAC_FLOOR
     assert f"const MAC_FLOOR_DARWIN = {MAC_FLOOR_MACOS + 9};" in main_js     # macOS 14 is Darwin 23
@@ -464,7 +475,7 @@ def test_a_packaged_mac_keeps_its_settings_in_application_support_and_windows_be
     bundle a newer copy replaces whole."""
     from tracker.settings import MAC_SUPPORT, mac_settings_dir, product_name
 
-    main_js = read("app/main.js")
+    main_js = main_text()
     assert 'path.join(app.getPath("appData"), PRODUCT_NAME)' in main_js
     assert MAC_SUPPORT == ("Library", "Application Support")
     assert mac_settings_dir(Path("/home/me")) == Path("/home/me/Library/Application Support") / product_name()
@@ -570,7 +581,7 @@ def _opening_on(tmp_path, platform: str) -> dict:
     macros, plain = tmp_path / "budget.xlsm", tmp_path / "statement.pdf"
     macros.write_bytes(b"made-up")
     plain.write_bytes(b"made-up")
-    done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), str(macros), str(plain), platform],
+    done = subprocess.run([node, str(harness), str(MAIN_ENTRY), str(macros), str(plain), platform],
                           capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
     assert done.returncode == 0, done.stderr
     return {**json.loads(done.stdout), "macros": str(macros), "plain": str(plain)}
@@ -586,13 +597,13 @@ def test_the_shell_says_protected_view_does_not_exist_each_time_a_macro_copy_ope
     import tracker.api as api
     import tracker.screen_words as screen_words
 
-    main_js = read("app/main.js")
-    says = main_js.split("const shellSays = {", 1)[1].split("\n};\n", 1)[0]
+    main_js = main_text()
+    says = js_block("const shellSays = {", MAIN_SCRIPTS)
     assert _joined_string(says, "protected_view_mac:") == screen_words.PROTECTED_VIEW_MAC
     assert api.vocab()["shell"]["protected_view_mac"] == screen_words.PROTECTED_VIEW_MAC
     assert main_js.count("shell.openPath(") == 1                       # the one door, still
     assert "showMessageBox(" not in main_js.replace("showMessageBoxSync(", "")
-    assert "said.says" in read("app/renderer/shell.js")
+    assert "said.says" in renderer_text(APP_SCRIPTS)
 
     mac = _opening_on(tmp_path, "darwin")
     sentence = {"says": "Said by the API."}
@@ -647,7 +658,7 @@ def test_the_renderer_builds_the_page_from_data_not_html():
 def test_the_window_colour_is_read_from_the_stylesheet():
     assert re.search(r"--window-light:\s*#", read("app/renderer/pilot-ui.css"))
     assert re.search(r"--window-dark:\s*#", read("app/renderer/pilot-ui.css"))
-    main_js = read("app/main.js")
+    main_js = main_text()
     assert "style.css" not in main_js
     assert "backgroundColor: pageBackground()" in main_js
     assert not re.search(r'backgroundColor:\s*"#', main_js)
@@ -1337,7 +1348,7 @@ def test_the_roll_fold_says_what_unticking_does_and_a_paused_card_offers_neither
     assert dialog.index('id="roll-body"') < dialog.index('id="roll-cancel"') < dialog.index('id="btn-roll"')
     # Add a return while paused is the menu's rule now (SPEC 5.1): shell.js
     # leaves the id off the enable list, and tests/test_shell.py pins it.
-    assert "paused" in js_function("shellEnabled", "shell.js")
+    assert "paused" in js_function("shellEnabled")
 
 
 #: The words decision 196 adds under ``vocab.household``.
@@ -2570,11 +2581,10 @@ def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind()
     import tracker.api as api
     import tracker.screen_words as screen_words
 
-    main = read("app/main.js")
+    main = main_text()
     # openPath refuses an unreported path first, then checks; reveal is an argument, not a channel.
     assert 'openChecked(p, openable.get(p), reveal === "reveal")' in main
-    opener = main[main.index("async function openChecked("):]
-    opener = opener[:opener.index("\n}\n")]
+    opener = main_function("openChecked")
     assert opener.index("fs.promises.lstat(") < opener.index("shell.showItemInFolder(")
     assert opener.index("fs.promises.lstat(") < opener.index("shell.openPath(")
     assert "isSymbolicLink()" in opener and "isDirectory()" in opener and "isFile()" in opener
@@ -3055,7 +3065,7 @@ def _run_the_shell(tmp_path, calls, **env):
     harness.write_text(_SHELL_HARNESS, encoding="utf-8", newline="\n")
     fake = tmp_path / "fake_tracker.js"
     fake.write_text(_FAKE_TRACKER, encoding="utf-8", newline="\n")
-    done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), str(fake),
+    done = subprocess.run([node, str(harness), str(MAIN_ENTRY), str(fake),
                            json.dumps(calls)],
                           capture_output=True, text=True, encoding="utf-8", timeout=120, check=False,
                           env=child_env(**{"FAKE_LOG": str(tmp_path / "tracker-errors.log"),
@@ -3098,7 +3108,7 @@ def test_run_now_is_cut_off_only_at_the_run_limit_its_own_first_line_states():
     import tracker.api as api
     from tracker.locking import RUN_TIME_LIMIT_SECONDS
 
-    main_js = read("app/main.js")
+    main_js = main_text()
     assert str(RUN_TIME_LIMIT_SECONDS) not in main_js and "2 * 60 * 60" not in main_js
     assert "said.limit_seconds * 1000" in main_js
     assert "vocab.pass_command" in main_js and f'"{api.PASS_COMMAND}"' not in main_js
@@ -3372,7 +3382,7 @@ def test_the_progress_key_is_typed_once_per_language_and_the_error_log_only_by_t
     from tracker.errlog import ERROR_LOG_FILENAME
     from tracker.progress import PROGRESS_KEY
 
-    main_js = read("app/main.js")
+    main_js = main_text()
     assert f'const PROGRESS_KEY = "{PROGRESS_KEY}";' in main_js
     assert main_js.count(f'"{PROGRESS_KEY}"') == 1
     # The log's path is the API's, and the shell never builds one of its own
@@ -3385,9 +3395,7 @@ def test_the_shells_default_words_are_the_apis_word_for_word():
     import tracker.api as api
     import tracker.screen_words as screen_words
 
-    main_js = read("app/main.js")
-
-    says = main_js.split("const shellSays = {", 1)[1].split("\n};\n", 1)[0]
+    says = js_block("const shellSays = {", MAIN_SCRIPTS)
 
     def default(key):
         return re.search(rf'^  {key}: "([^"]*)",$', says, re.MULTILINE).group(1)
@@ -3443,7 +3451,7 @@ def test_every_draw_after_an_await_goes_through_renderFor():
     assert len(re.findall(r"(?<![\w.])(?<!let )(?<!const )active = ", js)) == 1
     # Since decision 194 a switch is showReturn, which selects before it asks;
     # the route asks for it (shell.js), and a notice's Retry.
-    assert "showReturn(path)" in js_function("shellOpenState", "shell.js")
+    assert "showReturn(path)" in js_function("shellOpenState")
     show = js_function("showReturn")
     assert show.index("const view = select(path)") < show.index("call(")
 
@@ -3500,7 +3508,7 @@ def test_the_lock_notice_types_no_sentence_and_polls_only_while_a_lock_shows():
 
 
 def test_the_shell_sends_on_only_the_channels_the_preload_listens_to():
-    sent = set(re.findall(r'event\.sender\.send\("([a-z-]+)"', read("app/main.js")))
+    sent = set(re.findall(r'event\.sender\.send\("([a-z-]+)"', main_text()))
     heard = set(re.findall(r'ipcRenderer\.on\("([a-z-]+)"', read("app/preload.js")))
     # Decision 209's launch channel, SPEC-shell 5.4's menu channel and P277's
     # last-pass channel are the others the preload hears; all are sent with
@@ -3632,11 +3640,10 @@ def test_an_error_of_the_page_or_the_shell_is_said_by_class_and_its_message_only
     assert "sentence: String(" not in body
     failing = js_function("failed")
     assert "const sentence = failureSentence(err);" in failing and "err.message" not in failing
-    main_js = read("app/main.js")
+    main_js = main_text()
     # runTracker's check, then spawnTracker (decision 209's launch door
     # shares it), read as the one path a command takes.
-    run = main_js[main_js.index("function runTracker"):]
-    run = run[:run.index("\n}\n", run.index("function spawnTracker"))]
+    run = main_function("runTracker") + "\n" + main_function("spawnTracker")
     assert "shellFailure(fill(shellSays.could_not_send" in run and "`The app could not send" not in run
     assert "err.message" not in run.split("keepInLog(", 1)[0]
     assert 'ipcMain.handle("log-error"' in main_js
@@ -3667,7 +3674,7 @@ def test_switching_returns_is_one_state_call():
         assert "showReturn(" in handler, head
         for other in ("refresh(", "bootstrap(", "loadReminder(", "call("):
             assert other not in handler, (head, other)
-    assert "showReturn(path)" in js_function("shellOpenState", "shell.js")
+    assert "showReturn(path)" in js_function("shellOpenState")
     assert "showReturn(" not in read("app/renderer/pages.js")
     refused = js_function("refused")
     assert "showReturn(active)" in refused and "bootstrap(" not in refused
@@ -4420,7 +4427,7 @@ def test_no_text_box_is_named_only_by_its_placeholder():
     assert len(re.findall(r"\bkeywordBox\(\)", js)) == 3        # the builder and its two places
     # The setup page (shell.js) builds its two boxes inside labels; index.html
     # keeps no hidden input for them (saveRoot() reads setupDraft).
-    shell = read("app/renderer/shell.js")
+    shell = renderer_text(APP_SCRIPTS)
     assert 'h("label", { className: "setup-field" }, h("span", {}, vocab.settings.firm_label), firm)' in shell
     assert 'h("label", { className: "setup-field" }, h("span", {}, vocab.settings.phone_label), phone)' in shell
     for ident in ("phone-input", "firm-input", "root-input"):
@@ -4580,7 +4587,7 @@ def test_no_sentence_the_app_shows_calls_it_the_tracker():
     content = read("app/renderer/pilot-content.js")
     pilot = json.loads(content.split("// PILOT-CONTENT-BEGIN", 1)[1].split("// PILOT-CONTENT-END", 1)[0])
     said.update({f"pilot-content: {s}": s for s in _strings(pilot)})
-    main_js = read("app/main.js")
+    main_js = main_text()
     for name in ("no_reply", "could_not_start", "no_log"):
         said[f"main.js {name}"] = re.search(rf'^  {name}: "([^"]*)",$', main_js, re.MULTILINE).group(1)
     # And every other sentence the shell says itself: its string literals
@@ -4885,7 +4892,7 @@ def _run_spawns(tmp_path, steps, **scenario) -> dict:
         pytest.skip("node is not on PATH (CI installs it)")
     harness = tmp_path / "spawn_harness.js"
     harness.write_text(_SPAWN_HARNESS, encoding="utf-8", newline="\n")
-    done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), json.dumps({"steps": steps, **scenario})],
+    done = subprocess.run([node, str(harness), str(MAIN_ENTRY), json.dumps({"steps": steps, **scenario})],
                           capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
@@ -4920,7 +4927,7 @@ def test_the_shell_watches_the_folder_of_the_last_pass_file_the_list_names(tmp_p
     ran = _run_spawns(tmp_path, [{"tracker": ["list"]}], listShells=[{"last_pass_file": _LAST_PASS_FILE}])
     assert ran["watches"] == [{"dir": "/data/home", "persistent": False}]
     assert ran["watchFiles"] == [] and ran["closed"] == []
-    main_js = read("app/main.js")
+    main_js = main_text()
     assert "fs.watch(path.dirname(file)," in main_js and 'LAST_PASS_CHANNEL = "last-pass-changed";' in main_js
     assert "last-pass.json" not in re.sub(r"//.*", "", main_js), "the file's name is never typed here"
 
@@ -4947,9 +4954,9 @@ def test_the_shell_never_reads_the_last_pass_file_and_sends_the_page_nothing_of_
                       listShells=[{"last_pass_file": _LAST_PASS_FILE}])
     assert ran["reads"] == []
     assert _sent_last_pass(ran) == [{"channel": "last-pass-changed", "args": []}]
-    code = re.sub(r"//.*", "", read("app/main.js"))
+    code = re.sub(r"//.*", "", main_text())
     for name in ("lastPassSoon", "watchLastPass", "pollLastPass", "unwatchLastPass"):
-        body = code.split(f"function {name}(", 1)[1].split("\n}\n", 1)[0]
+        body = re.sub(r"//.*", "", main_function(name))
         assert not re.search(r"readFile|createReadStream|openSync|readSync", body), name
     assert "webContents.send(LAST_PASS_CHANNEL);" in code
     assert "onLastPassChanged: (listener) => ipcRenderer.on(\"last-pass-changed\", () => listener())," in read("app/preload.js")
@@ -5013,7 +5020,7 @@ def test_the_shell_allows_the_read_only_overview_before_the_first_reply(tmp_path
     anything else; once the allowlist is learned, it is the rule."""
     import tracker.api as api
 
-    main_js = read("app/main.js")
+    main_js = main_text()
     early = set(re.findall(r'"([a-z-]+)"', re.search(r"const EARLY_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)))
     early.add(re.search(r'const BOOTSTRAP_COMMAND = "([a-z-]+)";', main_js).group(1))
     assert early == {"list", "firm", api.FIRM_LAST_COMMAND}
@@ -5064,10 +5071,9 @@ def test_the_shell_starts_one_engine_before_the_window_and_hands_it_each_command
                                       separators=(",", ":"))
     _listed, state, edited = ran["replies"]
     assert state["command"] == "state" and edited["argv"] == ["edit", "--engagement", "/r/1"]
-    main_js = read("app/main.js")
-    ready = main_js[main_js.index("startEngine();\n    const win = createWindow();") - 400:]
+    ready = js_block("app.whenReady().then(() => {\n    // The engine", MAIN_SCRIPTS)
     assert ready.index("app.whenReady().then(() => {") < ready.index("startEngine();") < ready.index("createWindow()")
-    spawn_tracker = main_js[main_js.index("function spawnTracker"):main_js.index("function lineReader")]
+    spawn_tracker = main_function("spawnTracker")
     # The kill is armed when the command is handed over, never at the engine's start.
     assert spawn_tracker.index("takeEngine(") < spawn_tracker.index("arm(TRACKER_TIMEOUT_MS)")
 
@@ -5127,7 +5133,7 @@ def test_a_read_handed_to_an_engine_that_died_is_asked_once_more_and_a_write_nev
     own; a write is never run twice - it ends with no reply."""
     import tracker.api as api
 
-    main_js = read("app/main.js")
+    main_js = main_text()
     known = set(re.findall(r'"([a-z-]+)"', re.search(r"const HELD_READING_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)))
     assert known == set(api.HELD_READING_COMMANDS) and not known & api.WRITING_COMMANDS
     ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["state"]},
@@ -5166,7 +5172,7 @@ def test_an_engine_that_keeps_stopping_is_left_off_for_the_session_and_said_in_t
     leaves the engine off - every command then starts its own process, as before
     the spare - and the error log says so once, with the exit codes; no notice
     reaches the page. Every click is still answered."""
-    main_js = read("app/main.js")
+    main_js = main_text()
     assert "const ENGINE_RESTARTS = 3;" in main_js and "const ENGINE_RESTART_WINDOW_MS = 5 * 60 * 1000;" in main_js
     ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["state"]}, {"tracker": ["firm"]}, {"tracker": ["list"]},
                                  {"tracker": ["state"]}, {"tracker": ["firm"]}],
@@ -5216,7 +5222,7 @@ def test_quitting_ends_the_engines_input_and_never_kills_it_mid_command(tmp_path
     [engine] = _engines(busy)
     assert engine["ended"] and not engine["killed"], "ended, not killed, while it held the write"
     assert busy["replies"][1]["argv"] == ["edit", "--engagement", "/r/1"] and not busy["replies"][1].get("error"), "and it finished"
-    will_quit = read("app/main.js").split('app.on("will-quit", () => {', 1)[1].split("\n});", 1)[0]
+    will_quit = js_block('app.on("will-quit", () => {', MAIN_SCRIPTS)
     code = re.sub(r"//.*", "", will_quit)
     assert "proc.stdout.destroy()" in code and "engine.proc.stdin.end()" in code and "kill" not in code
 
@@ -5281,7 +5287,7 @@ def test_the_shell_and_the_engine_agree_on_the_flag_the_end_key_and_the_line_lim
     with, and keeps the engine's line and payload limits."""
     from tracker import resident
 
-    main_js = read("app/main.js")
+    main_js = main_text()
     assert re.search(r'const RESIDENT_FLAG = "([^"]+)";', main_js).group(1) == resident.RESIDENT_FLAG
     assert re.search(r'const ENGINE_END_KEY = "([^"]+)";', main_js).group(1) == resident.END_KEY
     assert 'const ENGINE_END_PREFIX = `{"${ENGINE_END_KEY}"`;' in main_js
@@ -5301,9 +5307,8 @@ def test_a_reply_in_a_thousand_pieces_is_read_once_and_whole(tmp_path):
     assert len(firm["returns"]) == 400 and firm["returns"][399] == {"path": "r399", "label": "Return 399 é"}
     counts = [one["message"] for one in ran["sends"] if one["channel"] == "tracker-progress"]
     assert [one["progress"]["done"] for one in counts] == [0, 25, 50] and all(one["args"] == ["firm"] for one in counts)
-    main_js = read("app/main.js")
-    reader = main_js[main_js.index("function lineReader(onLine) {"):]
-    reader = reader[:reader.index("\n}\n")]
+    main_js = main_text()
+    reader = main_function("lineReader")
     assert 'd.indexOf("\\n", from)' in reader and 'pieces.join("")' in reader
     assert "+= d" not in reader and "pending" not in reader
     # The one reader serves both paths: a process of its own and the engine.
@@ -5321,7 +5326,7 @@ def test_the_shell_and_the_api_agree_on_the_early_overview_and_the_count_line():
     import tracker.api as api
     from tracker import progress, runner
 
-    main_js = read("app/main.js")
+    main_js = main_text()
     early_source = re.search(r"const EARLY_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)
     early = set(re.findall(r'"([a-z-]+)"', early_source))
     if "BOOTSTRAP_COMMAND" in early_source:
@@ -5337,9 +5342,7 @@ def test_the_shell_and_the_api_agree_on_the_early_overview_and_the_count_line():
     assert list(said) == [progress.PROGRESS_KEY] and f'const PROGRESS_KEY = "{progress.PROGRESS_KEY}";' in main_js
     assert said[progress.PROGRESS_KEY] == {"v": progress.FORMAT_VERSION, "event": progress.COUNT_EVENT,
                                             "done": 3, "total": 7}
-    shell_js = read("app/renderer/shell.js")
-    reader = shell_js[shell_js.index("function shellFirmProgress(said) {"):]
-    reader = reader[:reader.index("\n}\n")]
+    reader = js_function("shellFirmProgress")
     assert "const { done, total } = said;" in reader
 
 
@@ -5354,22 +5357,21 @@ def test_the_last_counts_are_an_early_read_only_command_the_api_answers():
     import tracker.api as api
     import tracker.screen_words as screen_words
 
-    main_js = read("app/main.js")
+    main_js = main_text()
     early = set(re.findall(r'"([a-z-]+)"', re.search(r"const EARLY_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)))
     held = set(re.findall(r'"([a-z-]+)"', re.search(r"const HELD_READING_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)))
     assert api.FIRM_LAST_COMMAND in early and api.FIRM_LAST_COMMAND in held
     assert api.FIRM_LAST_COMMAND in api.COMMANDS
     assert api.FIRM_LAST_COMMAND in api.HELD_READING_COMMANDS and api.FIRM_LAST_COMMAND not in api.WRITING_COMMANDS
-    shell_js = read("app/renderer/shell.js")
+    shell_js = renderer_text(APP_SCRIPTS)
     assert f'window.tracker.call(["{api.FIRM_LAST_COMMAND}"], shellFirmAsk("overview"))' in shell_js   # the Overview's first page (P278)
     # The key the renderer reads for the phrase is the API's, word for word.
-    renderer = shell_js + read("app/renderer/pages.js")
+    renderer = shell_js
     read_keys = set(re.findall(r"screenWords\(\)\.(updating\w*)", renderer))
     assert read_keys == {"updating", "updating_as_of"}
     assert read_keys <= set(screen_words.SCREEN) and "{time}" in screen_words.SCREEN["updating_as_of"]
     # The time it fills in is the reply's own ``as_of``, read by that name.
-    last_of = shell_js[shell_js.index("function shellLastOf(reply) {"):]
-    last_of = last_of[:last_of.index("\n}\n")]
+    last_of = js_function("shellLastOf")
     assert "reply.last !== true" in last_of and "reply.as_of" in last_of
 
 

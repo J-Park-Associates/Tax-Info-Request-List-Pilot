@@ -14,6 +14,7 @@ from xml.etree import ElementTree
 import pytest
 
 # At collection, before any test's fixtures replace it (decision 209).
+from tests.node_harness import main_text
 from tests.plugin_fakes import REAL_SCHEDULER_HERE
 from tracker import scheduling
 from tracker import settings as settings_module
@@ -697,7 +698,7 @@ def test_the_mac_agent_is_a_standard_process_with_no_run_at_load_named_for_the_a
 def test_the_bundle_id_is_the_one_the_shell_and_the_mac_build_name():
     """The agent names the app by the id the shell sets and the build gives
     the bundle, so Allow in the Background lists the schedule under the app."""
-    assert f'app.setAppUserModelId("{scheduling.APP_BUNDLE_ID}")' in (REPO / "app" / "main.js").read_text("utf-8")
+    assert f'app.setAppUserModelId("{scheduling.APP_BUNDLE_ID}")' in main_text()
     assert f'APP_ID="{scheduling.APP_BUNDLE_ID}"' in (REPO / "build-mac.sh").read_text("utf-8")
 
 

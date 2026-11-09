@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 414,
-    "edges": 2459,
-    "reused": 357
+    "edges": 2461,
+    "reused": 349
   },
   "node_types": [
     "artifact",
@@ -4976,7 +4976,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "87d7e974a0516948",
+      "sha256": "13cfcc6560851b1c",
       "lines": 2058,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -7309,8 +7309,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3940fb293f21bd98",
-      "lines": 2154,
+      "sha256": "bd6cfb1c4f8ade6a",
+      "lines": 2153,
       "exports": [
         "payload_of_label",
         "test_a_broken_journal_is_said_in_the_firms_sentence_with_its_line_and_run_recover",
@@ -7789,8 +7789,8 @@
       "id": "tests/test_api_root.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "46cbc4dba959b41f",
-      "lines": 1418,
+      "sha256": "02342b326cc72b8b",
+      "lines": 1417,
       "exports": [
         "FITS_MARGIN",
         "LONG_ROW_OVER",
@@ -7951,7 +7951,7 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e9c0d3e266eb9f26",
+      "sha256": "111dccfa9cfedeee",
       "lines": 1455,
       "exports": [
         "APP_INSTALLERS",
@@ -9109,7 +9109,7 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9c5887fc95e48e72",
+      "sha256": "cd85b66fc02c81c6",
       "lines": 1405,
       "exports": [
         "MOVED_OUT",
@@ -9784,8 +9784,8 @@
       "id": "tests/test_pilot.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "17efc844135e23fd",
-      "lines": 990,
+      "sha256": "85c3c812308408cb",
+      "lines": 991,
       "exports": [
         "KIT_PROMPT",
         "KIT_RESULTS",
@@ -9860,8 +9860,8 @@
       "id": "tests/test_pilot_installer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8500d503e9bb8c51",
-      "lines": 359,
+      "sha256": "e254078fc272bc14",
+      "lines": 360,
       "exports": [
         "APP_ID",
         "BUILD",
@@ -10373,8 +10373,8 @@
       "id": "tests/test_renderer_seams.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8b111486aa9421da",
-      "lines": 743,
+      "sha256": "ac97a665b4ead1d7",
+      "lines": 744,
       "exports": [
         "AFTER_A_BRACE",
         "DECLARATION",
@@ -10382,7 +10382,6 @@
         "HARNESS",
         "LOAD_PROBE",
         "NOT_SPLIT",
-        "NOT_YET",
         "OWN",
         "PLANNED",
         "SEAMS",
@@ -10417,23 +10416,21 @@
       ],
       "constants": {
         "PLANNED": "('api-client.js', 'notices.js', 'dialogs.js', 'reminder-card.js', 'review-rows.js', 'household.js', 'editor.js', 'schedule.js', 'pass.js', 'firm-loader.js', 'shell-words.js', 'logs.js', 'last-pass-watch.js', 'open-path.js', 'menu.js', 'engine.js')",
-        "NOT_YET": "('shell.js', 'main.js')",
         "NOT_SPLIT": "('tooltip.js', 'pages.js', 'sheet.js', 'pilot-content.js', 'pilot.js', 'tour.js')",
         "LOAD_PROBE": "'\\n\"use strict\";\\nconst fs = require(\"fs\");\\nconst path = require(\"path\");\\nconst vm = require(\"vm\");\\nconst [folder, listed] = process.argv.slice(2);\\nfunction standIn(held = {}) {\\n  return new Proxy(function () {}, {\\n    get(target, key) {\\n      if (Object.prototype.hasOwnProperty.call(held, key)) return held[key];\\n      if (key === Symbol.toPrimitive) return (hint) => (hint === \"number\" ? 0 : \"\");\\n      if (key === Symbol.iterator) return function* () {};\\n      if (key === \"then\") return undefined;\\n      return standIn();\\n    },\\n    set(target, key, value) { held[key] = value; return true; },\\n    apply: () => standIn(),\\n    construct: () => standIn(),\\n  });\\n}\\nconst context = vm.createContext({\\n  window: standIn(), document: standIn({ readyState: \"loading\" }), navigator: standIn(), localStorage: standIn(),\\n  console: new console.Console(process.stderr), setTimeout, clearTimeout, setInterval, clearInterval,\\n});\\nconst scripts = JSON.parse(listed);\\nfor (const name of scripts) {\\n  try {\\n    new vm.Script(fs.readFileSync(path.join(folder, name), \"utf8\"), { filename: name }).runInContext(context);\\n  } catch (err) {\\n    process.stdout.write(`${name} threw while loading: ${(err && err.stack) || err}\\\\n`);\\n    process.exit(1);\\n  }\\n}\\nprocess.stdout.write(`${scripts.length} scripts loaded\\\\n`);\\nprocess.exit(0);\\n'"
       },
-      "role": "The JavaScript analogue of test_layers: which renderer script uses which other script's top-level names, pinned as today's table with a line saying why for each (SEAMS), the writes across scripts to another script's top-level let pinned apart (WRITES, D-2's five), the harness's double of app.js held to every name the scripts loaded beside it use of app.js and of the scripts serve.mjs drops in double mode, and to app.js's EL_ATTRIBUTES, and every named part of RENDERER_SCRIPTS (the app's scripts and the pilot's) held inside the scripts index.html loads; js_code's own tests and stripped_js's (the reader lives in tests/node_harness.py); the named-script guard, which fails on a test that names a script phase 6 splits by its file name outside the places FILE_NAMED lists (PLANNED names the sixteen scripts the phase creates, NOT_YET the two whose readers are not yet retargeted); and the load test, which runs every script index.html loads in order in one node context, with its two companions (a later binding met at load fails; a script carved out of app.js holds declarations only).",
-      "notes": "SPEC-architecture J3 (R3.2, R3.7, R3.8; D-2, D-5, D-8). The eight scripts share one global scope, so a top-level function, let or const in one is a name every other can read and nothing says which do; that is the seam a split of app.js cuts through. A use is the name as a whole word in the other script's code, read through js_code(), which blanks comments, string and template text and regular expressions and keeps a template's ${...} code; a name the using script declares itself at any depth is its own (the pilot's el, fill and show, pages.js's local active), and a parameter or object key named like a global is counted and said so in the table (fold, paths). A new cross-script name or write fails until it is added on purpose, and one no longer used is taken off. The scripts beside the double, and the ones it drops (sheet.js, whose sheetNow and sheetPress the double lacked until J3), are read from serve.mjs, every replace in its double branch accounted for. A JavaScript parser (acorn) was the rejected alternative: the gate installs nothing for node. SPEC-architecture-p6 P6.1 (R6.1.2-R6.1.4; P352): js_code moved byte for byte to tests/node_harness.py, where stripped_js reads comments with it. test_no_test_reads_a_script_this_phase_splits_by_its_file_name walks every tests/*.py with ast for a string literal that is, or ends with / and, a split script's name - RENDERER_SCRIPTS + MAIN_SCRIPTS + PLANNED, less the six scripts the phase does not split (NOT_SPLIT) and NOT_YET (shell.js and main.js until P6.3 empties and deletes it; P6.2 took app.js off) - and fails on one outside FILE_NAMED, whose places are (test file, outermost def), None for module level and \"*\" for a whole file, each with its reason; a listed place that names none (NOT_YET's names counting) fails as rotted, so an exemption never outlives its claim. PLANNED names the sixteen before they exist, so a test that names one fails from P6.1; P6.18 deletes it. test_every_script_the_page_loads_runs_in_order_in_one_scope runs every <script src> of index.html, the vendored libraries too, in one vm context with permissive stand-ins for document, window, navigator and localStorage and document.readyState loading, so a split that leaves a script meeting a later script's binding as the page loads fails in the suite; the two companions show the probe telling a later let or function met at load from the same scripts in order, and hold every script of APP_FAMILY but app.js to top-level declarations (read with js_code, the reader shown seeing app.js's own start). SPEC-architecture-p6 P6.2: app.js left NOT_YET with every test that read it by its file name retargeted by claim; FILE_NAMED gained the four test_shell claims that are about app.js as a file (the page's load order, the one keydown listener, the app's end at startWhenLoaded, the on-mac toggle at its top)."
+      "role": "The JavaScript analogue of test_layers: which renderer script uses which other script's top-level names, pinned as today's table with a line saying why for each (SEAMS), the writes across scripts to another script's top-level let pinned apart (WRITES, D-2's five), the harness's double of app.js held to every name the scripts loaded beside it use of app.js and of the scripts serve.mjs drops in double mode, and to app.js's EL_ATTRIBUTES, and every named part of RENDERER_SCRIPTS (the app's scripts and the pilot's) held inside the scripts index.html loads; js_code's own tests and stripped_js's (the reader lives in tests/node_harness.py); the named-script guard, which fails on a test that names a script phase 6 splits by its file name outside the places FILE_NAMED lists (PLANNED names the sixteen scripts the phase creates); and the load test, which runs every script index.html loads in order in one node context, with its two companions (a later binding met at load fails; a script carved out of app.js holds declarations only).",
+      "notes": "SPEC-architecture J3 (R3.2, R3.7, R3.8; D-2, D-5, D-8). The eight scripts share one global scope, so a top-level function, let or const in one is a name every other can read and nothing says which do; that is the seam a split of app.js cuts through. A use is the name as a whole word in the other script's code, read through js_code(), which blanks comments, string and template text and regular expressions and keeps a template's ${...} code; a name the using script declares itself at any depth is its own (the pilot's el, fill and show, pages.js's local active), and a parameter or object key named like a global is counted and said so in the table (fold, paths). A new cross-script name or write fails until it is added on purpose, and one no longer used is taken off. The scripts beside the double, and the ones it drops (sheet.js, whose sheetNow and sheetPress the double lacked until J3), are read from serve.mjs, every replace in its double branch accounted for. A JavaScript parser (acorn) was the rejected alternative: the gate installs nothing for node. SPEC-architecture-p6 P6.1 (R6.1.2-R6.1.4; P352): js_code moved byte for byte to tests/node_harness.py, where stripped_js reads comments with it. test_no_test_reads_a_script_this_phase_splits_by_its_file_name walks every tests/*.py with ast for a string literal that is, or ends with / and, a split script's name - RENDERER_SCRIPTS + MAIN_SCRIPTS + PLANNED, less the six scripts the phase does not split (NOT_SPLIT) - and fails on one outside FILE_NAMED, whose places are (test file, outermost def), None for module level and \"*\" for a whole file, each with its reason; a listed place that names none fails as rotted, so an exemption never outlives its claim. PLANNED names the sixteen before they exist, so a test that names one fails from P6.1; P6.18 deletes it. test_every_script_the_page_loads_runs_in_order_in_one_scope runs every <script src> of index.html, the vendored libraries too, in one vm context with permissive stand-ins for document, window, navigator and localStorage and document.readyState loading, so a split that leaves a script meeting a later script's binding as the page loads fails in the suite; the two companions show the probe telling a later let or function met at load from the same scripts in order, and hold every script of APP_FAMILY but app.js to top-level declarations (read with js_code, the reader shown seeing app.js's own start). SPEC-architecture-p6 P6.2: app.js left NOT_YET with every test that read it by its file name retargeted by claim; FILE_NAMED gained the four test_shell claims that are about app.js as a file (the page's load order, the one keydown listener, the app's end at startWhenLoaded, the on-mac toggle at its top). SPEC-architecture-p6 P6.3 (R6.3.1-R6.3.6): shell.js and main.js left NOT_YET, which is deleted (file_named_reads lost its not_yet argument), with every test that read them by file name retargeted by claim - main-process reads by main_function, main_text() and js_block(head, MAIN_SCRIPTS), the shell's by js_function, js_block, stripped_text() and renderer_text(APP_SCRIPTS); FILE_NAMED gained the three claims that are about main.js as a file (the entry's app id and icon before app.whenReady(), and the two test_shell_menu claims that ipcMain.handle is registered in main.js alone) and lost the two node_harness places, whose entry point is MAIN_ENTRY now."
     },
     {
       "id": "tests/test_replies.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "702db8d0675f74f3",
+      "sha256": "77ad50da0349b2e5",
       "lines": 592,
       "exports": [
         "GOLDEN",
         "Kind",
-        "MAIN_JS",
         "collected",
         "test_each_pattern_still_catches_the_sites_it_was_written_for",
         "test_each_recorded_reply_has_its_types_required_keys_and_none_it_does_not_name",
@@ -10448,7 +10445,7 @@
         "test_what_a_failure_may_carry_beside_its_four_keys_is_the_lock_and_the_key"
       ],
       "role": "Holds the recorded replies, the one envelope and the screen's failure kinds to tracker/replies.py: each of the nine recordings' top-level keys to its type's required and optional keys, progress.failure_reply()'s envelope and failure to Envelope and Failure for every kind in FAILURE_KINDS, main.js's shellFailure to the same keys, and every failure kind a renderer script or app/main.js names to FAILURE_KINDS or NOTICE_KINDS (\"warning\", a notice the screen raises itself).",
-      "notes": "SPEC-architecture-p2 R2.3.2, R2.3.5 (C-4's alternative to a vocabulary key, which would change tests/golden/vocab.keys.json). The renderer says kind for many vocabularies that are not failures (sheet, link, Open and step kinds), so a literal is collected from five named failure contexts only - sentence_object, kind_compared, local_kind_compared, kind_default and shell_failure - over the scripts as stripped_js reads them, with string and template text masked, comments and regular expressions blanked, and objects and calls found by bracket matching. MUST_FIND names each site a pattern was written for and fails when it stops matching; MUST_NOT_FIND names failure-shaped sites that are not failures, per literal, so neither list can rot. No exclusion table: a pattern that catches a literal that is not a failure kind is narrowed, never excused. It reads the recordings and the scripts' text, calls no command and runs no node, so it is never skipped. SPEC-architecture-p6 P6.2 (R6.2.4): a row of MUST_FIND and MUST_NOT_FIND names the side its script runs on - \"renderer\" or \"main process\", derived from MAIN_SCRIPTS (_side), never typed - rather than a file, so a script carved out of app.js, shell.js or main.js is read under the row without anyone adding it; a pattern is matched on the side, and an anchor is found in the scripts of its side by script and line and still fails as rotted when no script of its side holds it."
+      "notes": "SPEC-architecture-p2 R2.3.2, R2.3.5 (C-4's alternative to a vocabulary key, which would change tests/golden/vocab.keys.json). The renderer says kind for many vocabularies that are not failures (sheet, link, Open and step kinds), so a literal is collected from five named failure contexts only - sentence_object, kind_compared, local_kind_compared, kind_default and shell_failure - over the scripts as stripped_js reads them, with string and template text masked, comments and regular expressions blanked, and objects and calls found by bracket matching. MUST_FIND names each site a pattern was written for and fails when it stops matching; MUST_NOT_FIND names failure-shaped sites that are not failures, per literal, so neither list can rot. No exclusion table: a pattern that catches a literal that is not a failure kind is narrowed, never excused. It reads the recordings and the scripts' text, calls no command and runs no node, so it is never skipped. SPEC-architecture-p6 P6.2 (R6.2.4): a row of MUST_FIND and MUST_NOT_FIND names the side its script runs on - \"renderer\" or \"main process\", derived from MAIN_SCRIPTS (_side), never typed - rather than a file, so a script carved out of app.js, shell.js or main.js is read under the row without anyone adding it; a pattern is matched on the side, and an anchor is found in the scripts of its side by script and line and still fails as rotted when no script of its side holds it. SPEC-architecture-p6 P6.3 (R6.3.2): the main process is read by side too - _scripts() reads every script of MAIN_SCRIPTS from app/ by its own name, collected() passes shell_failure for a script whose side is the main process, _where reads each kind's own script from its side's folder, and the envelope test finds the one main-process script that defines shellFailure (asserting exactly one), so it holds wherever P6.13 puts it; MAIN_JS is gone."
     },
     {
       "id": "tests/test_repo_map.py",
@@ -11313,8 +11310,8 @@
       "id": "tests/test_scheduling.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "71493a9af7827e4e",
-      "lines": 906,
+      "sha256": "ba82224065755249",
+      "lines": 907,
       "exports": [
         "ARGS",
         "NOW",
@@ -11894,7 +11891,7 @@
       "id": "tests/test_shell_menu.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e1262be6ff00b3c8",
+      "sha256": "f1812efa6b9d681c",
       "lines": 787,
       "exports": [
         "MAC",
@@ -11965,8 +11962,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9ca6b0c39b4c1e70",
-      "lines": 5434,
+      "sha256": "134603ad686199c1",
+      "lines": 5436,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
@@ -19883,6 +19880,12 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_pilot_installer.py",
+      "to": "tests/node_harness.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_pilot_ui.py",
       "to": "tests/css_rules.py",
       "type": "imports",
@@ -22453,6 +22456,12 @@
     {
       "from": "tests/test_scheduling.py",
       "to": "tests/builders.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scheduling.py",
+      "to": "tests/node_harness.py",
       "type": "imports",
       "source": "derived"
     },

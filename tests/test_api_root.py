@@ -516,7 +516,7 @@ def test_the_schedule_dialog_uses_only_the_apis_words(capsys):
     here = Path(__file__).resolve().parent.parent / "app" / "renderer"
     js = renderer_text(APP_FAMILY)
     html = (here / "index.html").read_text(encoding="utf-8")
-    shell = (here / "shell.js").read_text(encoding="utf-8")
+    shell = renderer_text(APP_SCRIPTS)
     assert 'id="btn-schedule"' not in html, "the button is Tools > Schedule now (SPEC 5.1)"
     assert "schedule: () => openSchedule()," in shell
     assert 'call(["set-schedule"]' in js and 'call(["settings"]' in js
@@ -818,8 +818,7 @@ def test_a_mac_removes_its_schedule_from_the_tools_menu_and_nothing_else(capsys,
     assert "remove-schedule-here" in api.WRITING_COMMANDS and "remove-schedule-here" in api.COMMANDS
     assert "remove-schedule-here" in run(capsys, "list")[1]["vocab"]["writing_commands"]
     assert api.vocab()["schedule"]["remove_confirm"] == "Remove the Schedule From This Mac?"
-    here = Path(__file__).resolve().parent.parent / "app" / "renderer"
-    js, shell = renderer_text(APP_SCRIPTS), (here / "shell.js").read_text(encoding="utf-8")
+    js = shell = renderer_text(APP_SCRIPTS)
     assert "confirm(vocab.schedule.remove_confirm)" in js and 'call(["remove-schedule-here"]' in js
     assert "remove_schedule_here: () => removeScheduleHere()," in shell
     for literal in (screen_words.SCHEDULE_REMOVE_CONFIRM, after_install.SCHEDULE_REMOVED_FROM_MAC):
@@ -895,7 +894,7 @@ def test_the_schedule_is_repaired_from_the_tools_menu_in_the_apis_words():
     here = Path(__file__).resolve().parent.parent / "app" / "renderer"
     js = renderer_text(APP_SCRIPTS)
     html = (here / "index.html").read_text(encoding="utf-8")
-    shell = (here / "shell.js").read_text(encoding="utf-8")
+    shell = js
     assert "Install Schedule" not in html and 'id="btn-repair-schedule"' not in html
     assert "repair_schedule: () => repairSchedule()," in shell
     assert "confirm(vocab.schedule.repair_confirm)" in js

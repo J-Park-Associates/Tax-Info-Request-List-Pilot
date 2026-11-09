@@ -367,8 +367,7 @@ def test_the_settings_carry_the_firm_phone_and_the_vocabulary_names_its_box(caps
     )
     for word in (screen_words.FIRM_PHONE_LABEL, screen_words.FIRM_PHONE_HELP):
         assert word not in renderer and word not in html, word
-    setup = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "shell.js").read_text(encoding="utf-8")
-    assert "vocab.settings.phone_label" in setup, "the setup page's box is named by the API"
+    assert "vocab.settings.phone_label" in renderer_text(APP_SCRIPTS), "the setup page's box is named by the API"
 
 
 def test_the_reminder_payload_holds_on_a_parked_client_side_file(capsys, demo_root, tmp_path):

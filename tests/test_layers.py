@@ -142,7 +142,7 @@ import ast
 from pathlib import Path
 
 from tests.import_graph import PACKAGE, _modules, import_edges
-from tests.node_harness import APP_SCRIPTS, RENDERER, RENDERER_SCRIPTS
+from tests.node_harness import APP, APP_SCRIPTS, MAIN_SCRIPTS, RENDERER, RENDERER_SCRIPTS
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -899,7 +899,7 @@ def test_the_app_has_no_network_call():
 
     scripts = sorted(path for path in (REPO / "app").rglob("*.js")
                      if "node_modules" not in path.relative_to(REPO / "app").parts)
-    assert {path.name for path in scripts} >= {"main.js", "preload.js", *APP_SCRIPTS}, scripts
+    assert {path.name for path in scripts} >= {*MAIN_SCRIPTS, "preload.js", *APP_SCRIPTS}, scripts
     found = []
     for path in scripts:
         text = path.read_text(encoding="utf-8")
@@ -1247,7 +1247,7 @@ def test_the_app_never_works_out_whether_a_path_lies_under_another():
     no ``startsWith(`` in ``main.js`` or in any script the page loads
     (SPEC-architecture R3.3) - the API says where a path is below the root,
     in the layout's words."""
-    for path in (REPO / "app" / "main.js", *(RENDERER / name for name in RENDERER_SCRIPTS)):
+    for path in (*(APP / name for name in MAIN_SCRIPTS), *(RENDERER / name for name in RENDERER_SCRIPTS)):
         text = path.read_text(encoding="utf-8")
         assert "path.relative(" not in text, path.name
         assert "startsWith(" not in text, path.name

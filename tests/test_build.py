@@ -18,7 +18,7 @@ import json
 import re
 from pathlib import Path
 
-from tests.node_harness import NODE, RENDERER_SCRIPTS
+from tests.node_harness import MAIN_SCRIPTS, NODE, RENDERER_SCRIPTS, main_text
 from tests.samples import DEMO_ITEMS, SCRATCH_HOUSEHOLD, SCRATCH_RETURN, SCRATCH_SCAN, build_scratch_root
 from tracker.registry import discover_engagements
 from tracker.run_log import REMINDER_MODES
@@ -413,7 +413,7 @@ def test_the_gate_parses_every_script_the_app_runs():
     assert "shell: bash" in step and 'node --check "$f"' in step
     assert f"for f in {' '.join(SCRIPT_GLOBS)}; do" in step
     assert "node --check app/" not in step
-    loaded = {"app/main.js", "app/preload.js", *(f"app/renderer/{name}" for name in RENDERER_SCRIPTS)}
+    loaded = {*(f"app/{name}" for name in MAIN_SCRIPTS), "app/preload.js", *(f"app/renderer/{name}" for name in RENDERER_SCRIPTS)}
     assert loaded <= set(shipped_scripts()), sorted(loaded - set(shipped_scripts()))
 
 
@@ -1350,7 +1350,7 @@ def test_the_mac_build_names_everything_from_package_json_and_the_pilots_version
     assert re.search(r"^OutputBaseFilename=" + re.escape(package["productName"].replace(" ", "-"))
                      + r"-Setup-\{#AppVersion\}$", setup_iss, re.M)
     identifier = re.search(r'^APP_ID="([^"]+)"$', text, re.M).group(1)
-    assert f'setAppUserModelId("{identifier}")' in read("app/main.js")
+    assert f'setAppUserModelId("{identifier}")' in main_text()
     assert '--app-bundle-id="$APP_ID"' in text
     # The disk image is of a commit, refused otherwise, as the pilot installer is (P13).
     assert text.index("git rev-parse --verify HEAD") < text.index("git status --porcelain") < text.index(

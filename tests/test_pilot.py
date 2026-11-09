@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.node_harness import APP_SCRIPTS, PILOT_SCRIPTS, content, read
+from tests.node_harness import APP_SCRIPTS, PILOT_SCRIPTS, content, main_text, read, renderer_text
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -149,7 +149,7 @@ def test_the_tour_is_remembered_through_the_pilot_record():
 def test_the_shell_writes_the_pages_storage_as_the_window_closes():
     """P46: flushed at close, not left to the end of a shutdown a quick
     restart can overtake."""
-    main = (REPO / "app" / "main.js").read_text(encoding="utf-8")
+    main = main_text()
     assert 'win.on("close", () => win.webContents.session.flushStorageData());' in main
     assert "app.requestSingleInstanceLock()" in main
 
@@ -172,7 +172,8 @@ def test_the_badge_sits_in_the_side_panels_foot_and_there_is_no_tour_button():
     js = read("pilot.js")
     assert 'document.getElementById("side-foot")' in js
     assert "btn-tour" not in js and "btn-tour" not in read("index.html")
-    assert "PilotTour.start()" in read("shell.js") and "PilotTerms.show()" in read("shell.js")
+    app = renderer_text(APP_SCRIPTS)
+    assert "PilotTour.start()" in app and "PilotTerms.show()" in app
     assert 'id="side-foot"' in read("index.html")
 
 
