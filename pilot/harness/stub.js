@@ -281,9 +281,22 @@
     })) : undefined;
     if (longList) items.forEach((it, i) => { it.catalog_row = true; if (scenario === "long-editor" && i % 10 === 9) it.manual_override = "Not Applicable"; });
     const card = reminderReply(body, path, null);
+    const openYears = noticing ? [2025, 2024] : [2025];
+    const feeds = noticing ? [{ label: "", warning: LONG.feed }] : [];
+    // The counts by group and the Hand Over list the engine sends beside the rows (firm_view.tally and
+    // api._hand_over_targets, P354), worked out by the rules the page used before it read them
+    // (tests/node_harness.py's RETIRED_PAGE_RULES) over this return's own made-up groups and household, so
+    // the harness draws and compares what it did before.
+    const tally = Object.fromEntries(Object.values(GROUP_OF).map((group) => [group, 0]));
+    for (const it of items) if (it.group in tally) tally[it.group] += 1;
+    for (const e of index) if (e.group === "needs_you" || e.group === "set_aside") tally[e.group] += 1;
+    const handOver = [
+      ...(owner ? owner.returns : []).filter((r) => r.active && openYears.includes(r.year) && r.path !== path).map((r) => ({ path: r.path, label: r.label })),
+      ...feeds.filter((f) => f.path).map((f) => ({ path: f.path, label: f.label })),
+    ];
     return {
       paths: Object.assign({ engagement: path, inbox: owner ? owner.inbox : "", client_folder: owner ? owner.client_folder : "", status: `${ROOT}/status.html` }, keys),
-      rules: rules || [], items, index, review, moved: movedList, lock, engagement: { due: dueOf(body.due) || "", form: "", people: [] },
+      rules: rules || [], items, index, tally, review, moved: movedList, lock, engagement: { due: dueOf(body.due) || "", form: "", people: [] },
       reminder_card: card,
       // The rest of what the engine's `state` always sends (tracker/replies.py's StateReply, which
       // tests/test_shell.py holds this reply to), in its shapes. Where the page reads one of these it
@@ -299,11 +312,12 @@
       carries_code: [],
       household: {
         path: owner ? owner.path : "", name: hh, members: owner ? owner.members : [], contact: owner ? owner.contact : "", link: "",
-        open_years: noticing ? [2025, 2024] : [2025],
+        open_years: openYears,
         pause: noticing ? { sentence: LONG.paused, scope: "household", engagement: path, seq: 3 } : {},
-        feeds: noticing ? [{ label: "", warning: LONG.feed }] : [],
+        feeds,
         returns: owner ? owner.returns : [], queue: 0, roll_year: owner && owner.rollYear ? owner.rollYear : null, shared_on: hh === "Lopez Household" ? "" : "2026-02-01",
       },
+      hand_over_targets: handOver,
     };
   }
 

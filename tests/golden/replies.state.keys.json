@@ -25,6 +25,7 @@
     "sender": "str",
     "tax_year": "int"
   },
+  "hand_over_targets": [],
   "household": {
     "checklist": {
       "heading": "str",
@@ -331,6 +332,12 @@
     "received": "int",
     "total": "int",
     "unscanned": "int"
+  },
+  "tally": {
+    "needs_you": "int",
+    "received": "int",
+    "set_aside": "int",
+    "waiting": "int"
   },
   "view": {
     "path": "str",

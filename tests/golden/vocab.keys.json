@@ -109,6 +109,9 @@
     ]
   },
   "firm": "str",
+  "groups": [
+    "str"
+  ],
   "household": {
     "accept_folder_name": "str",
     "accept_folder_name_help": "str",

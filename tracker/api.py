@@ -174,6 +174,7 @@ from tracker.firm_view import (
     BUCKET_NOT_A_DOCUMENT,
     GROUP_NEEDS_YOU,
     GROUP_WAITING,
+    GROUPS,
     _firm_cached,
     _firm_last,
     _firm_marked,
@@ -189,6 +190,7 @@ from tracker.firm_view import (
     file_group,
     item_group,
     review_bucket,
+    tally,
 )
 from tracker.fsio import make_new_folders, write_json_atomically
 from tracker.hold import one_reading
@@ -1003,6 +1005,10 @@ def vocab() -> dict:
         # the editor's, of every row nobody waits on, and each group's
         # heading inside it (decision 200).
         "set_aside": {"heading": SET_ASIDE_SECTION, "group": SET_ASIDE_GROUP},
+        # The four groups a return's page draws its rows and files under, in
+        # the order it draws them (SPEC-shell 9.1; P354): the names ``state``
+        # puts on each row and counts in ``tally``, so the page types none.
+        "groups": list(GROUPS),
         # What a row nobody asked for is called while nothing has arrived
         # for it (decision 142).
         "not_asked_label": NOT_ASKED_LABEL,
@@ -2235,6 +2241,10 @@ def state(engagement: Path) -> dict:
                                # key, never the path, is on the row).
                                "open_keys": _filed_copy_keys(e)} | _review_payload(e)
                   for e in entries],
+        # How many of the rows and files above fall in each group (P354):
+        # firm_view.tally, the count this return's line of the firm view
+        # holds, so the page compares the two without counting anything.
+        "tally": tally(items, placed, entries),
         # The review queue, triaged: one entry per parked file, its
         # shortlist best-first with the sentence behind each suggestion.
         # There is no `review` command - the card draws from the one state
@@ -2264,6 +2274,10 @@ def state(engagement: Path) -> dict:
         # record, the years still open across it, its returns and the one
         # queue a person works.
         "household": household,
+        # Every return a parked document here may be handed to, in the
+        # order the picker lists them (decision 129; P354): from the
+        # household payload above, every feed line kept.
+        "hand_over_targets": _hand_over_targets(engagement, household),
         "paths": {
             "engagement": str(engagement),
             # The household's one inbox and the folder the client sees for
@@ -3581,9 +3595,16 @@ def _fed_returns(engagement: Path, household: dict | None = None) -> dict[Path, 
     list pass none and build it fresh.
 
     Its household's own open-year returns and the return lines a person
-    extended it to. The one list that says what a hand-over may name, and
-    the one the app's picker is drawn from, so a person can only send a
-    document where the feed list already goes.
+    extended it to. The one list that says what a hand-over may name, so a
+    person can only send a document where the feed list already goes.
+
+    **One rule, two shapes** (P354). The app's picker is drawn from
+    :func:`_hand_over_targets`, the same rule as a list. This one is a dict
+    by folder because a target is checked against it - the hand-over and
+    the waiting row's click ask only whether a return is fed, and a feed
+    line twice means nothing there; that one keeps every line, in the order
+    the picker lists them. ``tests/test_api_household.py`` holds the two to
+    the same returns.
     """
     household_dir = household_of(engagement)
     payload = household or _household_payload(engagement)
@@ -3594,6 +3615,31 @@ def _fed_returns(engagement: Path, household: dict | None = None) -> dict[Path, 
     fed.pop(engagement, None)
     log.debug("%s feeds %d return(s)", household_dir.name, len(fed))
     return fed
+
+
+def _hand_over_targets(engagement: Path, household: dict) -> list[dict[str, str]]:
+    """Every return a parked document here may be handed to, as the app's
+    picker lists them (decision 129; P354): the household's active
+    open-year returns other than this one, then every feed line that
+    resolved to a return, each with its label.
+
+    The rule of :func:`_fed_returns`, in the shape the picker draws: a
+    list, where that is a dict by folder. A repeat is kept. The editor
+    refuses a feed line its list already holds, but a household record
+    another machine's tracker or an older app wrote can hold two lines that
+    resolve to one return. The page worked this list out itself before
+    (``fedReturns``), by this rule over the same payload, and listed such a
+    return twice; a dict would list it once, a change a person could see.
+    ``tests/node_harness.py`` keeps the page's rule as the oracle this is
+    held to.
+
+    ``household`` is the payload :func:`state` already built (decision
+    192), so nothing is read here.
+    """
+    years = household["open_years"]
+    own = [{"path": one["path"], "label": one["label"]} for one in household["returns"]
+           if one["active"] and one["year"] in years and one["path"] != str(engagement)]
+    return own + [{"path": one["path"], "label": one["label"]} for one in household["feeds"] if one["path"]]
 
 
 def _hand_over(engagement: Path, original: str, target: Path, identifier: str, *,

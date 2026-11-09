@@ -37,7 +37,7 @@ from tests.api_driver import (
     waiting_document,
     where,
 )
-from tests.builders import TEST_CLIENT, make_engagement
+from tests.builders import TEST_CLIENT, make_engagement, written_elsewhere
 from tests.node_harness import APP_FAMILY, APP_SCRIPTS, read, renderer_text
 from tests.samples import PRIOR_YEAR, text_pdf
 from tracker import creation, household_edit, layout, ledger, screen_words
@@ -891,6 +891,42 @@ def test_edit_household_saves_feeds_and_the_state_carries_feeds_and_fed_by_with_
     _code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(father))
     [gone] = payload["household"]["feeds"]
     assert gone["path"] == "" and "no active return" in gone["warning"]
+
+
+def test_the_hand_over_list_names_the_feed_lists_returns_and_keeps_a_feed_line_given_twice(capsys, demo_root):
+    """P354: ``state`` sends who a parked document here may be handed to
+    (``hand_over_targets``), the feed list's rule (``_fed_returns``, which
+    the hand-over checks a target against) in the shape the picker draws.
+    On every return the two name the same returns, and neither names the
+    return shown. The list keeps a feed line a household record holds twice,
+    as the page listed it before: the editor refuses the repeat, but
+    another machine's tracker writes the record's own linked line, and two
+    lines that differ only in case resolve to one return."""
+    from tracker.layout import private_household_dir
+
+    father, llc = two_households(capsys, demo_root)
+    items = [{"identifier": "A01", "document": "W-2"}]
+    assert run(capsys, "create", stdin={"household_path": str(private_household_dir(demo_root, "Park Family")),
+                                        "return_name": "1040 - Sofia Park", "items": items})[0] == 0
+    assert run(capsys, "create", stdin={"household": "Lee Family", "contact": "Sam", "return_name": "1040 - Sam Lee",
+                                        "items": items})[0] == 0
+    sofia = where(demo_root, "1040 - Sofia Park", household="Park Family")
+    sam = where(demo_root, "1040 - Sam Lee", household="Lee Family")
+    written_elsewhere(private_household_dir(demo_root, "Lee Family"), {
+        ledger.EVENT_KEY: ledger.HOUSEHOLD_CHANGED, ledger.AT_KEY: "2026-01-01T00:00:00Z",
+        ledger.HOUSEHOLD_KEY: {"feeds": [{"household": "Park & Lee LLC", "return_name": "1120S - Park & Lee LLC"},
+                                         {"household": "park & lee llc", "return_name": "1120s - PARK & LEE LLC"}]}})
+
+    listed = {}
+    for one in (father, sofia, llc, sam):
+        code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(one))
+        assert code == 0, payload
+        listed[one] = [target["path"] for target in payload["hand_over_targets"]]
+        assert set(listed[one]) == {str(path) for path in api._fed_returns(one)}, one.name
+        assert str(one) not in listed[one]
+    assert listed[father] == [str(sofia), str(llc)] and listed[sofia] == [str(father), str(llc)]
+    assert listed[llc] == []
+    assert listed[sam] == [str(llc), str(llc)], "a feed line held twice is listed twice, as the page listed it"
 
 
 def test_assign_with_a_target_refuses_an_unfed_return_and_hands_over_to_a_fed_one(

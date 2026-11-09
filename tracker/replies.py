@@ -89,11 +89,13 @@ class StateReply(TypedDict):
     room: dict
     room_note: str
     index: list[dict]
+    tally: dict[str, int]
     review: list[dict]
     moved: list[dict]
     reminder: dict
     reminder_card: dict
     household: dict
+    hand_over_targets: list[dict]
     paths: dict[str, str]
     carries_code: list[str]
 

@@ -9,6 +9,8 @@ Each part upholds the decision rows it names:
   return's page (the API's ``state``) sends each row's group from these
   two and the Overview counts with the same two, so a count on the
   Overview and the group on the return's page cannot disagree.
+  :func:`tally` is that count, once: the Overview's row and the return's
+  ``state`` both send it (P354), so the page counts nothing itself.
 - **The review buckets and the copy keys** (decisions 184 and 190; rulings
   15 and 24). :func:`review_bucket` decides from a parked row's code and
   its name on disk (:func:`_name_on_disk`) which of the review card's three
@@ -250,6 +252,28 @@ def file_group(entry: IndexEntry) -> str:
     return GROUP_RECEIVED
 
 
+def tally(items, placed: dict, entries: list[IndexEntry]) -> dict[str, int]:
+    """How many of a return's rows and files fall in each group, in
+    :data:`GROUPS`' order (SPEC-shell 9.1): every request row by
+    :func:`item_group`, and every file by :func:`file_group` unless it is
+    filed - a filed file is already the Received row it answered.
+
+    The one count (P354): a return's line of the firm view
+    (:func:`_firm_row`) and the return's own ``state`` both send it, so the
+    counts the Overview holds for a return and the tally its page is
+    compared by come from one function. The page counted for itself before
+    (``pagesTally``), by the same rule over the groups ``state`` sends;
+    ``tests/node_harness.py`` keeps that rule as the oracle this is held to."""
+    counts = dict.fromkeys(GROUPS, 0)
+    for item in items:
+        counts[item_group(item, placed)] += 1
+    for entry in entries:
+        group = file_group(entry)
+        if group != GROUP_RECEIVED:
+            counts[group] += 1
+    return counts
+
+
 def _year(one: Engagement) -> int | None:
     """The return's tax year: the record's, or the one its folder is named for."""
     return one.tax_year if one.tax_year is not None else year_of(one.path)
@@ -377,17 +401,12 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict], di
         log.warning("A return could not be read for the firm view (%s)", errors.error_class(exc))
         row["problem"] = FIRM_UNREADABLE
         return row, [], {}
-    for item in items:
-        row["counts"][item_group(item, placed)] += 1
     # The files count in their groups too (SPEC-shell 9.1): parked and moved
     # by hand are Needs you, set aside by a person are Set aside, and a filed
     # file is already the Received row it answered. The same file_group the
     # return's ``state`` sends on each index row, so a count here is the tally
     # of that page and the two cannot disagree.
-    for entry in entries:
-        group = file_group(entry)
-        if group != GROUP_RECEIVED:
-            row["counts"][group] += 1
+    row["counts"] = tally(items, placed, entries)
     by_name = {item.identifier: item for item in items}
     paths: dict[str, str] = {}
 

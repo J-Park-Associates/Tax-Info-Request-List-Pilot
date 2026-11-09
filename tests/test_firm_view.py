@@ -14,6 +14,9 @@ two tests below moved here from tests/test_api.py (SPEC-architecture-p5
 R5.7.6, P344): each calls one half of the group rule and nothing else of
 the API. They read it through ``tracker.api``, which imports both back,
 until SPEC-architecture-p5 P5.16 retargets every such read to its home.
+The third holds :func:`tracker.firm_view.tally`, the one count by group
+that a firm row and a return's ``state`` both send (SPEC-architecture-p6
+P6.5, P354).
 """
 
 import tracker.api as api
@@ -59,3 +62,30 @@ def test_a_file_falls_in_the_group_its_decision_says():
     assert firm_view.file_group(entry(FILE_MOVED, home="")) == "set_aside"      # marked missing
     assert firm_view.file_group(entry(NOT_REQUESTED)) == "set_aside"
     assert firm_view.file_group(entry(api.FILED)) == "received"
+
+
+def test_tally_counts_each_row_in_its_group_and_each_file_but_a_filed_one_in_the_groups_order():
+    """A request row counts in its ``item_group``, a file in its
+    ``file_group`` unless it is filed (its request is already the Received
+    row), and every group is there in ``GROUPS``' order, at zero too."""
+    from types import SimpleNamespace
+
+    from tracker.index import FILE_MOVED, FILED, NOT_REQUESTED
+    from tracker.manifest import Override
+    from tracker.reminder import SIDE_CLIENT, SIDE_US
+
+    def row(identifier, status=Status.MISSING, override=""):
+        return SimpleNamespace(identifier=identifier, status=status, asked=True, manual_override=override)
+
+    def entry(decision, home="A01/a.pdf"):
+        return IndexEntry(received="2026-02-01", original_name="a.pdf", size_kb=1.0, digest="1" * 64,
+                          identifier="A01", prepared_location=home, pbc_location="pbc/a.pdf",
+                          decision=decision, reason="")
+
+    items = [row("A01"), row("A02"), row("A03", status=Status.RECEIVED), row("A04", override=Override.NOT_APPLICABLE)]
+    placed = {"A01": (SIDE_US, ""), "A02": (SIDE_CLIENT, "")}
+    files = [entry(NEEDS_REVIEW), entry(FILE_MOVED), entry(FILE_MOVED, home=""), entry(NOT_REQUESTED), entry(FILED)]
+    counts = firm_view.tally(items, placed, files)
+    assert list(counts) == list(firm_view.GROUPS)
+    assert counts == {"needs_you": 1 + 2, "waiting": 1, "received": 1, "set_aside": 1 + 2}
+    assert firm_view.tally([], {}, []) == dict.fromkeys(firm_view.GROUPS, 0)
