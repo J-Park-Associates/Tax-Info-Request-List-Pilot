@@ -666,9 +666,14 @@ _PLAIN_WORD = re.compile(r"^[A-Za-z][A-Za-z'\u2019]*[.,;:!?\u2026]*$")
 _LITERAL = re.compile(r'"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'|`(?:[^`\\]|\\.)*`')
 #: What a literal that is a query's whole selector argument follows.
 _SELECTOR_CALL = re.compile(r"\.(?:querySelector|querySelectorAll|closest|matches)\(\s*$")
-#: A call whose arguments are an error's text: one thrown or one logged, to
-#: the console or to the error log through the shell (R6.4.2).
-_ERROR_CALL = re.compile(r"(?<![\w$.])(?:new Error|console\.[A-Za-z]+|window\.tracker\.logError)\(")
+#: A call whose arguments go to a log and never on screen: the console's, or
+#: the error log through the shell (R6.4.2). Its text is passed over.
+_LOG_CALL = re.compile(r"(?<![\w$.])(?:console\.[A-Za-z]+|window\.tracker\.logError)\(")
+#: An error made from text (R6.4.3), whose text is passed over only where the
+#: error goes off the screen: thrown, or handed straight to ``failed(`` or
+#: ``failureSentence(``, which log a page error's text and show the API's words.
+_NEW_ERROR = re.compile(r"(?<![\w$.])new Error\(")
+_ERROR_GOES = re.compile(r"(?:(?<![\w$.])throw|(?<![\w$.])(?:failed|failureSentence)\()\s*$")
 
 #: The one label a ruling lets the page type (R3.4): the reassign picker's
 #: aria-label and first option, app.js's BELONGS_TO, in Title Case by Jason's
@@ -691,10 +696,14 @@ def typed_literals(text: str) -> list[str]:
     Three kinds are passed over, each found by where it sits and never by
     what it says, since none is on screen (R3.4): a literal that is the whole
     selector argument of ``querySelector``, ``querySelectorAll``, ``closest``
-    or ``matches``; the text of an error, every literal inside the brackets
-    of ``new Error(...)`` (``throw new Error(...)`` included), of
-    ``console.*(...)`` or of ``window.tracker.logError(...)``; and
-    ``"use strict"`` as the script's first statement.
+    or ``matches``; the text of an error, by where it goes (R6.4.3) - every
+    literal inside the brackets of a logging call, ``console.*(...)`` or
+    ``window.tracker.logError(...)`` (R6.4.2), and inside those of a ``new
+    Error(...)`` that is thrown (``throw new Error(...)``) or handed straight
+    to ``failed(`` or ``failureSentence(``, which log a page error's text and
+    show the API's words; and ``"use strict"`` as the script's first
+    statement. An error made anywhere else may reach the screen -
+    ``toast(new Error("Two words").message)`` - so its text is read.
     A pattern over the text - "a literal that looks like a selector" - would
     pass a sentence that happened to look like one, so there is none. A
     template's ``${...}`` counts as no word, and a literal inside it is not
@@ -702,8 +711,9 @@ def typed_literals(text: str) -> list[str]:
     text = re.sub(r"/[^/\n*][^/\n]*/[gimsuy]*(?=[.,;)])", "", text)   # regex literals
     found = list(_LITERAL.finditer(text))
     ends = {one.start(): one.end() for one in found}
-    quiet = []   # the brackets of each error's call, a literal inside which is the error's text
-    for call in _ERROR_CALL.finditer(text):
+    quiet = []   # the brackets of each logging call and each error that goes off the screen
+    gone = (one for one in _NEW_ERROR.finditer(text) if _ERROR_GOES.search(text[max(0, one.start() - 40):one.start()]))
+    for call in (*_LOG_CALL.finditer(text), *gone):
         if any(start <= call.start() < end for start, end in ends.items()):
             continue   # the words of a literal, not a call
         depth, i = 1, call.end()
@@ -790,17 +800,44 @@ def test_the_typed_words_guard_passes_a_whole_selector_argument_and_nothing_besi
     assert typed_literals(f'row.{query}("tbody input" + "Typed here");\n') == ['"tbody input"', '"Typed here"']
 
 
-@pytest.mark.parametrize("call", ["new Error", "console.error", "console.warn", "console.log", "window.tracker.logError"])
+@pytest.mark.parametrize("call", ["console.error", "console.warn", "console.log", "window.tracker.logError"])
 def test_the_typed_words_guard_passes_an_errors_text_and_nothing_beside_it(call):
-    """R3.4, R6.4.2: the text of a thrown or logged error is for whoever reads
-    the log, never on screen, and is passed over, a bracket inside it included; a
+    """R3.4, R6.4.2: the text of a logged error is for whoever reads the
+    log, never on screen, and is passed over, a bracket inside it included; a
     sentence just outside the call - the next argument of the call around
-    it, the line after - is still one the page typed."""
+    it, the line after - is still one the page typed. An error made with
+    ``new Error`` is judged by where it goes (the test below)."""
     error = f'{call}(`el(): attribute not allowed: ${{key}}`, "while drawing the row")'
     assert typed_literals(f"if (bad) {error};\n") == []
     assert typed_literals(f'reject({error}, "Typed here");\n') == ['"Typed here"']
     assert typed_literals(f'if (bad) {error};\nsay("Typed here");\n') == ['"Typed here"']
     assert typed_literals(f'throw {error};\nsay("Typed here");\n') == ['"Typed here"']
+
+
+@pytest.mark.parametrize(("code", "typed"), [
+    ('if (bad) throw new Error("Two words");\n', []),
+    ('throw new Error(`el(): attribute not allowed: ${key}`);\n', []),
+    ('failed(new Error("Two words"));\n', []),
+    ('failed(new Error("Two words"), () => again());\n', []),
+    ('note.textContent = failureSentence(new Error("Two words"));\n', []),
+    ('console.error(new Error("Two words"));\n', []),
+    ('window.tracker.logError(String(new Error("Two words")));\n', []),
+    ('toast(new Error("Two words").message);\n', ['"Two words"']),
+    ('const err = new Error("Two words");\n', ['"Two words"']),
+    ('reject(new Error("Two words"));\n', ['"Two words"']),
+    ('failed(err, new Error("Two words"));\n', ['"Two words"']),
+    ('notice.failed(new Error("Two words"));\n', ['"Two words"']),
+    ('say(failed(new Error("Two words")), "Typed here");\n', ['"Typed here"']),
+], ids=["thrown", "thrown-template", "failed", "failed-with-retry", "failureSentence", "inside-console", "inside-logError",
+        "its-message-toasted", "kept", "rejected", "failed-second-argument", "a-method-named-failed", "beside-failed"])
+def test_the_typed_words_guard_passes_an_errors_text_only_where_the_error_goes(code, typed):
+    """R6.4.3: the text of a ``new Error(...)`` is passed over only when the
+    error goes where no one reads it on screen - thrown, handed straight to
+    ``failed(`` or ``failureSentence(`` (which log a page error's text and
+    show the API's words), or made inside a logging call. An error made
+    anywhere else can carry its text to the screen (``toast(new Error("Two
+    words").message)``), so its text is one the page typed."""
+    assert typed_literals(code) == typed
 
 
 def test_the_typed_words_guard_passes_use_strict_only_as_the_first_statement():

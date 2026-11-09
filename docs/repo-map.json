@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 414,
     "edges": 2462,
-    "reused": 355
+    "reused": 359
   },
   "node_types": [
     "artifact",
@@ -4976,7 +4976,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "430f3b6cbbb1b53e",
+      "sha256": "557433ee72fdadda",
       "lines": 2058,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -11486,8 +11486,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1f6b7047dd96daa1",
-      "lines": 8288,
+      "sha256": "651e3c1b8248c174",
+      "lines": 8325,
       "exports": [
         "CARD_HOUSEHOLD",
         "COMPACT_FUNCTIONS",
@@ -11853,6 +11853,7 @@
         "test_the_tooltip_reaches_floating_ui_only_through_its_one_global",
         "test_the_typed_words_guard_passes_a_whole_selector_argument_and_nothing_beside_it",
         "test_the_typed_words_guard_passes_an_errors_text_and_nothing_beside_it",
+        "test_the_typed_words_guard_passes_an_errors_text_only_where_the_error_goes",
         "test_the_typed_words_guard_passes_use_strict_only_as_the_first_statement",
         "test_the_vendored_floating_ui_is_the_pinned_bytes_and_nothing_else",
         "test_the_window_and_its_taskbar_button_carry_the_console_icon",
@@ -11886,7 +11887,7 @@
         "CARD_HOUSEHOLD": "'\\n  const LINK = \"LINKTOKEN-share-me\";\\n  const hh = { name: \"Alpha\", path: \"c/Alpha\", contact: \"A Person\", members: [\"A Person\", \"Another\"], link: LINK,\\n               returns: [{ path: \"r/1040 - Alpha\", year: 2025, return_name: \"1040 - Alpha\", form: \"1040\", active: true },\\n                         { path: \"r/old\", year: 2024, return_name: \"1040 - Alpha\", form: \"1040\", active: true }] };\\n  shellHousehold = () => hh;\\n  shellRoute = { level: \"household\", household: \"c/Alpha\" };\\n  lastState = { household: { path: \"c/Alpha\", shared_on: \"2026-02-01\" } };\\n  const cls = (n) => n.className.split(\" \")[0];\\n  const facts = (page) => page.byClass(\"card-fact\").map((f) => [f.kids[0].textContent, f.kids.slice(1).map((k) => k.textContent)]);\\n'"
       },
       "role": "The shell's renderer half: the tokens and their contrast in both themes, the shell stylesheet's discipline, the guards every renderer file keeps, the words the app's scripts may not type, and the route, search, Sort Now button and menu enable list run in node against shell.js's own functions.",
-      "notes": "The files a claim covers are node_harness's RENDERER_SCRIPTS or a named part of it, and TITLE_FREE, built from it (SPEC-architecture R3.2): a script added to index.html is read by the guards every renderer script keeps, the no-title rule and the one keydown listener without anyone adding it. The typed-words guard (P63) reads TYPED_WORDS_READ, every script the page loads but pilot-content.js, the pilot's wording by design, whose words test_pilot holds (the pilot's pilot.js and tour.js are read since SPEC-architecture-p6 R6.4.2, and the tour's count line is the content file's words, R6.4.1); it passes over a query's whole selector argument, an error's text (inside new Error(...), console.*(...) or window.tracker.logError(...)) and the first statement's \"use strict\", each found by where it sits and never by what it says, and holds the one literal typed today exact: RULED_LABELS, \"Belongs To\u2026\" (ruling 10) (SPEC-architecture R3.4); D-9's four, KNOWN_TYPED_SENTENCES until J5, are the API's since (R5.5: assign's said, the vocabulary's request_list) and the list is gone. S2 adds the menu half, S4 the pages' node tests and S5 the sheet's. The contrast table and the token values are the SPEC's section 10, copied as data. Its node runners (run_shell, run_pages, run_pages_dom and the rest, with the fakes and function lists each uses) live in tests/node_harness.py since SPEC-architecture J2."
+      "notes": "The files a claim covers are node_harness's RENDERER_SCRIPTS or a named part of it, and TITLE_FREE, built from it (SPEC-architecture R3.2): a script added to index.html is read by the guards every renderer script keeps, the no-title rule and the one keydown listener without anyone adding it. The typed-words guard (P63) reads TYPED_WORDS_READ, every script the page loads but pilot-content.js, the pilot's wording by design, whose words test_pilot holds (the pilot's pilot.js and tour.js are read since SPEC-architecture-p6 R6.4.2, and the tour's count line is the content file's words, R6.4.1); it passes over a query's whole selector argument, an error's text by where it goes (R6.4.3: inside a logging call, console.*(...) or window.tracker.logError(...), or inside a new Error(...) that is thrown or handed straight to failed( or failureSentence(, which log a page error's text and show the API's words; an error made anywhere else is read) and the first statement's \"use strict\", each found by where it sits and never by what it says, and holds the one literal typed today exact: RULED_LABELS, \"Belongs To\u2026\" (ruling 10) (SPEC-architecture R3.4); D-9's four, KNOWN_TYPED_SENTENCES until J5, are the API's since (R5.5: assign's said, the vocabulary's request_list) and the list is gone. S2 adds the menu half, S4 the pages' node tests and S5 the sheet's. The contrast table and the token values are the SPEC's section 10, copied as data. Its node runners (run_shell, run_pages, run_pages_dom and the rest, with the fakes and function lists each uses) live in tests/node_harness.py since SPEC-architecture J2."
     },
     {
       "id": "tests/test_shell_menu.py",
