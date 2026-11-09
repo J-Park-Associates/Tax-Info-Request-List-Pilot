@@ -34,6 +34,7 @@ import tracker.screen_words as screen_words
 from tests.api_driver import run, sample_engagement, scan
 from tests.css_rules import GRID_PROPS, GRID_TOKEN, blocks, colour_faults, declarations, stripped, top_level
 from tests.node_harness import (
+    APP_FAMILY,
     APP_SCRIPTS,
     COLUMN_FUNCTIONS,
     EARLY_FIRM,
@@ -43,6 +44,7 @@ from tests.node_harness import (
     RENDERER,
     RENDERER_SCRIPTS,
     SHELL_SCRIPTS,
+    js_block,
     js_function,
     lift_line,
     read,
@@ -61,6 +63,8 @@ from tests.node_harness import (
     run_speed,
     store_functions,
     stripped_js,
+    stripped_text,
+    without_comments,
 )
 from tracker import settings as settings_module
 
@@ -578,7 +582,8 @@ def test_the_skeleton_is_the_specs_and_no_hidden_box_is_used_as_a_variable():
         assert gone not in outside, gone
     for gone in ('id="root-input"', 'id="firm-input"', 'id="phone-input"'):
         assert gone not in html, gone
-    assert 'let setupDraft = { root: "", firm: "", phone: "" };' in read("app.js")
+    draft = 'let setupDraft = { root: "", firm: "", phone: "" };'
+    assert lift_line(draft) == draft + "\n"
     for taken in ('id="reminder-card"', 'id="moved-card"', 'id="review-card"', 'id="filed-card"', 'id="assurances"', 'id="household-roll"',
                   'id="dismissed-card"', 'id="btn-open-draft"', 'id="reminder-hint"', 'id="reminder-heading"'):
         assert taken not in html, taken
@@ -602,10 +607,10 @@ def test_every_element_the_renderer_looks_up_by_id_is_in_the_page_or_built_by_it
     html = read("index.html")
     present = set(re.findall(r'\bid="([^"]+)"', html))
     built = set()
-    for name in ("app.js", "pages.js", "shell.js", "sheet.js", "tooltip.js", "pilot.js", "tour.js", "pilot-content.js"):
+    for name in RENDERER_SCRIPTS:
         built |= set(re.findall(r'\bid:\s*"([^"]+)"', stripped_js(name)))
     missing = {}
-    for name in ("app.js", "pages.js", "shell.js", "sheet.js", "tooltip.js", "pilot.js", "tour.js"):
+    for name in (*APP_SCRIPTS, "pilot.js", "tour.js"):
         for found in re.finditer(r'\$\("([^"]+)"\)|getElementById\("([^"]+)"\)|querySelector\("#([\w-]+)', stripped_js(name)):
             ident = found.group(1) or found.group(2) or found.group(3)
             if ident not in present and ident not in built and not ident.startswith("pilot-"):
@@ -629,9 +634,7 @@ def test_every_icon_has_a_name_and_a_tooltip():
     # The notice's close icon is cloned from a template, so app.js names it when it draws one.
     template = html.split('<template id="notice-buttons">', 1)[1].split("</template>", 1)[0]
     assert re.search(r'<button[^>]*data-act="dismiss"[^>]*data-tip-key="screen\.icons\.dismiss"', template)
-    app = read("app.js")
-    drawing = app[app.index("function drawNotice(entry) {"):]
-    drawing = drawing[:drawing.index("\n}\n")]
+    drawing = js_function("drawNotice")
     assert "setAttribute(\"aria-label\", vocab.screen.icons.dismiss)" in drawing and "setTip(dismiss, vocab.screen.icons.dismiss)" in drawing
 
 
@@ -763,7 +766,7 @@ return fileRow("x", "A01", 3, "k", null, null).then(() => {
   return fileRow("x", "A01", 3, "", null, null);
 }).then(() => [...heard, said]);
 """
-    taught, plain = run_shell(["fileRow", "sayNotes"], setup, probe, tmp_path, source="app.js")
+    taught, plain = run_shell(["fileRow", "sayNotes"], setup, probe, tmp_path)
     assert taught == {"text": "FILED. KEYWORD. KEYWORD NOTE. SPELLING. SPELLING NOTE. SCAN NOTE.", "kind": "warn"}
     assert plain == {"text": "FILED.", "kind": "ok"}
 
@@ -804,8 +807,7 @@ def test_every_attribute_the_shell_builds_a_node_with_is_on_its_list():
     (decision 137). A key used at a call site but missing from the list
     would throw when that node is first drawn - the harness found one."""
     text = stripped_js("shell.js")
-    builder = stripped_js("app.js")
-    listed = set(re.findall(r'"([\w-]+)"', builder[builder.index("const EL_ATTRIBUTES = new Set(["):builder.index("]);")]))
+    listed = set(re.findall(r'"([\w-]+)"', without_comments(js_block("const EL_ATTRIBUTES = new Set(["))))
     used = set(re.findall(r'"(aria-[\w-]+)":', text)) | set(re.findall(r"\b(role|tabindex|type|disabled|hidden|value|dataset|className)\s*:", text))
     used |= set(re.findall(r'\{ id: "|, id: "|\bid: ', text)) and {"id"}
     assert used <= listed, sorted(used - listed)
@@ -821,8 +823,8 @@ def test_one_keydown_listener_owns_the_keyboard():
     take the listener off when they close."""
     for name in SHELL_SCRIPTS:
         assert 'addEventListener("keydown"' not in read(name), name
-    every = renderer_text()
-    listener = every[every.index('document.addEventListener("keydown", (e) => {'):]
+    assert 'document.addEventListener("keydown", (e) => {' in read("app.js")   # P76: the one listener is app.js's own
+    listener = js_block('document.addEventListener("keydown", (e) => {')
     assert listener.index("if (shellKey(e)) return;") < listener.index("dialogStack[dialogStack.length - 1]")
     held = {name: re.findall(r'document\.addEventListener\("keydown", (.*)', read(name)) for name in RENDERER_SCRIPTS}
     assert [one for name in APP_SCRIPTS for one in held[name]] == ["(e) => {"], held
@@ -1480,23 +1482,25 @@ def test_every_loud_failure_of_the_old_screen_reaches_a_notice():
     and the machine warnings, the after-install failure, folders skipped,
     names shortened to fit, the lock, two years open / folder renamed / feeds.
     Dropping the call (which the drawing tests cannot see) fails here."""
-    app = stripped_js("app.js")
 
     def body(text, name):
         start = text.index(f"function {name}(")
         return text[start:text.index("\n}\n", start)]
 
-    assert "renderMachineNotices(listed);" in body(app, "loadEngagements")
-    assert "renderAfterInstall(listed.after_install);" in body(app, "loadEngagements")
-    assert "renderMisfits();" in body(app, "adoptList")
-    assert "renderShortOfRoom(result.short_of_room || []);" in body(app, "saveRoot")
-    assert "renderAfterInstall(noticeOf(result.after_install));" in body(app, "saveRoot")
-    assert "showLock(state.lock);" in body(app, "renderLock") and "renderLock(state);" in body(app, "render")
-    assert 'keyedNotice("reader"' in body(app, "renderMachineNotices") and 'syncNotices("machine"' in body(app, "renderMachineNotices")
-    assert 'keyedNotice("after-install"' in body(app, "renderAfterInstall")
-    assert 'keyedNotice("misfits"' in body(app, "renderMisfits")
-    assert 'keyedNotice("room"' in body(app, "renderShortOfRoom")
-    assert 'keyedNotice("lock"' in body(app, "showLock")
+    def app_body(name):
+        return without_comments(js_function(name))
+
+    assert "renderMachineNotices(listed);" in app_body("loadEngagements")
+    assert "renderAfterInstall(listed.after_install);" in app_body("loadEngagements")
+    assert "renderMisfits();" in app_body("adoptList")
+    assert "renderShortOfRoom(result.short_of_room || []);" in app_body("saveRoot")
+    assert "renderAfterInstall(noticeOf(result.after_install));" in app_body("saveRoot")
+    assert "showLock(state.lock);" in app_body("renderLock") and "renderLock(state);" in app_body("render")
+    assert 'keyedNotice("reader"' in app_body("renderMachineNotices") and 'syncNotices("machine"' in app_body("renderMachineNotices")
+    assert 'keyedNotice("after-install"' in app_body("renderAfterInstall")
+    assert 'keyedNotice("misfits"' in app_body("renderMisfits")
+    assert 'keyedNotice("room"' in app_body("renderShortOfRoom")
+    assert 'keyedNotice("lock"' in app_body("showLock")
     pages = stripped_js("pages.js")
     assert "pagesHouseholdNotices(route);" in body(pages, "pagesDraw") and 'syncNotices("household"' in body(pages, "pagesHouseholdNotices")
     shell = stripped_js("shell.js")
@@ -1648,7 +1652,7 @@ def test_every_phrase_the_page_and_the_dialogs_draw_from_index_html_and_app_js_i
     assert len(texts) >= 6, texts
     for phrase in texts:
         assert title_case_ok(phrase), phrase
-    app = stripped_js("app.js")
+    app = stripped_text(APP_SCRIPTS)
     assert 'const BELONGS_TO = "Belongs To…";' in app and title_case_ok("Belongs To…")
     assert "Belongs to" not in app
 
@@ -1659,7 +1663,7 @@ def test_the_editor_has_one_advanced_switch_and_no_per_row_routing_toggle(tmp_pa
     rules, the taught keywords, and the paste and rename blocks. A row
     typed or pasted since the editor opened is open regardless, and a
     refused save turns the switch on."""
-    app = stripped_js("app.js")
+    app = stripped_text(APP_SCRIPTS)
     assert "ed-fold" not in app and "editorFolds" not in app and "routing_all" not in app and not re.search(r"vocab\.editor\.routing(?!_)", app)
     assert app.count('className: "btn btn-small ed-advanced"') == 1 and 'shellWords("editor.advanced")' in app
     html = read("index.html")
@@ -1675,7 +1679,7 @@ def test_the_editor_has_one_advanced_switch_and_no_per_row_routing_toggle(tmp_pa
       setAdvanced(false); out.offAgain = editorRowFoldOpen(known);
       showEveryFold(); out.refused = editorRowFoldOpen(known); out.drawn = drawn;
       return out;
-    """, tmp_path, source="app.js")
+    """, tmp_path)
     assert ran == {"off": [False, True], "on": True, "offAgain": False, "refused": True, "drawn": 3}
 
 
@@ -1686,7 +1690,7 @@ def test_the_wizard_keeps_the_first_steps_cancel_only_and_esc_and_the_scrim_stil
     html = read("index.html")
     modal = html[html.index('<div id="modal"'):html.index('id="ne-create"') + 40]
     assert modal.count(">Cancel</button>") == 1 and 'id="wh-cancel"' in modal
-    app = stripped_js("app.js")
+    app = stripped_text(APP_SCRIPTS)
     assert "wf-cancel" not in html + app and "ne-cancel" not in html + app
     assert re.search(r"^\s*modal: \{", app, flags=re.M), "the wizard is still in the dialog registry, so Escape and the scrim close it"
 
@@ -1695,22 +1699,22 @@ def test_no_toast_types_a_sentence_and_the_words_it_asks_for_are_five_title_case
     """F6: a toast is the API's word. The renderer types none (no string
     literal in a `toast(` call), and every key `toastWord` is given is in
     vocab.screen.notices as at most five words in Title Case."""
-    for name in ("app.js", "pages.js", "shell.js", "sheet.js"):
+    for name in APP_SCRIPTS:
         text = stripped_js(name)
         assert not re.search(r"\btoast\(\s*[\"'`]", text), f"{name} types a toast"
     notices = api.vocab()["screen"]["notices"]
-    keys = set(re.findall(r"toastWord\(\"(\w+)\"\)", stripped_js("app.js")))
+    keys = set(re.findall(r"toastWord\(\"(\w+)\"\)", stripped_text(APP_FAMILY)))
     assert keys == {"pick_request", "name_requests"}, keys
     for key in keys | {"no_log"}:
         assert len(notices[key].split()) <= 5 and title_case_ok(notices[key]), key
-    assert "toast(said)" in js_function("toastWord", "app.js") and "failed(new Error(" in js_function("toastWord", "app.js")
+    assert "toast(said)" in js_function("toastWord") and "failed(new Error(" in js_function("toastWord")
 
 
 def test_the_side_sheet_is_a_modal_in_the_one_dialog_registry_and_hides_by_its_attribute():
     """SPEC 7: it joins the dialog stack (focus in, Tab kept, Esc), hides by
     its `hidden` attribute, and gives the scrim and the row back when shut;
     the click on its scrim is the one way behind it."""
-    app = read("app.js")
+    app = renderer_text(APP_SCRIPTS)
     sheet = read("sheet.js")
     assert 'sheet: { model: null, attr: true, first: () => $("sheet-title"), closed: () => sheetClosed() },' in app
     assert 'openDialog("sheet");' in sheet and "closeDialog(\"sheet\")" in sheet
@@ -1726,7 +1730,7 @@ def test_the_cards_the_sheet_and_the_dialogs_took_are_gone_from_the_renderer_and
     """SPEC 13: the moved, review and filed cards, the reminder card, the
     roll fold and the assurances footer are gone with the functions that
     drew them and the rules that styled them."""
-    for name in ("app.js", "pages.js", "shell.js", "sheet.js"):
+    for name in APP_SCRIPTS:
         text = stripped_js(name)
         for one in ("renderMoved", "renderReview", "renderUnfileList", "reviewMoved", "cameFrom", "openCopy", "renderHousehold"):
             assert not re.search(rf"\bfunction {one}\b", text), f"{name} still defines {one}"
@@ -1747,7 +1751,7 @@ def test_the_dialogs_help_lines_are_cut():
     for ident in ("hh-edit-note", "hh-edit-feeds-help", "household-new-intro", "form-note", "tmpl-note", "wp-help", "ep-help", "sc-note",
                   "ed-paste-hint", "ed-rename-hint", "chosen-form", "ed-list-title", "hh-new-head"):
         assert f'id="{ident}"' not in html, ident
-    app = stripped_js("app.js")
+    app = stripped_text(APP_FAMILY)
     for key in ("members_help", "feeds_help", "contact_help", "link_help", "return_name_help", "year_note", "new_intro", "form_step_note",
                 "paste_hint", "rename_hint", "routing_help", "ask_the_client_note", "keyword_help", "spellings_help"):
         assert key not in app, key
@@ -1762,9 +1766,7 @@ def test_no_sheet_or_dialog_draws_the_sharing_checklist_or_a_path():
     """SPEC 2.4 E45: the household's sharing checklist names folders by their
     paths, and a path is never drawn; the create reply's lines are not put on
     the screen."""
-    app = stripped_js("app.js")
-    creating = app[app.index("async function createEngagement() {"):]
-    creating = creating[:creating.index("\n}\n")]
+    creating = without_comments(js_function("createEngagement"))
     assert "checklist.lines" not in creating and "checklist.heading" not in creating and "checklist.note" not in creating
 
 
@@ -2080,7 +2082,7 @@ def test_a_second_unfile_or_mark_missing_before_the_reply_is_not_sent_and_the_me
         out.freeAfterRefusal = !writeBusy("mark-missing", "h", "R1");
         return out;
       })();
-    """, tmp_path, source="app.js")
+    """, tmp_path)
     assert ran["busy"] is True and ran["otherOriginal"] is False
     assert ran["sentOnce"] == 1 and ran["freeAfter"] is True
     assert ran["missingBusy"] == [True, True]
@@ -2151,7 +2153,7 @@ def test_no_request_code_is_drawn_in_the_picker_the_shortlist_or_mark_missing(tm
       let loud = "";
       try { movedRow({ handle: "h", seq: 1, gone: true, identifier: "R99" }, [], items); } catch (err) { loud = err.message; }
       return { option: [option.attrs.value, option.kids], button: gone.kids[0].kids, key: gone.kids[0].attrs.dataset.identifier, loud };
-    """, tmp_path, source="app.js")
+    """, tmp_path)
     assert ran["option"] == ["R03", ["1099-B - Northwind Brokerage"]]
     assert ran["button"] == ["Mark Northwind Missing"] and ran["key"] == "R03" and ran["loud"] == "items.R99"
 
@@ -2206,9 +2208,8 @@ def test_sheet_js_draws_the_names_it_is_given_and_types_none_and_uses_the_region
 def test_a_held_reminder_row_draws_its_document_alone_never_a_code_or_the_hold_sentence():
     """The engine's hold sentence is 25 words and the row's identifier is a
     request code: neither is drawn in the sheet (SPEC 7.2, 11.1)."""
-    text = stripped_js("app.js")
-    start = text.index('show("reminder-held-rows"')
-    drawn = text[start:text.index("\n", start)]
+    text = stripped_text(APP_SCRIPTS)
+    drawn = without_comments(lift_line('show("reminder-held-rows"'))
     assert "row.document" in drawn and "row.identifier" not in drawn and "row.reason" not in drawn
     assert "rem-hold-id" not in text and "rem-hold-why" not in text
 
@@ -2305,7 +2306,7 @@ def test_the_four_dialogs_draw_the_apis_words_and_never_a_path(tmp_path):
       let loud = "";
       try { openSafeguards(); } catch (err) { loud = err.message; }
       return { ...said, loud };
-    """, tmp_path, source="app.js")
+    """, tmp_path)
     assert ran["rules"] == ["No AI Reads Documents", "Nothing Is Guessed"] and ran["title"] == "Safeguards"
     assert ran["product"] == "Tax Document Console" and ran["edition"] == "Pilot 0.4"
     assert ran["folders"] == ["Old FilesUnknown Folder", "Scans"], (
@@ -2337,15 +2338,15 @@ def test_unfile_from_the_menu_asks_first_and_sends_the_reason_as_the_writes_note
     """Ruling 16: the right-click Unfile opens a small confirm box (in the one
     dialog registry, focus on the reason field) and only its confirm writes;
     the reason is the write's `note`, and every word in it is the API's."""
-    app = stripped_js("app.js")
+    app = stripped_text(APP_SCRIPTS)
     pages = stripped_js("pages.js")
     assert "unfile: (spec) => openUnfile(spec.unfile)," in pages and "unfile: (spec) => unfileDocument" not in pages
-    opening = js_function("openUnfile", "app.js")
+    opening = js_function("openUnfile")
     for word in ("review_labels", "unfile_note", "vocab.editor.cancel", "words.unfile"):
         assert word in opening, word
     assert 'openDialog("unfile-modal")' in opening
     assert '"unfile-modal": { model: null, first: () => $("uf-note")' in app
-    confirming = js_function("confirmUnfile", "app.js")
+    confirming = js_function("confirmUnfile")
     assert 'note: $("uf-note").value.trim()' in confirming and "btn.disabled = true;" in confirming and 'closeDialog("unfile-modal")' in confirming
     assert '$("uf-confirm").addEventListener("click", confirmUnfile);' in app
     html = read("index.html")
@@ -2614,7 +2615,7 @@ def test_the_three_info_dialogs_close_with_the_apis_close_word():
     """SPEC 2.7 E93-E95 say Close (S5 review F9): the button of Safeguards,
     About and Folders Skipped reads ``screen.close``, and ``icons.dismiss``
     stays the notice icon's and the side sheet's."""
-    app = stripped_js("app.js")
+    app = stripped_text(APP_SCRIPTS)
     for name in ("safeguards", "about", "misfits"):
         assert f'$("{name}-close").textContent = words.close;' in app, name
     assert "-close\").textContent = words.icons.dismiss" not in app
@@ -2670,7 +2671,7 @@ def test_the_move_schedule_question_carries_its_warning(tmp_path):
     setup = """
       const vocab = { schedule: { move_confirm: "Move Schedule Here From {host}?", move_warning: "Only If {host} Is Retired" } };
     """
-    ran = run_shell(["moveScheduleQuestion"], setup, 'return moveScheduleQuestion("front-desk");', tmp_path, "app.js")
+    ran = run_shell(["moveScheduleQuestion"], setup, 'return moveScheduleQuestion("front-desk");', tmp_path)
     assert ran == "Move Schedule Here From front-desk?\n\nOnly If front-desk Is Retired"
 
 
@@ -2688,7 +2689,7 @@ def test_a_failed_sort_says_a_short_approved_reason_and_never_a_path(tmp_path):
       const kinds = ["lock-held", "household-paused", "client-folder-missing", "folder-missing", "crashed:OSError", "", "unsorted-files"];
       return kinds.map((code) => scanFailed({ code, error: "C:/Clients/Smith Family: it broke" }));
     """
-    said = run_shell(["scanFailed"], setup, probe, tmp_path, "app.js")
+    said = run_shell(["scanFailed"], setup, probe, tmp_path)
     assert said == ["Sort Failed: Another PC Sorting", "Sort Failed: Two Years Open", "Sort Failed: Folder Not Found",
                     "Sort Failed: Folder Not Found", "Sort Failed: Unexpected Error", "Sort Failed: Unexpected Error",
                     "Sort Failed: Unexpected Error"]
@@ -2729,7 +2730,7 @@ def test_a_sort_asked_for_an_inactive_return_says_why_nothing_was_done(tmp_path,
       return [scanSummary(run, [], '').text, scanSummary({{ ...run, code: "rolled-forward" }}, [], '').text,
               scanSummary({{ ...run, code: "no-room" }}, [], '').text, scanSummary({{ ...run, code: "brand-new" }}, [], '').text];
     """
-    said = run_shell(["scanFailed", "scanSummary"], setup, probe, tmp_path, "app.js")
+    said = run_shell(["scanFailed", "scanSummary"], setup, probe, tmp_path)
     assert said == ["Nothing Done: Inactive.", "Nothing Done: Rolled Forward.", "Nothing Done: Names Too Long.",
                     "Nothing Done"]
     for line in said:
@@ -2773,7 +2774,7 @@ def test_a_sorts_answer_shows_only_on_its_own_clients_pages(tmp_path):
       out.left = [...sortAnswers.keys()];
       return out;
     """
-    out = run_shell(SORT_ANSWER_FUNCTIONS, SORT_ANSWERS, probe, tmp_path, "app.js")
+    out = run_shell(SORT_ANSWER_FUNCTIONS, SORT_ANSWERS, probe, tmp_path)
     failed = ["Sort Failed: Folder Not Found"]
     assert out["onReturn"] == ["sort", failed]
     assert out["overview"] == [] and out["clients"] == [] and out["otherClient"] == []
@@ -2799,7 +2800,7 @@ def test_a_later_sort_or_f5_takes_a_sorts_answer_away(tmp_path):
       out.left = sortAnswers.size;
       return out;
     """
-    out = run_shell(SORT_ANSWER_FUNCTIONS, SORT_ANSWERS, probe, tmp_path, "app.js")
+    out = run_shell(SORT_ANSWER_FUNCTIONS, SORT_ANSWERS, probe, tmp_path)
     assert out["failed"] == ["Sort Failed: Folder Not Found"]
     assert out["afterGoodSort"] == [] and out["afterF5"] == ["sort", []] and out["left"] == 0
 
@@ -2808,11 +2809,11 @@ def test_a_sorts_answer_is_never_a_window_wide_notice_and_f5_forgets_it():
     """P131, wired: ``passEnded`` keeps its answer through ``keepSortAnswer``
     (no ``outcome`` or ``notice`` of its own), every route change re-shows the
     answers, a dismissed line is forgotten, and F5 forgets them all."""
-    ended = js_function("passEnded", "app.js")
+    ended = js_function("passEnded")
     assert "outcome(" not in ended and "notice(" not in ended
     assert ended.count("keepSortAnswer(ran, asked, answer);") == 2
-    assert "showSortAnswers();" in js_function("appRouteChanged", "app.js")
-    assert "forgetSortLine(entry.key);" in read("app.js")
+    assert "showSortAnswers();" in js_function("appRouteChanged")
+    assert "forgetSortLine(entry.key);" in renderer_text(APP_SCRIPTS)
     assert js_function("shellRefresh").split("\n")[1].strip().startswith("forgetSortAnswers();")
     assert "function forgetSortAnswers() {}" in (REPO / "pilot" / "harness" / "app-stub.js").read_text(encoding="utf-8")
 
@@ -2849,7 +2850,7 @@ def test_create_return_goes_to_the_new_returns_page(tmp_path):
       function failureSentence(err) { return String(err); }
       async function call() { return { list: {}, created: "1040 - New", state: { paths: { engagement: "/h2/2024/new" } } }; }
     """
-    out = run_shell(["createEngagement"], setup, "return createEngagement().then(() => said);", tmp_path, "app.js")
+    out = run_shell(["createEngagement"], setup, "return createEngagement().then(() => said);", tmp_path)
     steps = [one if isinstance(one, str) else one[0] for one in out]
     assert ["shellGo", {"level": "return", "household": "/h2", "year": 2024, "ret": "/h2/2024/new"}] in out, out
     assert steps.index("closeDialog") < steps.index("adoptList") < steps.index("shellGo") < steps.index("outcome"), out
@@ -2889,7 +2890,7 @@ def test_a_sort_that_fails_the_same_way_again_is_said_again(tmp_path):
       keepSortAnswer(["r25", "r24"], "r24", []); out.push(shown());
       return out;
     """
-    out = run_shell(SORT_NOTICE_FUNCTIONS, SORT_NOTICES, probe, tmp_path, "app.js")
+    out = run_shell(SORT_NOTICE_FUNCTIONS, SORT_NOTICES, probe, tmp_path)
     failed = ["Sort Failed: Folder Not Found"]
     assert out == [failed, [], failed, failed, []]
 
@@ -2903,7 +2904,7 @@ def test_a_locked_sort_still_shows_its_lock_and_outlines_its_row(tmp_path):
         lock: { host: "FRONT-DESK" }, retry: () => 0 }]);
       return { shown: shown(), locks, identifier: notices[0].identifier, retry: typeof notices[0].retry };
     """
-    out = run_shell(SORT_NOTICE_FUNCTIONS, SORT_NOTICES, probe, tmp_path, "app.js")
+    out = run_shell(SORT_NOTICE_FUNCTIONS, SORT_NOTICES, probe, tmp_path)
     assert out == {"shown": ["In Use on FRONT-DESK"], "locks": [{"host": "FRONT-DESK"}], "identifier": "R01",
                    "retry": "function"}
 
@@ -2946,7 +2947,7 @@ def test_the_sorts_answer_is_built_line_by_line_from_the_pass(tmp_path):
       return out;
     """
     out = run_shell(["passEnded", "scanSummary", "scanFailed", "sortReturnSaid"], setup, "return (async () => {" + probe + "})();",
-                    tmp_path, "app.js")
+                    tmp_path)
     assert out["whole"] == {"ran": [], "asked": "r25", "answer": [
         {"sentence": "In Use on FRONT-DESK", "kind": "locked", "lock": {"host": "FRONT-DESK"}, "identifier": None,
          "retry": "function"}]}
@@ -3017,7 +3018,7 @@ def test_a_failed_or_locked_household_sort_draws_no_engine_sentence_and_no_path(
     probe = "return scanSummary(runs[0], runs.slice(1), '').text;"
     for name, runs in (("lock held", held), ("client folder gone", failed)):
         text = run_shell(["scanFailed", "scanSummary", "sortReturnSaid"], f"{setup}\nconst runs = {json.dumps(runs)};", probe,
-                         tmp_path, "app.js")
+                         tmp_path)
         lines = text.split("\n")
         assert len(lines) == 2, (name, text)
         for line in lines:
@@ -3047,7 +3048,7 @@ def test_the_app_starts_only_after_every_script_has_loaded(tmp_path):
       startWhenLoaded(bootstrap);
       return { loading, after: started };
     """
-    assert run_shell(["startWhenLoaded"], setup, probe, tmp_path, "app.js") == {"loading": [0, 1], "after": 2}
+    assert run_shell(["startWhenLoaded"], setup, probe, tmp_path) == {"loading": [0, 1], "after": 2}
     html = read("index.html")
     scripts = re.findall(r'<script src="([^"]+)"></script>', html)
     assert scripts.index("app.js") < scripts.index("shell.js"), "the order is why the start must wait"
@@ -3074,7 +3075,7 @@ def test_a_sort_is_never_sent_without_a_return_chosen(tmp_path):
       await runScan();
       return { none, sent };
     """
-    ran = run_shell(["runScan"], setup, "return (async () => { " + probe + " })();", tmp_path, "app.js")
+    ran = run_shell(["runScan"], setup, "return (async () => { " + probe + " })();", tmp_path)
     assert ran == {"none": 0, "sent": [["run-now", "--engagement", "R1"]]}
 
 
@@ -4166,7 +4167,7 @@ def test_another_returns_line_keeps_its_bullet_and_says_the_return_by_its_fields
       return kept;
     """
     kept = run_shell(["passEnded", "scanSummary", "scanFailed", "sortReturnSaid"], setup,
-                     "return (async () => {" + probe + "})();", tmp_path, "app.js")
+                     "return (async () => {" + probe + "})();", tmp_path)
     assert kept[0] == ["Sort Failed: Folder Not Found", "• 2024 John A. Smith 1040: Sort Failed: Folder Not Found",
                        "• 2024 Smith Bakery Books: Sort Failed: Folder Not Found",
                        "• Smith Family 2023 Old Return: Sort Failed: Folder Not Found"]
@@ -4188,7 +4189,7 @@ def test_a_sort_that_finds_nothing_to_do_says_nothing_to_sort(tmp_path):
               scanSummary(run({ review: 2 }), [], "").cls, scanSummary(run({ file_errors: ["x"] }), [], "").text.split("\\n")[1],
               scanSummary(run({ cancelled: true }), [], "").text.split("\\n")[0]];
     """
-    said = run_shell(["scanFailed", "scanSummary", "sortReturnSaid"], setup, probe, tmp_path, "app.js")
+    said = run_shell(["scanFailed", "scanSummary", "sortReturnSaid"], setup, probe, tmp_path)
     assert said[0] == {"text": "Nothing to Sort", "cls": "warn"}
     assert said[1] == {"text": "Nothing Done: 1 Still Syncing.", "cls": "warn"}
     assert said[2]["cls"] == "ok" and said[3] == "ok", "a Sort that did something still says nothing (P131)"
@@ -4214,7 +4215,7 @@ def test_nothing_to_sort_is_said_only_when_no_return_of_the_household_received_a
               scanSummary(run({}), [other({ file_errors: ["x"] })], ""), scanSummary(run({}), [other({ cancelled: true })], ""),
               scanSummary(run({}), [other({})], ""), scanSummary(run({}), [other({ waiting: 2 })], "")];
     """
-    said = run_shell(["scanFailed", "scanSummary", "sortReturnSaid"], setup, probe, tmp_path, "app.js")
+    said = run_shell(["scanFailed", "scanSummary", "sortReturnSaid"], setup, probe, tmp_path)
     for one in said[:4]:
         assert "Nothing to Sort" not in one["text"] and one["cls"] == "ok", one
     assert said[4] == {"text": "Nothing to Sort", "cls": "warn"}, "no return of the pass received anything"
@@ -4232,10 +4233,10 @@ def test_the_schedule_dialog_says_its_next_run_in_the_apps_clock_style(tmp_path)
       return [scheduleClock("Next run: today at 22:30"), pagesTime("22:30"), scheduleClock("Next run: tomorrow at 06:30"),
               pagesTime("06:30"), scheduleClock(""), scheduleClock("Off")];
     """
-    said = run_shell(["scheduleClock"], setup, probe, tmp_path, "app.js")
+    said = run_shell(["scheduleClock"], setup, probe, tmp_path)
     assert said[0] == f"Next run: today at {said[1]}" and "22:30" not in said[0]
     assert said[2] == f"Next run: tomorrow at {said[3]}" and said[4:] == ["", "Off"]
-    js = read("app.js")
+    js = renderer_text(APP_SCRIPTS)
     assert '$("sc-next").textContent = scheduleClock(current.next_run);' in js
     # The time in the sentence lines up as every date and time does (the
     # screen review's N4: tabular-nums, never a typewriter font).
@@ -4766,7 +4767,7 @@ def test_the_overview_is_asked_beside_the_list_and_drawn_once_the_words_arrive(t
     assert said["ok"]["status"] == "ok" and said["ok"]["n"] == 3 and said["ok"]["drawn"] == ["overview"]
     assert said["ok"]["notices"] == ["Read slowly"] and said["ok"]["clock"] is None
     assert said["failed"] == {"status": "failed", "notices": ["Counts Not Available"]}
-    boot = js_function("bootstrap", "app.js")
+    boot = js_function("bootstrap")
     assert boot.index("shellAskFirmNow();") < boot.index("await loadEngagements(")
     early = js_function("shellAskFirmNow")
     assert 'window.tracker.call(["firm"], shellFirmAsk("overview"))' in early and "call([" not in early.replace("tracker.call([", "")
@@ -4889,11 +4890,11 @@ def test_the_sorts_end_asks_the_overview_through_the_one_early_ask():
     """P228: passEnded asks the Overview with shellAskFirmNow (P221's early
     ask, renamed now that it is not only early) after it says the write
     landed, and sends the state before the list, without awaiting the list."""
-    ended = js_function("passEnded", "app.js")
+    ended = js_function("passEnded")
     assert ended.index("shellWriteLanded();") < ended.index("shellAskFirmNow();")
     assert ended.index('call(withEng("state"))') < ended.index('call(["list"])')
     assert 'await call(["list"])' not in ended and "adoptList(await" not in ended
-    assert "shellAskFirmEarly" not in read("app.js") + read("shell.js")
+    assert "shellAskFirmEarly" not in renderer_text(APP_SCRIPTS)
 
 
 def test_the_last_counts_are_drawn_marked_updating_as_of_their_time(tmp_path):
@@ -4925,7 +4926,7 @@ def test_the_last_counts_are_drawn_marked_updating_as_of_their_time(tmp_path):
     assert said["kept"] == ["next_sort", "replies", "return_counts", "totals", "view"], "the page, the totals and each return's counts (P278)"
     assert marked["held"] == [True, True] and marked["rows"] == ["figure-number", "row"] and marked["hidden"] == []
     assert said["n"] == 4 and said["status"] == "loading", "the fresh reply is still on its way"
-    boot = js_function("bootstrap", "app.js")
+    boot = js_function("bootstrap")
     assert boot.index("shellAskFirmLast();") < boot.index("await loadEngagements(")
     assert 'window.tracker.call(["firm-last"], shellFirmAsk("overview"))' in js_function("shellAskFirmLast")
 
@@ -5186,9 +5187,9 @@ def test_no_action_reads_the_counts_it_was_drawn_from():
     on a card from the return's own fresh read (P213). None of them reads the
     firm's counts, held, last or fresh - so a marked count can make no action
     act on an old number. Every write is judged under the lock in the engine."""
-    for name, source in (("showReturn", "app.js"), ("shellGo", "shell.js"), ("shellOpenState", "shell.js"),
+    for name, source in (("showReturn", None), ("shellGo", "shell.js"), ("shellOpenState", "shell.js"),
                          ("openCheck", "sheet.js"), ("sheetShow", "sheet.js"), ("sheetDrawCheck", "sheet.js"),
-                         ("openReminder", "sheet.js"), ("copyReminder", "app.js"), ("approveReminder", "app.js")):
+                         ("openReminder", "sheet.js"), ("copyReminder", None), ("approveReminder", None)):
         body = js_function(name, source)
         for counts in ("shellFirm(", "shellFirmNow", "shellFirmAsOf", "shellFirmLast"):
             assert counts not in body, (name, counts)
@@ -5201,7 +5202,7 @@ def test_no_action_reads_the_counts_it_was_drawn_from():
 
 #: A fake last-sort box over the FAKE_DOM elements: classList with remove, and
 #: the words the API's ``screen.last_sort`` and ``screen.sort`` carry.
-LAST_SORT_FAKES = FAKE_DOM + lift_line("const EL_ATTRIBUTES = new Set([", "app.js") + r"""
+LAST_SORT_FAKES = FAKE_DOM + lift_line("const EL_ATTRIBUTES = new Set([") + r"""
 class Box extends Element {
   get classList() {
     const self = this;
@@ -5246,7 +5247,7 @@ def test_a_scheduled_pass_still_running_is_drawn_as_sorting_not_as_a_failure(tmp
         own: drawn({ text: "Started", level: "ok", ok: false, running: true, when }, { pass: "p" }),
         stopping: drawn(null, { pass: "p", stopping: true }),
       };
-    """, tmp_path, "app.js")
+    """, tmp_path)
     assert ran["scheduled"] == {"text": ["Scheduled Sorting WORD"], "failed": False, "bars": 1,
                                 "role": "progressbar", "values": [], "fillWidth": None}
     assert ran["failed"]["text"] == ["Sort Failed"] and ran["failed"]["failed"] is True and ran["failed"]["bars"] == 0
@@ -5529,13 +5530,13 @@ def test_no_timer_asks_last_pass():
     assert not re.search(r"set(?:Timeout|Interval)\([^)]*(?:AskLastPass|LastPassChanged|shellFocused|shellShown)", shell)
     for gone in ("last_pass_watch", "shellArmLastPass", "shellWatchLastPass", "shellLastPassTimer"):
         assert gone not in shell, gone
-    assert "last_pass_watch" not in "".join(read(name) for name in ("app.js", "pages.js", "sheet.js"))
+    assert "last_pass_watch" not in renderer_text(APP_SCRIPTS)
     assert "last_pass_file" not in shell, "the page is not told where the file is"
 
 
 # ── a notice's Details (pilot P257) ───────────────────────────────────────
 
-NOTICE_DETAIL_FAKES = FAKE_DOM + lift_line("const EL_ATTRIBUTES = new Set([", "app.js") + r"""
+NOTICE_DETAIL_FAKES = FAKE_DOM + lift_line("const EL_ATTRIBUTES = new Set([") + r"""
 const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
 let vocab = { screen: { notices: { details: "Details" }, icons: { dismiss: "Dismiss" } }, notices: { repeated: "(x{n})" } };
 let locked = false;
@@ -5562,7 +5563,7 @@ def test_a_notice_with_a_detail_keeps_one_line_and_a_closed_details_block(tmp_pa
       vocab = { screen: { notices: {}, icons: { dismiss: "Dismiss" } } };
       let missing = ""; try { draw({ ...base, detail: "x" }); } catch (err) { missing = err.message; }
       return { withDetail, without, failing, missing };
-    """, tmp_path, "app.js")
+    """, tmp_path)
     assert ran["withDetail"] == [
         ["span", "notice-text", "Machine Needs Attention"],
         ["details", "notice-detail", False, [["summary", "", "Details", []],
@@ -5572,7 +5573,7 @@ def test_a_notice_with_a_detail_keeps_one_line_and_a_closed_details_block(tmp_pa
     assert [one[0] for one in ran["without"]] == ["span", "button"], "no detail, no element"
     assert [one[0] for one in ran["failing"]] == ["span", "details", "button", "button"], "before Retry and the dismiss"
     assert ran["missing"] == "vocab.screen.notices.details"
-    app = stripped_js("app.js")
+    app = stripped_text(APP_SCRIPTS)
     assert "entry.detail = failure.detail || entry.detail;" in app and "had.detail === detail" in app
 
 
@@ -5594,7 +5595,7 @@ def test_machine_warnings_and_setup_findings_reach_the_screen_as_details(tmp_pat
       seen.length = 0; logged.length = 0;
       renderAfterInstall({ wait: "A household waits.", findings: ["Finding one"], failed: ["It could not run"] });
       return { machine, setup: { seen, logged } };
-    """, tmp_path, "app.js")
+    """, tmp_path)
     machine = "The app is running from /Volumes/X. Drag it into Applications.\nSecond warning."
     assert ran["machine"]["seen"] == [["machine", "Machine Needs Attention", "warning", machine]]
     assert ran["machine"]["logged"] == [machine], "and the error log has the same text"
@@ -5609,8 +5610,8 @@ def test_only_the_machine_warnings_the_pause_the_feeds_and_the_setup_findings_pu
     principle 7). Only an entry marked ``shown`` passes its detail to the
     notice: the machine warnings', the household pause's and the prior-year
     feed's."""
-    ran = run_pages(["pagesReportBroken", "pagesHouseholdNotices", "shortNotice"], js_function("syncNotices", "app.js") + "\n"
-                    + js_function("renderMachineNotices", "app.js") + r"""
+    ran = run_pages(["pagesReportBroken", "pagesHouseholdNotices", "shortNotice"], js_function("syncNotices") + "\n"
+                    + js_function("renderMachineNotices") + r"""
       const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
       let vocab = { shell: { page_error: "{kind} while drawing" }, notices: { about: "{label}: {sentence}" },
         household: { two_open_years: "Two years open", accept_folder_name: "Accept" },
@@ -5657,9 +5658,9 @@ def test_details_are_open_on_the_setup_page_and_closed_elsewhere(tmp_path):
       shellRoute = { level: "setup" };
       out.overviewAfterArriving = opened(onOverview);
       return out;
-    """, tmp_path, "app.js")
+    """, tmp_path)
     assert ran == {"setup": True, "overview": False, "setupAfterLeaving": True, "overviewAfterArriving": False}
-    app = stripped_js("app.js")
+    app = stripped_text(APP_SCRIPTS)
     assert 'open: shellRoute.level === "setup"' in app and '"aria-sort", "aria-haspopup", "open",' in app
 
 
@@ -5704,10 +5705,10 @@ const shellGo = () => {};
       out.withFolder = { route: shellRoute.level, details: opened() };
       return out;
       })();
-    """, tmp_path, "app.js")
+    """, tmp_path)
     assert ran["noFolder"] == {"route": "setup", "details": [True]}, "the setup page is the route when the notice is drawn, so its Details are open"
     assert ran["withFolder"]["details"] == [False], "on a working page the same notice is closed"
-    load = js_function("loadEngagements", "app.js")
+    load = js_function("loadEngagements")
     assert load.index("shellNeedsRoot(true, listed);") < load.index("renderMachineNotices(listed);") < load.index("renderAfterInstall(listed.after_install);")
 
 
@@ -5763,7 +5764,7 @@ def test_the_reader_warning_reaches_the_screen_as_details(tmp_path):
       seen.length = 0; logged.length = 0; cleared.length = 0;
       renderMachineNotices({ reader_warning: "", machine_warnings: [] });
       return { shown, gone: { seen, logged, cleared } };
-    """, tmp_path, "app.js")
+    """, tmp_path)
     sentence = "Move the app to a shorter folder, for example /Applications/JPA; scans can't be read from here"
     assert ran["shown"]["seen"] == [["reader", "Install Folder Name Too Long", "warning", sentence]]
     assert ran["shown"]["logged"] == [sentence], "logged once, when the notice first shows"
@@ -5805,12 +5806,12 @@ def test_the_setup_notice_reads_the_same_whichever_reply_drew_it(tmp_path, monke
       const dismissed = {{ drawn, logged: logged.length, shown: notices.length }};
       renderAfterInstall({{ ...listed, findings: [...listed.findings, "Another finding"] }});
       return {{ once, dismissed, changed: {{ drawn, logged: logged.length, shown: notices.length }} }};
-    """, tmp_path, "app.js")
+    """, tmp_path)
     said = "\n".join([after_install.FINDINGS_WAIT, failure, finding])
     assert ran["once"] == {"drawn": 1, "logged": 1, "detail": said}, "drawn and logged once for one run, the engine's sentence first"
     assert ran["dismissed"] == {"drawn": 1, "logged": 1, "shown": 0}, "a dismissed notice does not come back"
     assert ran["changed"] == {"drawn": 2, "logged": 2, "shown": 1}, "a changed detail is a new notice"
-    assert "vocab.after_install.wait" not in re.sub(r"//.*", "", js_function("noticeOf", "app.js")), "the reply's own wait, never the heading word"
+    assert "vocab.after_install.wait" not in re.sub(r"//.*", "", js_function("noticeOf")), "the reply's own wait, never the heading word"
 
 
 def test_the_schedule_sentence_is_toasted_when_the_step_registered_it(tmp_path):
@@ -5835,12 +5836,10 @@ def test_the_schedule_sentence_is_toasted_when_the_step_registered_it(tmp_path):
         answer = reply(false); await saveRoot(); const elsewhere = seen.splice(0);
         return { registered, elsewhere };
       })();
-    """, tmp_path, "app.js")
+    """, tmp_path)
     assert ran["registered"] == ["setup notice", ["outcome", "This computer (OFFICE) now runs the schedule.", "ok", True], "bootstrap"]
     assert ran["elsewhere"] == ["setup notice", "bootstrap"]
-    app = read("app.js")
-    block = app[app.index("if (window.tracker.onAfterInstallDone) {"):]
-    block = block[:block.index("\n}\n") + 3]
+    block = js_block("if (window.tracker.onAfterInstallDone) {")
     heard = run_shell([], f"""
       const seen = []; let listener = null;
       const outcome = (text, cls, opts) => seen.push(["outcome", text, cls, opts.toasted]);
@@ -5931,13 +5930,12 @@ def test_closing_the_last_dialog_redraws_a_stale_return_page(tmp_path):
         clean: run(["one"], false, { level: "return", ret: "r9" }, "one"),
         moved: run(["one"], true, { level: "overview" }, "one"),
       };
-    """, tmp_path, "app.js")
+    """, tmp_path)
     assert ran["last"] == {"seen": ["showReturn:r9"], "stale": False, "left": []}, "the last dialog's closing draws it once"
     assert ran["two"] == {"seen": [], "stale": True, "left": ["one"]}, "one still open: it waits"
     assert ran["clean"]["seen"] == [], "nothing owed, nothing drawn"
     assert ran["moved"] == {"seen": [], "stale": True, "left": []}, "off a return page nothing is drawn; showReturn clears the flag"
-    app = read("app.js")
-    assert re.search(r"async function showReturn\(path\) \{\n  shellReturnStale = false;", app), "a navigation's own draw clears the flag"
+    assert re.search(r"async function showReturn\(path\) \{\n  shellReturnStale = false;", js_function("showReturn")), "a navigation's own draw clears the flag"
 
 
 def test_start_goes_to_the_overview_however_the_setup_page_was_reached(tmp_path):
@@ -5964,7 +5962,7 @@ def test_start_goes_to_the_overview_however_the_setup_page_was_reached(tmp_path)
       const outcome = () => {}; const clearNotice = () => {};
       const bootstrap = async () => seen.push(["bootstrap", shellBack]);
       const window = { tracker: { logError: () => {} } };
-    """, "return saveRoot().then(() => seen);", tmp_path, "app.js")
+    """, "return saveRoot().then(() => seen);", tmp_path)
     assert seen == [["bootstrap", None]], "Cancel's route is forgotten before the start-up path runs"
 
 
@@ -5993,7 +5991,7 @@ def test_a_refused_folder_is_one_keyed_notice_that_goes_when_a_folder_is_set(tmp
         answer = { after_install: { installed: false, schedule_sentence: "S", failed: [], findings: [] } }; await saveRoot();
         return { first, second, own, set: [...keyed], sawClear: seen.includes("clear:set-root") };
       })();
-    """, tmp_path, "app.js")
+    """, tmp_path)
     assert ran["first"] == [["set-root", ["Not that folder.", "refused", True]]], "the API's sentence and kind, with a Retry"
     assert ran["second"] == [["set-root", ["A different folder, please.", "refused", True]]], "replaced, not added"
     assert ran["own"] == [["set-root", ["page:odd", "failed", True]]], "an error of the page's own is said in its class sentence"
@@ -6032,7 +6030,7 @@ def test_a_navigation_that_closes_the_sheet_does_not_redraw_the_page_it_leaves(t
     """
     ran = run_shell(["shellGo", "closeDialog"], setup, """
       return shellGo({ level: "overview" }).then(() => ({ seen, stale: shellReturnStale, level: shellRoute.level }));
-    """, tmp_path, "app.js")
+    """, tmp_path)
     assert ran == {"seen": [], "stale": False, "level": "overview"}
 
 
@@ -6055,7 +6053,7 @@ def test_one_collator_orders_every_name_sort_as_localecompare_did(tmp_path):
     assert ran["now"] == ran["before"] and ran["nowBack"] == ran["beforeBack"]
     pages = stripped_js("pages.js")
     assert pages.count("new Intl.Collator(") == 1 and "const PAGES_COLLATOR = new Intl.Collator(undefined, { numeric: true });" in pages
-    for name in ("app.js", "pages.js", "shell.js", "sheet.js"):
+    for name in APP_SCRIPTS:
         assert not re.search(r"localeCompare\([^)]*numeric", stripped_js(name)), name
 
 
@@ -6203,7 +6201,7 @@ def test_the_hidden_reminder_letter_is_built_only_for_an_open_reminder_sheet(tmp
       sheetNow = { kind: "check" }; render(state); out.check = seen.splice(0);
       sheetNow = { kind: "reminder", ret: "r1" }; render(state); out.open = seen.splice(0);
       return out;
-    """, tmp_path, "app.js")
+    """, tmp_path)
     assert ran["closed"] == {"seen": ["lock", "shell"], "card": None, "stage": None, "forWhom": "r1"}, "no letter, no held card, no stale pick"
     assert ran["check"] == ["lock", "shell"]
     assert ran["open"] == ["lock", "reminder:r1", "shell"]
@@ -6310,9 +6308,9 @@ def test_the_last_pass_watch_and_the_lock_watch_send_nothing_while_the_window_is
       stopLockWatch(); lockWatchResume();      // no watch running: nothing
       return { hidden, shown, after: asked.length };
       })();
-    """, tmp_path, "app.js")
+    """, tmp_path)
     assert lock == {"hidden": 0, "shown": 1, "after": 1}
-    assert 'document.addEventListener("visibilitychange", lockWatchResume);' in stripped_js("app.js")
+    assert 'document.addEventListener("visibilitychange", lockWatchResume);' in stripped_text(APP_SCRIPTS)
 
 
 def test_the_small_hot_paths_do_their_work_once(tmp_path):
@@ -6339,8 +6337,8 @@ def test_the_small_hot_paths_do_their_work_once(tmp_path):
     """, tmp_path, "pages.js")
     assert grip["queued"] == 1 and grip["afterFrame"] == [130]
     assert grip["final"] == [130, 140, "saved"], "the release writes what was waiting, then saves"
-    app = stripped_js("app.js")
-    assert '$("sheet").querySelectorAll("[data-row]")' in js_function("outlineRefused", "app.js") and 'document.querySelectorAll("[data-row]")' not in app
+    app = stripped_text(APP_SCRIPTS)
+    assert '$("sheet").querySelectorAll("[data-row]")' in js_function("outlineRefused") and 'document.querySelectorAll("[data-row]")' not in app
     clients = run_lists("""
       const real = pagesClientSpecs; let calls = 0; pagesClientSpecs = (...args) => { calls += 1; return real(...args); };
       const out = {};
@@ -6367,7 +6365,7 @@ def test_dead_css_is_gone_from_style_css_and_its_restatements_with_it():
     assert ".summary" not in ui and ".btn-primary { color" not in ui
     assert re.search(r"\n\.btn-primary \{\s*--b-fg: var\(--on-accent\);", ui), "the primary's tokens, the one place it is drawn"
     assert "#sheet .rem-stages { grid-template-columns: repeat(2" in read("shell.css"), "the only .rem-stages on screen is the sheet's, two columns always"
-    for name in ("index.html", "app.js", "pages.js", "shell.js", "sheet.js"):
+    for name in ("index.html", *APP_SCRIPTS):
         assert "roll-grid four" not in read(name) and 'class="summary' not in read(name) and "animation: spin" not in read(name), name
 
 
@@ -6419,7 +6417,7 @@ def test_a_notices_closed_details_sits_on_its_line_and_an_open_one_drops_under_i
     assert "order: 1;" in opened and "flex: 0 0 100%;" in opened
     assert "margin-inline-start: auto;" in rules["#notices .notice-detail[open] > summary"]
     assert "flex-wrap: wrap" in rules["#notices .notice:has(.notice-detail)"]
-    assert 'el("span", { className: "notice-text" }, text), ...detailOf(entry), ...buttons, dismiss)' in js_function("drawNotice", "app.js")
+    assert 'el("span", { className: "notice-text" }, text), ...detailOf(entry), ...buttons, dismiss)' in js_function("drawNotice")
 
 
 # ── P265-P280 (SPEC-ui-menu-small) ───────────────────────────────────────
@@ -6511,7 +6509,7 @@ def test_the_firms_name_is_the_window_titles_alone():
     """P266: the title line is unchanged (the product, then the firm once the
     setup page has it), and "J Park" is in no renderer file but the pilot's
     own terms (P63's exception) and in no word of the screen vocabulary."""
-    assert "document.querySelector(\"title\").textContent = vocab.firm ? `${vocab.product} — ${vocab.firm}` : vocab.product;" in read("app.js")
+    assert "document.querySelector(\"title\").textContent = vocab.firm ? `${vocab.product} — ${vocab.firm}` : vocab.product;" in renderer_text(APP_SCRIPTS)
     for one in RENDERER.rglob("*"):
         if one.is_file() and one.suffix in (".js", ".css", ".html", ".svg") and "vendor" not in one.parts and one.name != "pilot-content.js":
             assert "J Park" not in one.read_text(encoding="utf-8"), one.name
@@ -6855,7 +6853,7 @@ def test_a_mac_is_known_from_the_browsers_own_platform_and_every_other_system_ke
       return { mac: appOnMac({ platform: "MacIntel" }), macUA: appOnMac({ userAgentData: { platform: "macOS" } }),
                win: appOnMac({ platform: "Win32" }), winUA: appOnMac({ userAgentData: { platform: "Windows" }, platform: "Win32" }),
                linux: appOnMac({ platform: "Linux x86_64" }), none: appOnMac({}) };
-    """, tmp_path, source="app.js")
+    """, tmp_path)
     assert ran == {"mac": True, "macUA": True, "win": False, "winUA": False, "linux": False, "none": False}
     app = read("app.js")
     statement = 'document.documentElement.classList.toggle("on-mac", appOnMac(navigator));'
@@ -7257,7 +7255,7 @@ def test_a_notice_in_the_panel_keeps_its_sentence_details_action_and_dismiss_in_
       const failing = draw({ sentence: "Sort Failed", kind: "failed", count: 1, detail: "a\\nb", retry: () => {} });
       const plain = draw({ sentence: "Sort Failed", kind: "failed", count: 1, detail: "", retry: () => {} });
       return { withDetail: kinds(failing), plain: kinds(plain) };
-    """, tmp_path, "app.js")
+    """, tmp_path)
     assert ran["withDetail"] == ["notice-text", "details", "button", "button"]
     assert ran["plain"] == ["notice-text", "button", "button"]
     rules = _panel_rules()
@@ -7323,7 +7321,7 @@ def test_dismissing_a_focused_notice_moves_focus_to_the_next_then_the_previous_t
       notices.push(d, e); dismissNotice(d);
       out.elsewhere = [...log];
       return out;
-    """, tmp_path, "app.js")
+    """, tmp_path)
     assert ran == {"middle": ["c dismiss", "b removed"], "last": ["a dismiss", "c removed"], "only": ["page.focus", "a removed"],
                    "elsewhere": ["d removed"]}
 
@@ -7798,7 +7796,7 @@ def test_the_editor_keeps_the_focused_row_and_widens_its_window_at_either_edge(t
                near: editorPins(10, 0, 39, 15, 300, { first: 0, last: 20 }), far: editorPins(100, 0, 139, 15, 300, { first: 0, last: 154 }),
                just_far: editorPins(16, 0, 39, 15, 300, { first: 0, last: -1 }), reveal_kept: editorPins(100, 60, 139, 15, 300, { first: 85, last: 115 }),
                walked_on: editorPins(139, 80, 139, 15, 300, { first: 65, last: -1 }) };
-    """, tmp_path, "app.js")
+    """, tmp_path)
     assert ran["top"] == {"first": 0, "last": 39}
     assert ran["middle"] == {"first": 80, "last": 139}
     assert ran["held_above"] == {"first": 5, "last": 139} and ran["held_below"] == {"first": 80, "last": 299}, "the row holding focus is never left out"
@@ -7834,10 +7832,10 @@ def test_a_value_typed_in_a_row_scrolled_out_of_the_editor_is_in_the_saved_list(
       const pick = cellInput(row, { key: "named", label: "Named" }, () => { changes += 1; });
       pick.value = "no"; pick.handlers.change[0]();
       return { row, changes, saved: JSON.stringify([row]) };
-    """, tmp_path, "app.js")
+    """, tmp_path)
     assert ran["row"] == {"document": "typed words", "expected_count": "7", "named": "no", "manual_override": ""}
     assert ran["changes"] == 3 and "typed words" in ran["saved"]
-    window = js_function("editorWindow", "app.js")
+    window = js_function("editorWindow")
     assert "tbody.removeChild(tr)" in window and "cellInput(" not in window, "the window takes rows out of the document and draws them with the one row component"
     assert "editorRows" not in window, "and keeps nothing of the rows in a node: the save reads editorRows"
 
@@ -7859,7 +7857,7 @@ def test_focus_editor_row_reaches_a_row_not_drawn(tmp_path):
       const drawn = { revealed: [...revealed], focused: [...focused] };
       focusEditorRow("R9");
       return { drawn, afterShut: { revealed, focused } };
-    """, tmp_path, "app.js")
+    """, tmp_path)
     assert ran["drawn"] == {"revealed": [2], "focused": ["R3"]}
     assert ran["afterShut"] == {"revealed": [2], "focused": ["R3"]}, "a row in a shut fold is not revealed"
 

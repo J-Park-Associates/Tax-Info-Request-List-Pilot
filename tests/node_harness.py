@@ -233,6 +233,14 @@ def renderer_text(scripts: tuple[str, ...] = RENDERER_SCRIPTS) -> str:
     return "\n".join(read(name) for name in scripts)
 
 
+def stripped_text(scripts: tuple[str, ...] = APP_SCRIPTS) -> str:
+    """The scripts of ``scripts`` without their comments, as one text
+    (:func:`stripped_js` of each): what a claim that read ``stripped_js`` of one
+    script reads of a set, so code that moves from one script of the set to
+    another is read where it lands."""
+    return "\n".join(stripped_js(name) for name in scripts)
+
+
 def main_text() -> str:
     """The main process's scripts as one text (:data:`MAIN_SCRIPTS`): what a
     claim about the main process as a whole reads, so code that moves out of
@@ -274,7 +282,15 @@ def stripped_js(name: str | Path) -> str:
     What is removed of one is what always was: a block comment goes to nothing,
     then a line comment goes to the end of its line as :data:`_LINE_COMMENT`
     takes it, so the text every claim on it reads is the one it always read."""
-    source = name.read_text(encoding="utf-8") if isinstance(name, Path) else read(name)
+    return without_comments(name.read_text(encoding="utf-8") if isinstance(name, Path) else read(name))
+
+
+def without_comments(source: str) -> str:
+    """Script text without its comments, exactly as :func:`stripped_js` takes
+    them out of a file: what a claim that read a stripped script reads of one
+    function (``without_comments(js_function("drawNotice"))``) or one block, so
+    a word in a comment can neither make a presence claim pass nor an absence
+    claim fail."""
     noted = _NotedComments(source)
     noted.starts = []
     js_code(noted)
@@ -392,7 +408,7 @@ def js_block(head: str, scripts: tuple[str, ...] = APP_SCRIPTS) -> str:
 def store_functions() -> str:
     """app.js's storeRead and storeWrite, which the lists and the shell keep
     their choices on this PC through."""
-    return js_function("storeRead", "app.js") + "\n" + js_function("storeWrite", "app.js")
+    return js_function("storeRead") + "\n" + js_function("storeWrite")
 
 
 def run_shell(functions: list[str], setup: str, probe: str, tmp_path: Path, source: str = "shell.js"):
@@ -600,7 +616,7 @@ def run_pages_dom(probe: str, tmp_path: Path, setup: str = "", functions=None):
     ]
     wanted = [*wanted, *[name for name in ENGINE_FUNCTIONS if name not in wanted]]
     shell = read("shell.js")
-    consts = lift_line("const EL_ATTRIBUTES = new Set([", "app.js") + js_function("el", "app.js") + "\n" + shell[shell.index("const SVG_NS = "):shell.index("\n", shell.index("const SVG_NS = "))]
+    consts = lift_line("const EL_ATTRIBUTES = new Set([") + js_function("el") + "\n" + shell[shell.index("const SVG_NS = "):shell.index("\n", shell.index("const SVG_NS = "))]
     lifted = consts + "\n" + pages_consts() + "\n" + store_functions() + "\n" + "\n".join(js_function(name, "pages.js" if f"function {name}(" in read("pages.js") else "shell.js") for name in wanted)
     script = tmp_path / "pages_probe.js"
     script.write_text(f"{FAKE_DOM}\n{PAGE_WORDS}\n{RETURN_STATE}\n{setup}\n{lifted}\nprocess.stdout.write(JSON.stringify((() => {{ {probe} }})()));\n",
@@ -622,7 +638,7 @@ def run_notices(probe: str, tmp_path: Path, vocab_notices: str = "{}"):
     recorded."""
     if NODE is None:
         pytest.skip("node is not on PATH (CI installs it)")
-    lifted = "\n".join([js_function(name, "app.js") for name in NOTICE_FUNCTIONS] + [js_function("shortNotice", "shell.js"),
+    lifted = "\n".join([js_function(name) for name in NOTICE_FUNCTIONS] + [js_function("shortNotice", "shell.js"),
                                                                                        js_function("pagesHouseholdNotices", "pages.js")])
     harness = (REPO / "pilot" / "harness" / "stub.js").read_text(encoding="utf-8")
     mirror = json.dumps(api.vocab())
@@ -866,7 +882,7 @@ def run_speed(setup: str, functions, probe: str, tmp_path: Path, consts: str = "
 
 
 def run_reminder_sheet(probe: str, tmp_path: Path):
-    consts = "let reminderCard = null; let reminderCardFor = null;\n" + lift_line("const EL_ATTRIBUTES = new Set([", "app.js")
+    consts = "let reminderCard = null; let reminderCardFor = null;\n" + lift_line("const EL_ATTRIBUTES = new Set([")
     return run_speed(REMINDER_SHEET, REMINDER_FUNCTIONS, probe, tmp_path, consts)
 
 
@@ -933,7 +949,7 @@ def run_firm_load(probe: str, tmp_path: Path, setup: str = "", functions=()):
     """FIRM_LOAD, with the page's draw faked unless ``functions`` lifts it."""
     if "drawPage" not in functions:
         setup += '\nconst shellDraw = () => drawn.push(shellRoute.level); const drawPage = () => drawn.push("page");\n'
-    consts = lift_line("const EL_ATTRIBUTES = new Set([", "app.js")
+    consts = lift_line("const EL_ATTRIBUTES = new Set([")
     return run_speed(FIRM_LOAD + setup, (*FIRM_LOAD_FUNCTIONS, *functions), probe, tmp_path, consts)
 
 
