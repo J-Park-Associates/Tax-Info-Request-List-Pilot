@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 414,
     "edges": 2459,
-    "reused": 347
+    "reused": 360
   },
   "node_types": [
     "artifact",
@@ -11490,7 +11490,7 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3f0437c03b9506ea",
+      "sha256": "8c428bc46b3d9ab9",
       "lines": 8282,
       "exports": [
         "CARD_HOUSEHOLD",

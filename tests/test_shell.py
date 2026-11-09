@@ -3052,8 +3052,8 @@ def test_the_app_starts_only_after_every_script_has_loaded(tmp_path):
     html = read("index.html")
     scripts = re.findall(r'<script src="([^"]+)"></script>', html)
     assert scripts.index("app.js") < scripts.index("shell.js"), "the order is why the start must wait"
-    js = read("app.js")
-    assert js.rstrip().endswith("startWhenLoaded(bootstrap);") and not re.search(r"^bootstrap\(\);", js, re.M)
+    assert read("app.js").rstrip().endswith("startWhenLoaded(bootstrap);")
+    assert not re.search(r"^bootstrap\(\);", renderer_text(APP_SCRIPTS), re.M)
 
 
 def test_a_sort_is_never_sent_without_a_return_chosen(tmp_path):
