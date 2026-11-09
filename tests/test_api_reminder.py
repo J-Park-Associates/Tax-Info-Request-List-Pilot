@@ -10,12 +10,12 @@ as ``tracker/api.py``'s test by its name (decision P350). What more than one fam
 """
 
 import datetime as dt
-from pathlib import Path
 
 import tracker.api as api
 import tracker.screen_words as screen_words
 from tests import api_driver
 from tests.api_driver import HOUSEHOLD, _typed_as_a_string, chased_engagement, reminder_card, run
+from tests.node_harness import APP_SCRIPTS, renderer_text
 from tracker import ledger
 from tracker.index import NEEDS_REVIEW
 from tracker.layout import inbox_of
@@ -175,8 +175,7 @@ def test_the_card_shows_the_inbox_hold_in_the_apis_words_and_offers_no_approve(c
 
     vocab = run(capsys, "list")[1]["vocab"]
     assert vocab["reminder"]["inbox_held_line"] == INBOX_HELD_SUMMARY
-    renderer = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
-        encoding="utf-8")
+    renderer = renderer_text(APP_SCRIPTS)
     for word in (INBOX_HELD_SUMMARY, INBOX_HELD_SUMMARY.split("{")[0].strip(),
                  INBOX_HOLD.split("{")[0].strip()):
         assert not _typed_as_a_string(renderer, word), word

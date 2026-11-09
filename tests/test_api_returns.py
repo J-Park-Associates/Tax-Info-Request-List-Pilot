@@ -35,7 +35,7 @@ from tests.api_driver import (
     where,
 )
 from tests.builders import make_engagement
-from tests.node_harness import js_function
+from tests.node_harness import APP_SCRIPTS, js_function, renderer_text
 from tests.samples import PRIOR_YEAR
 from tracker import ledger, store
 from tracker.index import NEEDS_REVIEW
@@ -659,13 +659,12 @@ def test_the_renderer_sets_only_the_attributes_its_allowlist_names():
     call in the renderer passes names on the list."""
     import re
 
-    js = (Path(__file__).resolve().parents[1] / "app" / "renderer" / "app.js").read_text(
-        encoding="utf-8")
+    js = renderer_text(APP_SCRIPTS)
     listed = re.search(r"const EL_ATTRIBUTES = new Set\(\[(.*?)\]\);", js, re.S).group(1)
     allowed = set(re.findall(r'"([^"]+)"', listed))
     assert not {name for name in allowed if name.lower().startswith("on")}
     assert not allowed & {"href", "src", "style", "srcdoc", "action", "formaction", "innerHTML"}
-    body = js_function("el", "app.js")
+    body = js_function("el")
     assert "if (!EL_ATTRIBUTES.has(key)) throw" in body
 
     used: set[str] = set()
@@ -799,6 +798,5 @@ def test_the_reminder_card_says_why_a_link_was_left_out(capsys, demo_root):
     card = reminder_card(capsys, folder)
     assert card["link_dropped"] == LINK_DROPPED.format(link=bad)
     assert bad not in card["text"]
-    js = (Path(__file__).resolve().parents[1] / "app" / "renderer" / "app.js").read_text(
-        encoding="utf-8")
+    js = renderer_text(APP_SCRIPTS)
     assert "card.link_dropped" in js

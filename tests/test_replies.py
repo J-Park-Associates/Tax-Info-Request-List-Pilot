@@ -55,7 +55,7 @@ from typing import NamedTuple
 
 import pytest
 
-from tests.node_harness import RENDERER_SCRIPTS, REPO, read, stripped_js
+from tests.node_harness import MAIN_SCRIPTS, RENDERER_SCRIPTS, REPO, read, stripped_js
 from tracker import progress, replies
 
 GOLDEN = REPO / "tests" / "golden"
@@ -143,6 +143,15 @@ _REGEX_AFTER_WORDS = {"return", "typeof", "case", "do", "else", "in", "of", "new
 _WORD = re.compile(r"[\w$]+")
 
 
+def _side(name: str) -> str:
+    """The side a script runs on, derived and never typed: the main process
+    when its name is one of :data:`MAIN_SCRIPTS`, the renderer otherwise. A
+    row of :data:`MUST_FIND` and :data:`MUST_NOT_FIND` names a side, so a
+    script carved out of app.js or main.js is read under the row without
+    anyone adding it (SPEC-architecture-p6 R6.2.4)."""
+    return "main process" if name in MAIN_SCRIPTS else "renderer"
+
+
 class _Script(NamedTuple):
     """One script, read: its text; the same text as ``code``, where what is
     inside a string or a template's text is ``x`` (so a bracket, a quote or a
@@ -156,6 +165,10 @@ class _Script(NamedTuple):
     code: str
     literals: dict[int, tuple[int, str]]
     pairs: dict[int, int]
+
+    @property
+    def side(self) -> str:
+        return _side(self.name)
 
     def line(self, at: int) -> int:
         return self.text.count("\n", 0, at) + 1
@@ -370,6 +383,10 @@ class Kind(NamedTuple):
     line: int
     text: str
 
+    @property
+    def side(self) -> str:
+        return _side(self.file)
+
 
 _COMPARE = r"\s*(?:===|!==|==|!=)\s*"
 _COMPARED_ON_THE_RIGHT = re.compile(_COMPARE)
@@ -449,66 +466,67 @@ NOTICE_KINDS: dict[str, str] = {
     "warning": "a notice the screen raises itself, never a failure (app.js 380, 2542)",
 }
 
-#: (file, pattern, literal, a piece of the site's own line): each must be
-#: caught. A line listed twice (app.js's two ``notice`` and ``keyedNotice``
-#: defaults) must be caught on as many lines.
+#: (side, pattern, literal, a piece of the site's own line): each must be
+#: caught, in a script of that side (``"renderer"`` or ``"main process"``,
+#: :func:`_side`). A line listed twice (the renderer's two ``notice`` and
+#: ``keyedNotice`` defaults) must be caught on as many lines.
 MUST_FIND: tuple[tuple[str, str, str, str], ...] = (
-    ("app.js", "sentence_object", "failed", 'sentence: result.error, kind: "failed"'),
-    ("app.js", "sentence_object", "failed", 'notice({ sentence: said, kind: cls === "err" ?'),
-    ("app.js", "sentence_object", "warning", 'notice({ sentence: said, kind: cls === "err" ?'),
-    ("app.js", "sentence_object", "failed", 'notice({ sentence, kind: "failed", seq: null'),
-    ("app.js", "sentence_object", "locked", 'keyedNotice("lock", { sentence: said, kind: "locked" })'),
-    ("app.js", "sentence_object", "failed", '{ sentence: failureSentence(err), kind: "failed" }'),
-    ("app.js", "sentence_object", "failed", '{ sentence: vocab.after_install.heading, kind: "failed"'),
-    ("app.js", "sentence_object", "failed", '{ sentence: ended.error, kind: "failed" }'),
-    ("app.js", "sentence_object", "failed", '{ ...failure, kind: failure.kind || "failed", retry: runScan }'),
-    ("app.js", "sentence_object", "failed", 'kind: said.cls === "err" ? "failed" : "warning"'),
-    ("app.js", "sentence_object", "warning", 'kind: said.cls === "err" ? "failed" : "warning"'),
-    ("shell.js", "sentence_object", "failed", 'notice({ ...failure, kind: "failed" }, { retry: again })'),
-    ("shell.js", "sentence_object", "failed", 'notice({ sentence: screenWords().notices.firm_failed, kind: "failed" }'),
-    ("shell.js", "sentence_object", "failed",
+    ("renderer", "sentence_object", "failed", 'sentence: result.error, kind: "failed"'),
+    ("renderer", "sentence_object", "failed", 'notice({ sentence: said, kind: cls === "err" ?'),
+    ("renderer", "sentence_object", "warning", 'notice({ sentence: said, kind: cls === "err" ?'),
+    ("renderer", "sentence_object", "failed", 'notice({ sentence, kind: "failed", seq: null'),
+    ("renderer", "sentence_object", "locked", 'keyedNotice("lock", { sentence: said, kind: "locked" })'),
+    ("renderer", "sentence_object", "failed", '{ sentence: failureSentence(err), kind: "failed" }'),
+    ("renderer", "sentence_object", "failed", '{ sentence: vocab.after_install.heading, kind: "failed"'),
+    ("renderer", "sentence_object", "failed", '{ sentence: ended.error, kind: "failed" }'),
+    ("renderer", "sentence_object", "failed", '{ ...failure, kind: failure.kind || "failed", retry: runScan }'),
+    ("renderer", "sentence_object", "failed", 'kind: said.cls === "err" ? "failed" : "warning"'),
+    ("renderer", "sentence_object", "warning", 'kind: said.cls === "err" ? "failed" : "warning"'),
+    ("renderer", "sentence_object", "failed", 'notice({ ...failure, kind: "failed" }, { retry: again })'),
+    ("renderer", "sentence_object", "failed", 'notice({ sentence: screenWords().notices.firm_failed, kind: "failed" }'),
+    ("renderer", "sentence_object", "failed",
      'keyedNotice("last-sort", { sentence: screenWords().last_sort.failed, kind: "failed" })'),
-    ("shell.js", "sentence_object", "failed", 'notice({ sentence: screenWords().setup.missing, kind: "failed" })'),
-    ("shell.js", "sentence_object", "failed",
+    ("renderer", "sentence_object", "failed", 'notice({ sentence: screenWords().setup.missing, kind: "failed" })'),
+    ("renderer", "sentence_object", "failed",
      'notice({ sentence: fill(vocab.shell.page_error, { kind: id }), kind: "failed" })'),
-    ("pages.js", "sentence_object", "failed", '{ label: one.name, sentence: said }) : said, kind: "failed" }'),
-    ("app.js", "kind_compared", "stale", 'if (entry.kind === "stale") return entry.retry'),
-    ("app.js", "kind_compared", "failed", 'return entry.kind === "failed" ? entry.retry : null'),
-    ("app.js", "kind_compared", "refused", 'err.failure && err.failure.kind === "refused"'),
-    ("shell.js", "kind_compared", "refused", 'else if (failure && failure.kind === "refused")'),
-    ("app.js", "local_kind_compared", "locked", 'if (kind === "locked" && failure.lock) showLock(failure.lock)'),
-    ("app.js", "kind_default", "failed", 'const kind = failure.kind || "failed";'),
-    ("app.js", "kind_default", "failed", 'const kind = failure.kind || "failed";'),
-    ("app.js", "kind_default", "failed", '{ ...failure, kind: failure.kind || "failed", retry: runScan }'),
-    ("main.js", "shell_failure", "refused", 'if (problem) return Promise.resolve(shellFailure(problem, "refused"))'),
-    ("main.js", "shell_failure", "refused", '{ kind: err.name || "Error" }), "refused")'),
-    ("main.js", "shell_failure", "refused", 'NOT_SET_UP_MAC : NOT_SET_UP, "refused")'),
-    ("main.js", "shell_failure", "failed", 'shellFailure(said + where, "failed", { progress: last, killed: true })'),
-    ("main.js", "shell_failure", "failed", 'shellFailure(fill(shellSays.no_reply, { code }), "failed", { progress: last })'),
-    ("main.js", "shell_failure", "failed", 'const out = shellFailure(said, "failed", { progress: last })'),
-    ("main.js", "shell_failure", "failed",
+    ("renderer", "sentence_object", "failed", '{ label: one.name, sentence: said }) : said, kind: "failed" }'),
+    ("renderer", "kind_compared", "stale", 'if (entry.kind === "stale") return entry.retry'),
+    ("renderer", "kind_compared", "failed", 'return entry.kind === "failed" ? entry.retry : null'),
+    ("renderer", "kind_compared", "refused", 'err.failure && err.failure.kind === "refused"'),
+    ("renderer", "kind_compared", "refused", 'else if (failure && failure.kind === "refused")'),
+    ("renderer", "local_kind_compared", "locked", 'if (kind === "locked" && failure.lock) showLock(failure.lock)'),
+    ("renderer", "kind_default", "failed", 'const kind = failure.kind || "failed";'),
+    ("renderer", "kind_default", "failed", 'const kind = failure.kind || "failed";'),
+    ("renderer", "kind_default", "failed", '{ ...failure, kind: failure.kind || "failed", retry: runScan }'),
+    ("main process", "shell_failure", "refused", 'if (problem) return Promise.resolve(shellFailure(problem, "refused"))'),
+    ("main process", "shell_failure", "refused", '{ kind: err.name || "Error" }), "refused")'),
+    ("main process", "shell_failure", "refused", 'NOT_SET_UP_MAC : NOT_SET_UP, "refused")'),
+    ("main process", "shell_failure", "failed", 'shellFailure(said + where, "failed", { progress: last, killed: true })'),
+    ("main process", "shell_failure", "failed", 'shellFailure(fill(shellSays.no_reply, { code }), "failed", { progress: last })'),
+    ("main process", "shell_failure", "failed", 'const out = shellFailure(said, "failed", { progress: last })'),
+    ("main process", "shell_failure", "failed",
      'shellFailure(fill(shellSays.could_not_start, { code: (err && err.code) || "?" }), "failed")'),
-    ("main.js", "shell_failure", "refused", 'return shellFailure(NOT_FROM_THE_WINDOW, "refused")'),
+    ("main process", "shell_failure", "refused", 'return shellFailure(NOT_FROM_THE_WINDOW, "refused")'),
 )
 
-#: (file, literal, a piece of the line): failure-shaped by word, not a
-#: failure. The piece must still be in the script, and that literal must not
-#: be caught on its line - another literal on the same line may be.
+#: (side, literal, a piece of the line): failure-shaped by word, not a
+#: failure. The piece must still be in a script of that side, and that literal
+#: must not be caught on its line - another literal on the same line may be.
 MUST_NOT_FIND: tuple[tuple[str, str, str], ...] = (
-    ("sheet.js", "check", 'sheetNow.kind === "check"'),
-    ("sheet.js", "moved", '{ kind: "moved", moved }'),
-    ("main.js", "folder", 'kind === "folder"'),
-    ("main.js", "reveal", 'kind === "reveal" && !reveal'),
-    ("main.js", "Error", '{ kind: err.name || "Error" }'),
-    ("app.js", "refused", 'classList.toggle("refused"'),
-    ("app.js", "reminder", 'sheetNow.kind === "reminder"'),
-    ("app.js", "related", 'one.kind === "related"'),
-    ("pages.js", "file", '{ kind: "file", key, paths: map }'),
-    ("pages.js", "household", 'link.kind === "household"'),
-    ("pages.js", "edit", 'spec.step.kind === "edit"'),
-    ("shell.js", "failed", 'status !== "failed"'),
-    ("shell.js", "failed", 'status: "failed"'),
-    ("shell.js", "locked", 'key: "locked"'),
+    ("renderer", "check", 'sheetNow.kind === "check"'),
+    ("renderer", "moved", '{ kind: "moved", moved }'),
+    ("main process", "folder", 'kind === "folder"'),
+    ("main process", "reveal", 'kind === "reveal" && !reveal'),
+    ("main process", "Error", '{ kind: err.name || "Error" }'),
+    ("renderer", "refused", 'classList.toggle("refused"'),
+    ("renderer", "reminder", 'sheetNow.kind === "reminder"'),
+    ("renderer", "related", 'one.kind === "related"'),
+    ("renderer", "file", '{ kind: "file", key, paths: map }'),
+    ("renderer", "household", 'link.kind === "household"'),
+    ("renderer", "edit", 'spec.step.kind === "edit"'),
+    ("renderer", "failed", 'status !== "failed"'),
+    ("renderer", "failed", 'status: "failed"'),
+    ("renderer", "locked", 'key: "locked"'),
 )
 
 
@@ -535,18 +553,18 @@ def test_each_pattern_still_catches_the_sites_it_was_written_for():
     wanted = Counter(MUST_FIND)
     short = [f"{entry} caught on {found} of {count} lines"
              for entry, count in wanted.items()
-             if (found := sum(1 for one in kinds if (one.file, one.pattern, one.literal) == entry[:3]
+             if (found := sum(1 for one in kinds if (one.side, one.pattern, one.literal) == entry[:3]
                               and entry[3] in one.text)) < count]
     assert not short, short
 
 
 def test_no_pattern_catches_a_failure_shaped_site_that_is_not_a_failure():
     kinds = collected()
-    texts = {script.name: script.text.split("\n") for script in _scripts()}
-    for file, literal, anchor in MUST_NOT_FIND:
-        lines = [n for n, text in enumerate(texts[file], start=1) if anchor in text]
-        assert lines, f"{file}: {anchor!r} is no longer in the script; the entry has rotted"
-        caught = [one for one in kinds if one.file == file and one.line in lines and one.literal == literal]
+    for side, literal, anchor in MUST_NOT_FIND:
+        lines = {script.name: [n for n, text in enumerate(script.text.split("\n"), start=1) if anchor in text]
+                 for script in _scripts() if script.side == side}
+        assert any(lines.values()), f"{side}: {anchor!r} is no longer in a script of that side; the entry has rotted"
+        caught = [one for one in kinds if one.side == side and one.line in lines.get(one.file, ()) and one.literal == literal]
         assert not caught, _where(caught)
 
 

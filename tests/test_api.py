@@ -53,6 +53,7 @@ from tests.api_driver import (
     where,
 )
 from tests.builders import TEST_CLIENT, make_engagement
+from tests.node_harness import APP_SCRIPTS, renderer_text
 from tests.samples import PRIOR_YEAR, text_pdf
 from tests.source_pins import py_function
 from tests.wording import title_case
@@ -335,9 +336,7 @@ def _the_reminder_card_words_are_all_pythons(words):
     }
     # Nothing the card shows is typed in the renderer, and no colour of any
     # kind reaches it: every hex it draws with is looked up in this palette.
-    renderer = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
-        encoding="utf-8"
-    )
+    renderer = renderer_text(APP_SCRIPTS)
     for word in (words["heading"], words["stage_group"], words["copy"], words["approve"],
                  words["open_draft"], words["edited_by_hand"], words["stage_toggle_hint"],
                  words["copied"], words["nothing_to_send"], words["subject_prefix"],
@@ -362,9 +361,7 @@ def test_the_settings_carry_the_firm_phone_and_the_vocabulary_names_its_box(caps
 
     vocab = run(capsys, "list")[1]["vocab"]
     assert vocab["settings"]["phone"] == "(555) 010-2020"
-    renderer = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
-        encoding="utf-8"
-    )
+    renderer = renderer_text(APP_SCRIPTS)
     html = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "index.html").read_text(
         encoding="utf-8"
     )
@@ -432,9 +429,7 @@ def test_state_carries_the_held_rows_and_every_word_is_the_vocabularys(capsys, d
 
     vocab = run(capsys, "list")[1]["vocab"]
     assert vocab["reminder"]["held_line"] == HELD_SUMMARY
-    renderer = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
-        encoding="utf-8"
-    )
+    renderer = renderer_text(APP_SCRIPTS)
     for word in (HELD_SUMMARY, HELD_SUMMARY.split("{")[0].strip(), AMBIGUOUS_HOLD):
         assert not _typed_as_a_string(renderer, word), word
     assert "vocab.reminder.held_line" in renderer

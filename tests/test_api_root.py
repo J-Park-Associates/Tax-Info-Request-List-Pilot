@@ -29,6 +29,7 @@ from tests.api_driver import (
     where,
 )
 from tests.builders import make_engagement
+from tests.node_harness import APP_FAMILY, APP_SCRIPTS, js_function, renderer_text
 from tests.samples import text_pdf
 from tracker import ledger, store
 from tracker.index import NEEDS_REVIEW, read_index
@@ -513,7 +514,7 @@ def test_the_schedule_dialog_uses_only_the_apis_words(capsys):
     """The page types none of the dialog's words: they come from
     ``vocab.schedule``, and the button sits right after the edit button."""
     here = Path(__file__).resolve().parent.parent / "app" / "renderer"
-    js = (here / "app.js").read_text(encoding="utf-8")
+    js = renderer_text(APP_FAMILY)
     html = (here / "index.html").read_text(encoding="utf-8")
     shell = (here / "shell.js").read_text(encoding="utf-8")
     assert 'id="btn-schedule"' not in html, "the button is Tools > Schedule now (SPEC 5.1)"
@@ -727,11 +728,10 @@ def test_the_first_screen_says_every_machine_warning_in_a_notice_of_its_own():
     sentence, which can name a folder, goes to the error log and is never drawn
     (the drawing is pinned in test_shell)."""
     renderer = Path(__file__).resolve().parent.parent / "app" / "renderer"
-    js = (renderer / "app.js").read_text(encoding="utf-8")
+    js = renderer_text(APP_SCRIPTS)
     html_text = (renderer / "index.html").read_text(encoding="utf-8")
     assert 'id="machine-warnings"' not in html_text
-    body = js[js.index("function renderMachineNotices("):]
-    body = body[:body.index("\n}\n")]
+    body = js_function("renderMachineNotices")
     assert 'syncNotices("machine"' in body and 'shortNotice("machine")' in body and "detail: machine.join" in body
     assert "renderMachineNotices(listed);" in js
 
@@ -788,7 +788,7 @@ def test_move_schedule_here_moves_the_schedule_from_the_packaged_app(capsys, dem
     assert payload["after_install"]["reason"] == after_install.REASON_REPAIR
     assert designation_file(demo_root).read_text(encoding="utf-8") == "office-pc\n"
     assert [command[1] for command in calls] == ["/create"]
-    js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
+    js = renderer_text(APP_SCRIPTS)
     assert 'call(["move-schedule-here"]' in js and "vocab.schedule.move_confirm" in js
     assert "confirm(moveScheduleQuestion(result.host))" in js
     assert "front-desk" not in screen_words.SCHEDULE_MOVE_CONFIRM and "{host}" in screen_words.SCHEDULE_MOVE_CONFIRM
@@ -819,7 +819,7 @@ def test_a_mac_removes_its_schedule_from_the_tools_menu_and_nothing_else(capsys,
     assert "remove-schedule-here" in run(capsys, "list")[1]["vocab"]["writing_commands"]
     assert api.vocab()["schedule"]["remove_confirm"] == "Remove the Schedule From This Mac?"
     here = Path(__file__).resolve().parent.parent / "app" / "renderer"
-    js, shell = (here / "app.js").read_text(encoding="utf-8"), (here / "shell.js").read_text(encoding="utf-8")
+    js, shell = renderer_text(APP_SCRIPTS), (here / "shell.js").read_text(encoding="utf-8")
     assert "confirm(vocab.schedule.remove_confirm)" in js and 'call(["remove-schedule-here"]' in js
     assert "remove_schedule_here: () => removeScheduleHere()," in shell
     for literal in (screen_words.SCHEDULE_REMOVE_CONFIRM, after_install.SCHEDULE_REMOVED_FROM_MAC):
@@ -893,7 +893,7 @@ def test_the_schedule_is_repaired_from_the_tools_menu_in_the_apis_words():
     API's word, and the outcome is the API's sentence - the page types none
     of it. What the step left for a person is one notice."""
     here = Path(__file__).resolve().parent.parent / "app" / "renderer"
-    js = (here / "app.js").read_text(encoding="utf-8")
+    js = renderer_text(APP_SCRIPTS)
     html = (here / "index.html").read_text(encoding="utf-8")
     shell = (here / "shell.js").read_text(encoding="utf-8")
     assert "Install Schedule" not in html and 'id="btn-repair-schedule"' not in html

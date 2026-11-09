@@ -142,7 +142,7 @@ import ast
 from pathlib import Path
 
 from tests.import_graph import PACKAGE, _modules, import_edges
-from tests.node_harness import RENDERER, RENDERER_SCRIPTS
+from tests.node_harness import APP_SCRIPTS, RENDERER, RENDERER_SCRIPTS
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -899,7 +899,7 @@ def test_the_app_has_no_network_call():
 
     scripts = sorted(path for path in (REPO / "app").rglob("*.js")
                      if "node_modules" not in path.relative_to(REPO / "app").parts)
-    assert {path.name for path in scripts} >= {"main.js", "preload.js", "app.js"}, scripts
+    assert {path.name for path in scripts} >= {"main.js", "preload.js", *APP_SCRIPTS}, scripts
     found = []
     for path in scripts:
         text = path.read_text(encoding="utf-8")

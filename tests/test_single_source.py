@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.node_harness import APP_SCRIPTS, js_function, renderer_text, stripped_js
+from tests.node_harness import APP_FAMILY, APP_SCRIPTS, js_block, js_function, lift_line, renderer_text, stripped_js
 from tests.plugin_session import child_env
 from tests.source_pins import calls_of, py_function
 from tracker.reasons import OTHER_MACHINE
@@ -42,7 +42,7 @@ def test_the_product_name_has_one_home():
     package = json.loads(read("app/package.json"))
     assert product_name() == package["productName"]
     # The renderer and the shell read it at runtime; nothing else types it.
-    for rel in ("app/renderer/index.html", "app/renderer/app.js", "app/renderer/style.css",
+    for rel in ("app/renderer/index.html", *(f"app/renderer/{name}" for name in APP_SCRIPTS), "app/renderer/style.css",
                 "Build App.bat", "Start App.bat", "docs/workflow.md",
                 "setup.command", "start.command", "build-mac.sh", "app/assets/Info-mac.plist",
                 "tracker/settings.py", "tracker/scheduling.py",
@@ -103,7 +103,7 @@ def test_the_shell_and_the_preload_agree_on_every_ipc_channel():
     # preload sends on it - the page's only way to the menu.
     assert re.findall(r'ipcMain\.on\(([A-Za-z_"]+),', read("app/main.js")) == ["MENU_CHANNEL"]
     assert re.findall(r'ipcRenderer\.send\("([a-z-]+)"', read("app/preload.js")) == ["menu"]
-    assert "window.tracker.onAfterInstallDone(" in read("app/renderer/app.js")
+    assert "window.tracker.onAfterInstallDone(" in renderer_text(APP_SCRIPTS)
 
 
 def test_the_renderer_calls_only_commands_the_api_has_and_types_no_flag():
@@ -193,7 +193,7 @@ def test_the_shell_runs_only_commands_the_api_has():
     main_js = read("app/main.js")
     bootstrap = re.search(r'const BOOTSTRAP_COMMAND = "([a-z-]+)";', main_js).group(1)
     assert bootstrap in api.COMMANDS
-    first_call = re.search(r'call\(\["([a-z-]+)"\]', read("app/renderer/app.js")).group(1)
+    first_call = re.search(r'call\(\["([a-z-]+)"\]', js_function("loadEngagements")).group(1)
     assert first_call == bootstrap
     # P221: what else may run before the allowlist is a read-only reply.
     early = re.search(r"const EARLY_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)
@@ -1022,7 +1022,7 @@ def test_no_status_chip_or_view_chip_is_drawn_and_a_rows_colour_follows_its_grou
     css = read("app/renderer/style.css") + read("app/renderer/pilot-ui.css")
     assert ".chip" not in css and "--radius-pill" not in css
     assert not re.search(r"\.view-[a-z]+\s*\{", css) and ".eng-form" not in css
-    for name in ("app.js", "pages.js", "shell.js", "index.html"):
+    for name in (*APP_SCRIPTS, "index.html"):
         text = read(f"app/renderer/{name}")
         assert "chip" not in text.replace("chip-", "chip-"), name
         assert "view-state" not in text and "eng-form" not in text, name
@@ -1036,7 +1036,7 @@ def test_the_renderer_types_no_colour():
     colour up by the key a stage carries and never writes one. A hex in
     ``app.js`` would be a second copy of the design system's value, in the
     one file the design system cannot check."""
-    js = read("app/renderer/app.js")
+    js = renderer_text(APP_SCRIPTS)
     assert not re.findall(r"#[0-9a-fA-F]{3,8}\b", js), "the renderer types no colour"
     assert "vocab.reminder.palette" in js or "words.palette" in js
 
@@ -1090,8 +1090,8 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
     from tracker.scheduling import DEFAULT_START
     from tracker.settings import EXAMPLE_ROOT
 
-    app_js = read("app/renderer/app.js")
-    others = "\n".join(stripped_js(name) for name in APP_SCRIPTS if name != "app.js")
+    app_js = renderer_text(APP_FAMILY)
+    others = "\n".join(stripped_js(name) for name in APP_SCRIPTS if name not in APP_FAMILY)
     js = "\n".join((app_js, others))
     html = read("app/renderer/index.html")
     for literal in (*Status.ALL, *Override.ALL, FILED, NEEDS_REVIEW, DUPLICATE, NOT_REQUESTED,
@@ -1163,8 +1163,7 @@ def test_the_renderers_one_list_writer_flattens_what_it_is_handed():
     flatten in the writer, not a rule every call site has to remember; it
     stays for any caller that builds a list that way.
     """
-    js = read("app/renderer/app.js")
-    body = js.split("function show(id, nodes) {", 1)[1].split("}", 1)[0]
+    body = js_function("show")
     assert "nodes.flat(" in body, body
 
 
@@ -1177,7 +1176,7 @@ def test_the_renderer_keeps_no_hidden_household_choice():
     household could be chosen except the card being looked at: the one
     household a new return is added to by path is set from that card, and
     only there."""
-    js = read("app/renderer/app.js")
+    js = renderer_text(APP_SCRIPTS)
     html = read("app/renderer/index.html")
     for name in ("chosenHousehold", "rollFor", "rollHousehold", "priorsOfHousehold",
                  "openWizard"):
@@ -1188,12 +1187,12 @@ def test_the_renderer_keeps_no_hidden_household_choice():
         assert ident not in js and ident not in html, ident
     assigned = re.findall(r"\baddingTo = ([^;]+);", js)
     assert len(assigned) == 3, assigned          # the declaration, and the two below
-    opening = js_function("openReturnDialog", "app.js")
-    closing = js_function("closeNewReturn", "app.js")
+    opening = js_function("openReturnDialog")
+    closing = js_function("closeNewReturn")
     assert re.findall(r"\baddingTo = ([^;]+);", opening) == ["hh ? hh.path : null"]
     assert re.findall(r"\baddingTo = ([^;]+);", closing) == ["null"]
-    assert "openReturnDialog(hh)" in js_function("openAddReturn", "app.js")
-    assert "openReturnDialog(null)" in js_function("openNewHousehold", "app.js")
+    assert "openReturnDialog(hh)" in js_function("openAddReturn")
+    assert "openReturnDialog(null)" in js_function("openNewHousehold")
     assert "let addingTo = null;" in js
 
 
@@ -1221,8 +1220,8 @@ def test_roll_forward_rolls_the_household_on_screen_and_names_no_other(tmp_path)
 
     import tracker.api as api_module
 
-    js = read("app/renderer/app.js")
-    body = js_function("rollHouseholdCall", "app.js")
+    js = renderer_text(APP_SCRIPTS)
+    body = js_function("rollHouseholdCall")
     # The static half, which always runs: the one roll call is built here,
     # and this function reads nothing but what it is handed.
     assert js.count('"roll-household"') == 1 and '"roll-household"' in body
@@ -1279,8 +1278,8 @@ def test_the_card_hands_the_roll_call_the_household_it_shows_and_no_other(tmp_pa
     import shutil
     import subprocess
 
-    js = read("app/renderer/app.js")
-    body = js_function("rollFromCard", "app.js")
+    js = renderer_text(APP_SCRIPTS)
+    body = js_function("rollFromCard")
     # The static half: one call site, in this function, fed from the state
     # the card was drawn from, and no list of households or returns read.
     calls = [m.start() for m in re.finditer(r"(?<!function )\brollHouseholdCall\(", js)]
@@ -1326,13 +1325,13 @@ def test_the_roll_fold_says_what_unticking_does_and_a_paused_card_offers_neither
     the dialog's footer; the dialog opens only when the API offers a roll
     (a paused household has none), and Add a return is hidden while the
     household is paused (decision 188), because then the pause is the work."""
-    js = read("app/renderer/app.js")
+    js = renderer_text(APP_SCRIPTS)
     html = read("app/renderer/index.html")
-    fold = js_function("renderRollFold", "app.js")
+    fold = js_function("renderRollFold")
     note = fold.index('fill(words.rollover_unticked, { year })')
     assert fold.index('className: "roll-tick"') < note
     assert 'show("roll-body"' in fold and "roll_intro" not in js, "the intro is cut (SPEC 2.7, E92)"
-    opening = js_function("openRoll", "app.js")
+    opening = js_function("openRoll")
     assert "!hh.roll_year" in opening and 'unanswered("roll_forward")' in opening and 'openDialog("roll-modal")' in opening
     dialog = html[html.index('id="roll-modal"'):]
     assert dialog.index('id="roll-body"') < dialog.index('id="roll-cancel"') < dialog.index('id="btn-roll"')
@@ -1356,7 +1355,7 @@ def test_every_word_of_roll_forward_add_a_return_and_new_household_is_the_apis()
     from the app and from the docs that walked a person through it."""
     import tracker.api as api_module
 
-    js = read("app/renderer/app.js")
+    js = renderer_text(APP_SCRIPTS)
     html = read("app/renderer/index.html")
     words = api_module.vocab()["household"]
     assert "existing" not in words
@@ -1388,7 +1387,7 @@ def test_a_refused_create_stays_in_the_dialog():
     shown in the dialog's own note, where it stays until a field is edited
     or the dialog closed, so nothing typed is lost; a toast would vanish."""
     html = read("app/renderer/index.html")
-    body = js_function("createEngagement", "app.js")
+    body = js_function("createEngagement")
     caught = body.split("} catch (err) {", 1)[1].split("} finally {", 1)[0]
     # A1's split (decision 196, the restack review's S2): a refusal stays in
     # the dialog, in failureSentence's words; anything else is a notice.
@@ -1454,13 +1453,13 @@ def test_new_households_refusal_leads_back_to_the_name_field_with_everything_typ
     carries the way back to the name field, and Continue returns to the list
     as it was left: neither clears a field, the form, the ticks or the
     people. Add a return has no household step, so it has no such button."""
-    js = read("app/renderer/app.js")
+    js = renderer_text(APP_SCRIPTS)
     html = read("app/renderer/index.html")
     assert '<button id="wi-household" class="wiz-back hidden"></button>' in html
     assert "vocab.household.change_household" in js
-    chosen = js_function("chooseForm", "app.js")
+    chosen = js_function("chooseForm")
     assert '$("wi-household").classList.toggle("hidden", Boolean(addingTo));' in chosen
-    back = js.split('$("wi-household").addEventListener("click", () => {', 1)[1].split("});", 1)[0]
+    back = js_block('$("wi-household").addEventListener("click", () => {')
     assert 'showStep("household");' in back and '$("hh-name").focus();' in back, back
     assert "renderHouseholdStep" not in back and "chooseForm" not in back, back
     assert ('$("wh-next").addEventListener("click", () => showStep(selectedForm ? "items" : "form"));'
@@ -1474,17 +1473,17 @@ def test_a_catalog_that_will_not_load_is_said_in_the_roll_fold_and_the_page_is_d
     form instead of sending "no template" for every one."""
     # Start-up loads the catalog once (decision 194: a switch reads the
     # state alone, so the catalog is not read again on every click).
-    starting = js_function("bootstrap", "app.js")
+    starting = js_function("bootstrap")
     guarded = starting.split("try {\n      await loadForms();\n    } catch (err) {", 1)
     assert len(guarded) == 2, starting
     # Said in the words a notice would use: a page error by its class alone
     # (principle 7), never its message.
     assert guarded[1].lstrip().startswith("formsUnloaded = failureSentence(err);"), guarded[1]
     assert "err.message" not in guarded[1].split("}", 1)[0], guarded[1]
-    fold = js_function("renderRollFold", "app.js")
+    fold = js_function("renderRollFold")
     said = fold.index("fill(words.roll_forms_unloaded, { reason: formsUnloaded })")
     assert fold.index("formsUnloaded\n") < said < fold.index('className: "roll-form-pick"')
-    assert 'formsUnloaded = "";' in js_function("loadForms", "app.js")
+    assert 'formsUnloaded = "";' in js_function("loadForms")
 
 
 def test_the_renderer_names_no_catalog_of_its_own():
@@ -1493,7 +1492,7 @@ def test_the_renderer_names_no_catalog_of_its_own():
     list of return types to keep in step with tracker.templates."""
     from tracker.templates import FORM_TEMPLATES
 
-    js = read("app/renderer/app.js")
+    js = renderer_text(APP_SCRIPTS)
     html = read("app/renderer/index.html")
     pages = read("app/renderer/pages.js")
     for form in FORM_TEMPLATES:
@@ -1524,7 +1523,7 @@ def test_the_standing_rules_are_worded_once_and_quoted_everywhere():
     html = read("app/renderer/index.html")
     assert "<div><strong></strong><span></span></div>" not in html and 'id="assurances"' not in html
     assert 'id="safeguards-list"' in html
-    opening = js_function("openSafeguards", "app.js")
+    opening = js_function("openSafeguards")
     assert "vocab.rules.map(" in opening and "rule.short" in opening and "rule.detail" not in opening
 
 
@@ -1571,7 +1570,7 @@ def test_the_retired_override_word_survives_only_in_the_decision_logs_history():
     [retired] = Override.RETIRED
     assert not hasattr(Override, "WAIVED")
     for rel in ("README.md", "docs/workflow.md", "docs/runbook.md", "docs/storage.md", "CLAUDE.md",
-                "docs/repo-map.curated.json", "app/renderer/app.js", "app/renderer/index.html",
+                "docs/repo-map.curated.json", *(f"app/renderer/{name}" for name in APP_SCRIPTS), "app/renderer/index.html",
                 "app/renderer/style.css"):
         assert retired.lower() not in read(rel).lower(), rel
     for path in [*(REPO / "tracker").glob("*.py"), *(REPO / "tools").glob("*.py")]:
@@ -1614,7 +1613,7 @@ def test_the_scan_buttons_label_is_typed_nowhere_in_the_renderer():
     """SPEC 14.2: the sort icon's words are the API's (``vocab.screen.sort``),
     so the old button label is typed in no renderer file, and a document that
     names the old button names it by one label only."""
-    for name in ("app.js", "shell.js", "pages.js", "index.html"):
+    for name in (*APP_SCRIPTS, "index.html"):
         text = read(f"app/renderer/{name}")
         assert "SCAN_LABEL" not in text and '"Sort & Scan"' not in text, name
     assert "Sort & Scan" not in read("app/renderer/index.html")
@@ -1628,7 +1627,7 @@ def test_the_words_for_the_engagements_page_are_pythons_alone():
     the API's vocabulary; the renderer shows them and types neither."""
     from tracker.view import VIEW_LABEL, VIEW_OPEN_LABEL
 
-    for rel in ("app/renderer/index.html", "app/renderer/app.js", "app/renderer/style.css"):
+    for rel in ("app/renderer/index.html", *(f"app/renderer/{name}" for name in APP_SCRIPTS), "app/renderer/style.css"):
         text = read(rel)
         if rel.endswith((".js", ".css")):      # a comment may name the page; the page may not type it
             text = re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.S)
@@ -1860,7 +1859,7 @@ def test_documents_name_buttons_by_their_labels():
     html = read("app/renderer/index.html")
     labels = {re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", m)).strip()
               for m in re.findall(r"<button[^>]*>(.*?)</button>", html, re.S)}
-    js = read("app/renderer/app.js")
+    js = renderer_text(APP_SCRIPTS)
     labels |= set(re.findall(r'<button[^>]*>([^<]+)</button>', js))
     # Buttons filled in at runtime from a label Python owns: the one that
     # opens the engagement's page and the request-list editor's (decision
@@ -2272,7 +2271,7 @@ def test_every_review_action_the_renderer_sends_carries_the_rows_seq():
     """
     import tracker.screen_words as screen_words
 
-    js = read("app/renderer/app.js")
+    js = renderer_text(APP_SCRIPTS)
     # The sheet's dismissal reads the row's version off the row on the sheet...
     sent = re.search(r'writeRow\(withEng\("dismiss"\), \{(.*?)\}, \{', js, re.S)
     assert sent and "seq:" in sent.group(1) and "li.dataset.seq" in sent.group(1)
@@ -2310,7 +2309,7 @@ def test_the_feed_editor_picks_a_return_by_index_and_never_takes_a_value_apart()
     drawn from, field for field. The API's own test never reaches the page,
     which is why this is pinned here.
     """
-    js = read("app/renderer/app.js")
+    js = renderer_text(APP_SCRIPTS)
     render = re.search(r"function renderEditorFeeds\(\) \{.*?\n\}", js, re.S)
     add = re.search(r"function addEditorFeed\(\) \{.*?\n\}", js, re.S)
     assert render and add
@@ -2402,7 +2401,7 @@ def test_every_document_counts_the_request_lists_columns_as_the_api_does():
     count = len(HEADERS)
     sources = ["README.md", "docs/runbook.md", "docs/storage.md", "docs/workflow.md",
                "CLAUDE.md", "docs/repo-map.curated.json", "app/renderer/index.html",
-               "app/renderer/app.js", "docs/ROADMAP.md",
+               *(f"app/renderer/{name}" for name in APP_SCRIPTS), "docs/ROADMAP.md",
                *(str(p.relative_to(REPO)) for p in sorted((REPO / "tracker").glob("*.py"))),
                *(str(p.relative_to(REPO)) for p in sorted((REPO / "tests").glob("*.py")))]
     phrasings = (
@@ -2447,7 +2446,7 @@ def test_no_document_sends_a_person_to_open_a_refused_file_or_publish_a_stray():
     - the paragraph on opening a parked file, the section on a document the
     app did not file - is said once. It catches these sentences' known
     shapes coming back, not a new one worded differently."""
-    for rel in (*DOCUMENTS, "app/renderer/index.html", "app/renderer/app.js",
+    for rel in (*DOCUMENTS, "app/renderer/index.html", *(f"app/renderer/{name}" for name in APP_SCRIPTS),
                 "tracker/reasons.py", "Build App.bat"):
         text = read_as_prose(rel).lower()
         for sentence in STRUCK:
@@ -3127,10 +3126,7 @@ def test_the_runbooks_189_sentence_is_rewritten():
 #: own lock during the pass, the pass ended, then the lock went.
 _BUTTON_PROBE = r"""
 const fs = require("fs");
-const src = fs.readFileSync(process.argv[2], "utf8");
-function grab(sig) { const i = src.indexOf(sig); const j = src.indexOf("\n}\n", i); return src.slice(i, j + 3); }
-const cards = src.slice(src.indexOf("const LOCKED_CARDS"), src.indexOf("function applyLock"));
-const parts = [cards, grab("function applyLock() {"), grab("function setLocked(on) {"), grab("function scanDone() {")];
+const parts = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));   // the lifted declaration and functions, handed over by the test
 const control = { disabled: false, dataset: {} };
 const nodes = {
   "sheet-body": { querySelectorAll: () => [control] },
@@ -3166,11 +3162,14 @@ def test_the_end_of_a_pass_gives_back_only_what_the_lock_did_not_hold(tmp_path):
         pytest.skip("node is not on PATH (CI installs it)")
     probe = tmp_path / "button_probe.js"
     probe.write_text(_BUTTON_PROBE, encoding="utf-8", newline="\n")
-    done = subprocess.run([node, str(probe), str(REPO / "app" / "renderer" / "app.js")], capture_output=True,
+    lifted = tmp_path / "button_probe_lifted.json"
+    lifted.write_text(json.dumps([lift_line("const LOCKED_CARDS = "), *(js_function(name) for name in ("applyLock", "setLocked", "scanDone"))]),
+                      encoding="utf-8")
+    done = subprocess.run([node, str(probe), str(lifted)], capture_output=True,
                           text=True, encoding="utf-8", timeout=60, check=False)
     assert done.returncode == 0, done.stderr
     assert json.loads(done.stdout) == {"whileLocked": True, "after": False}
-    ended = js_function("scanDone", "app.js")
+    ended = js_function("scanDone")
     assert ".disabled" not in ended and "applyLock();" in ended and "shellChanged();" in ended
 
 
@@ -3427,78 +3426,75 @@ def test_the_notice_buttons_are_the_apis_labels_word_for_word():
 
 
 def test_no_failure_is_toasted():
-    js = read("app/renderer/app.js")
+    js = renderer_text(APP_SCRIPTS)
     assert "toast(err" not in js
     assert "throw new Error(result.error)" not in js
 
 
 def test_every_draw_after_an_await_goes_through_renderFor():
-    js = read("app/renderer/app.js")
+    js = renderer_text(APP_SCRIPTS)
     calls = [m.start() for m in re.finditer(r"(?<![\w.])render\(", js)]
-    body = js.split("function renderFor(view, state) {", 1)[1].split("\n}\n", 1)[0]
+    body = js_function("renderFor")
     definition = js.index("function render(state)")
-    inside = js.index("function renderFor(view, state) {")
-    assert [at for at in calls if at != definition + len("function ")] == \
-        [inside + len("function renderFor(view, state) {") + body.index("render(")]
+    inside = js.index(body)
+    assert [at for at in calls if at != definition + len("function ")] == [inside + body.index("render(")]
     assert "view !== viewGeneration" in body
     # The shown return changes in one place, and every change bumps the view.
     assert len(re.findall(r"(?<![\w.])(?<!let )(?<!const )active = ", js)) == 1
     # Since decision 194 a switch is showReturn, which selects before it asks;
     # the route asks for it (shell.js), and a notice's Retry.
     assert "showReturn(path)" in js_function("shellOpenState", "shell.js")
-    show = js.split("async function showReturn(path) {", 1)[1].split("\n}\n", 1)[0]
+    show = js_function("showReturn")
     assert show.index("const view = select(path)") < show.index("call(")
 
 
 def test_the_reminder_card_is_never_hidden_on_an_error():
-    js = read("app/renderer/app.js")
-    body = js.split("async function loadReminder() {", 1)[1].split("\n}\n", 1)[0]
+    body = js_function("loadReminder")
     caught = body.split("} catch (err) {", 1)[1]
     assert '"hidden"' not in caught
     assert "vocab.reminder.unreadable" in caught and "failed(err" in caught
     # One card from either source (decision 194): the not-yet line and the
     # sentence saying why a card could not be composed are drawn on it.
     assert "drawReminderReply(result)" in body
-    drawn = js.split("function drawReminderReply(reply) {", 1)[1].split("\n}\n", 1)[0]
+    drawn = js_function("drawReminderReply")
     assert "reply.not_yet" in drawn and "reply.unreadable" in drawn and '"hidden"' not in drawn
 
 
 def test_every_reply_warning_becomes_a_notice():
-    js = read("app/renderer/app.js")
-    called = js.split("async function call(args, payload, { ofAnother = false } = {}) {", 1)[1].split("\n}\n", 1)[0]
+    js = renderer_text(APP_SCRIPTS)
+    called = js_function("call")
     assert "takeReply(result, args, payload, { ofAnother })" in called
-    body = js.split("function takeReply(result, args, payload, { ofAnother = false } = {}) {", 1)[1].split("\n}\n", 1)[0]
+    body = js_function("takeReply")
     assert "result.warnings" in body and "warningNotices(" in body
     assert "throw new TrackerError(" in body
     assert "warningNotices(ended.pass_warnings" in js     # a pass's own, from its final line (203)
 
 
 def test_a_failed_first_list_is_a_notice_with_retry_needing_no_vocabulary():
-    js = read("app/renderer/app.js")
-    start = js.split("async function bootstrap(preferPath) {", 1)[1].split("\n}\n", 1)[0]
+    start = js_function("bootstrap")
     assert "failed(err, () => bootstrap(preferPath))" in start
     # The notice draws its buttons from the static template and reads the
     # vocabulary only for a repeat count, and only when there is one.
-    draw = js.split("function drawNotice(entry) {", 1)[1].split("\n}\n", 1)[0]
+    draw = js_function("drawNotice")
     assert "entry.count > 1 && vocab" in draw and "noticeButton" in draw
-    button = js.split("function noticeButton(act) {", 1)[1].split("\n}\n", 1)[0]
+    button = js_function("noticeButton")
     assert '$("notice-buttons").content' in button and "vocab" not in button
 
 
 def test_the_lock_notice_types_no_sentence_and_polls_only_while_a_lock_shows():
-    js = read("app/renderer/app.js")
-    for name in ("function renderLock(state) {", "function showLock(lock) {"):
-        body = js.split(name, 1)[1].split("\n}\n", 1)[0]
+    js = renderer_text(APP_SCRIPTS)
+    for name in ("renderLock", "showLock"):
+        body = js_function(name)
         literals = re.findall(r'"([^"]*)"|`([^`]*)`', body)
         assert not [lit for pair in literals for lit in pair if " " in lit.strip()], name
     assert "Sort & Scan will wait" not in js and "will wait for it" not in js
     assert js.count('call(["watch"') == 1 and 'withEng("watch")' not in js
-    watch = js.split("function watchLock(lock) {", 1)[1].split("\n}\n", 1)[0]
+    watch = js_function("watchLock")
     assert 'call(["watch", vocab.engagement_flag, target])' in watch
     assert "vocab.lock.watch_seconds" in watch and "view !== viewGeneration" in watch
     # It watches the lock it was given (the review's S1), not the shown return.
     assert "const target = lock.engagement || active;" in watch
-    show = js.split("function showLock(lock) {", 1)[1].split("\n}\n", 1)[0]
+    show = js_function("showLock")
     assert "watchLock(lock)" in show and "stopLockWatch()" in show
     assert "words.running_other" in show
 
@@ -3518,11 +3514,7 @@ def test_the_shell_sends_on_only_the_channels_the_preload_listens_to():
 #: with fake timers and a fake API (the review's M1 probe, kept as a claim).
 _LOCK_HARNESS = r"""
 const fs = require("fs");
-const src = fs.readFileSync(process.argv[2], "utf8");
-function grab(sig) { const i = src.indexOf(sig); const j = src.indexOf("\n}\n", i); return src.slice(i, j + 3); }
-const parts = ["function select(path) {", "function lockStarted(lock) {", "function showLock(lock) {",
-  "function applyLock() {", "function setLocked(on) {", "function stopLockWatch() {",
-  "function watchLock(lock) {"].map(grab);
+const parts = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));   // the lifted functions, handed over by the test
 const intervals = []; const held = { A: true, B: true }; const asked = [];
 const node = () => ({ classList: { toggle() {}, add() {}, remove() {} }, textContent: "",
                       querySelectorAll: () => [], dataset: {} });
@@ -3581,7 +3573,10 @@ def test_a_switch_between_two_locked_returns_watches_the_second_and_gives_its_bu
         pytest.skip("node is not on PATH (CI installs it)")
     harness = tmp_path / "lock_harness.js"
     harness.write_text(_LOCK_HARNESS, encoding="utf-8", newline="\n")
-    done = subprocess.run([node, str(harness), str(REPO / "app" / "renderer" / "app.js")],
+    lifted = tmp_path / "lock_harness_lifted.json"
+    lifted.write_text(json.dumps([js_function(name) for name in ("select", "lockStarted", "showLock", "applyLock", "setLocked", "stopLockWatch",
+                                                                  "watchLock")]), encoding="utf-8")
+    done = subprocess.run([node, str(harness), str(lifted)],
                           capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
     assert done.returncode == 0, done.stderr
     ran = json.loads(done.stdout)
@@ -3594,10 +3589,8 @@ def test_the_editors_failures_are_notices_too():
     """Every editor catch says one sentence, in the editor and as a notice:
     ``failed``'s, never an error's own text (principle 7; the restack
     review's M1)."""
-    js = read("app/renderer/app.js")
-    for name in ("async function saveEditor() {", "async function renameRequest() {",
-                 "async function unlearnKeyword(identifier, keyword) {"):
-        body = js.split(name, 1)[1].split("\n}\n", 1)[0]
+    for name in ("saveEditor", "renameRequest", "unlearnKeyword"):
+        body = js_function(name)
         assert 'editorNote(failed(err), "err");' in body, name
         assert "err.message" not in body, name
 
@@ -3605,8 +3598,8 @@ def test_the_editors_failures_are_notices_too():
 def test_an_errors_own_message_is_read_only_where_failureSentence_logs_it():
     """UX principle 7, by shape: the one place app.js reads a caught error's
     message is ``failureSentence``, which sends it to the error log."""
-    js = read("app/renderer/app.js")
-    inside = js_function("failureSentence", "app.js")
+    js = renderer_text(APP_FAMILY)
+    inside = js_function("failureSentence")
     outside = js.replace(inside, "")
     assert inside.count(".message") == 1 and "window.tracker.logError(" in inside
     assert re.search(r"\.message\b", outside) is None
@@ -3615,9 +3608,9 @@ def test_an_errors_own_message_is_read_only_where_failureSentence_logs_it():
 def test_every_word_a_scan_reply_is_said_in_is_the_apis():
     import tracker.api as api
 
-    js = read("app/renderer/app.js")
-    body = js.split("function scanSummary(run, others, summary) {", 1)[1].split("\n}\n", 1)[0]
-    body += js.split("function scanFailed(run) {", 1)[1].split("\n}\n", 1)[0]
+    js = renderer_text(APP_SCRIPTS)
+    body = js_function("scanSummary")
+    body += js_function("scanFailed")
     words = api.vocab()["scan"]
     for key, literal in words.items():
         if key == "scanning":
@@ -3634,11 +3627,10 @@ def test_an_error_of_the_page_or_the_shell_is_said_by_class_and_its_message_only
     import tracker.api as api
     import tracker.screen_words as screen_words
 
-    js = read("app/renderer/app.js")
-    body = js.split("function failureSentence(err) {", 1)[1].split("\n}\n", 1)[0]
+    body = js_function("failureSentence")
     assert "vocab.shell.page_error" in body and "window.tracker.logError(" in body
     assert "sentence: String(" not in body
-    failing = js.split("function failed(err, retry) {", 1)[1].split("\n}\n", 1)[0]
+    failing = js_function("failed")
     assert "const sentence = failureSentence(err);" in failing and "err.message" not in failing
     main_js = read("app/main.js")
     # runTracker's check, then spawnTracker (decision 209's launch door
@@ -3654,8 +3646,8 @@ def test_an_error_of_the_page_or_the_shell_is_said_by_class_and_its_message_only
 # ============= one spawn per click (decision 194) ===========================
 
 
-def _handler(js: str, head: str) -> str:
-    return js.split(head, 1)[1].split("\n});\n", 1)[0]
+def _handler(head: str) -> str:
+    return js_block(head)
 
 
 def test_switching_returns_is_one_state_call():
@@ -3665,31 +3657,31 @@ def test_switching_returns_is_one_state_call():
     clients folder is set, R8) - and once when a Sort & Scan pass ends,
     beside its one ``state``, sent after it and awaited by nothing (decision
     203, the lane's ruling on 194's Q5; P228)."""
-    js = read("app/renderer/app.js")
-    show = js_function("showReturn", "app.js")
+    js = renderer_text(APP_FAMILY)
+    show = js_function("showReturn")
     assert show.count("call(") == 1 and 'call(["state", ' in show
     for head in ('$("roll-body").addEventListener("click", (e) => {',):
-        handler = _handler(js, head)
+        handler = _handler(head)
         if "reviewPeople(" in handler:       # the roll fold's people button (S4)
-            handler += js_function("reviewPeople", "app.js")
+            handler += js_function("reviewPeople")
         assert "showReturn(" in handler, head
         for other in ("refresh(", "bootstrap(", "loadReminder(", "call("):
             assert other not in handler, (head, other)
     assert "showReturn(path)" in js_function("shellOpenState", "shell.js")
     assert "showReturn(" not in read("app/renderer/pages.js")
-    refused = js_function("refused", "app.js")
+    refused = js_function("refused")
     assert "showReturn(active)" in refused and "bootstrap(" not in refused
     assert "refresh(" not in js
     # The third: decision 209's launch step finished, and only its notice is redrawn.
     assert js.count('call(["list"])') == 3
     assert 'renderAfterInstall((await call(["list"])).after_install)' in js
-    assert 'call(["list"])' in js_function("loadEngagements", "app.js")
-    ended = js_function("passEnded", "app.js")
+    assert 'call(["list"])' in js_function("loadEngagements")
+    ended = js_function("passEnded")
     assert ended.index('call(withEng("state"))') < ended.index('call(["list"])')
     assert 'await call(["list"])' not in ended
     calls = [m.start() for m in re.finditer(r"(?<![\w.])bootstrap\(", js)]
     assert len(calls) == 3        # its definition, its own Retry and saveRoot; start-up is startWhenLoaded
-    assert "await bootstrap();" in js_function("saveRoot", "app.js")
+    assert "await bootstrap();" in js_function("saveRoot")
     assert js.rstrip().endswith("startWhenLoaded(bootstrap);")
 
 
@@ -3698,12 +3690,12 @@ def test_the_reminder_card_is_drawn_from_state():
     draws ``state.reminder_card``, and the ``reminder`` command is called
     from one place, reached only from the stage toggle, a refused approve
     and the one branch that keeps a rung a person moved (R3)."""
-    js = read("app/renderer/app.js")
-    card = js_function("renderReminder", "app.js")
+    js = renderer_text(APP_SCRIPTS)
+    card = js_function("renderReminder")
     assert "drawReminderReply(state.reminder_card" in card
     assert "reminderStage !== null" in card and "loadReminder()" in card
     assert js.count('withEng("reminder")') == 1
-    assert 'withEng("reminder")' in js_function("loadReminder", "app.js")
+    assert 'withEng("reminder")' in js_function("loadReminder")
     heads = ("function renderReminder(state) {", "async function approveReminder() {",
              '$("reminder-stages").addEventListener("click"')
     callers = [m.start() for m in re.finditer(r"(?<![\w.])(?<!function )loadReminder\(", js)]
@@ -3714,10 +3706,10 @@ def test_the_reminder_card_is_drawn_from_state():
 def test_the_editor_opens_on_the_state_on_screen():
     """D13: the editor opens on the state already drawn for this return,
     with no refetch; a save is still judged by the list's head (160)."""
-    body = js_function("openEditor", "app.js")
+    body = js_function("openEditor")
     assert "lastState.paths.engagement === active" in body
     assert body.index("lastState") < body.index("call(")
-    assert "head: editorState.list_head" in js_function("saveEditor", "app.js")
+    assert "head: editorState.list_head" in js_function("saveEditor")
 
 
 def test_every_editor_write_whose_reply_carries_state_redraws_through_renderFor():
@@ -3725,7 +3717,7 @@ def test_every_editor_write_whose_reply_carries_state_redraws_through_renderFor(
     that answers with a state redraws the page from it - an unlearned
     keyword never comes back on the next open (the review's S2)."""
     for name in ("unlearnKeyword", "renameRequest", "saveEditor"):
-        body = js_function(name, "app.js")
+        body = js_function(name)
         assert "const view = viewGeneration;" in body and "renderFor(view, result.state)" in body, name
 
 
@@ -3736,11 +3728,11 @@ def test_a_warning_about_another_return_is_said_under_its_label():
     import tracker.api as api
     import tracker.screen_words as screen_words
 
-    js = read("app/renderer/app.js")
-    handover = js_function("loadHandOverRequests", "app.js")
+    js = renderer_text(APP_SCRIPTS)
+    handover = js_function("loadHandOverRequests")
     assert "{ ofAnother: true }" in handover
-    assert "takeReply(result, args, payload, { ofAnother })" in js_function("call", "app.js")
-    body = js_function("takeReply", "app.js")
+    assert "takeReply(result, args, payload, { ofAnother })" in js_function("call")
+    body = js_function("takeReply")
     assert "vocab.notices.about" in body and "labelOfState(result)" in body
     assert js.count("ofAnother: true") == 1
     assert api.vocab()["notices"]["about"] == screen_words.NOTICE_ABOUT
@@ -3763,7 +3755,7 @@ def test_the_renderer_types_no_status_label():
     from tracker import reminder, view
     from tracker.manifest import STATUS_LABELS
 
-    js = read("app/renderer/app.js")
+    js = renderer_text(APP_SCRIPTS)
     pages = read("app/renderer/pages.js")
     html = read("app/renderer/index.html")
     for text in (js, pages, html):
@@ -3783,7 +3775,7 @@ def test_the_renderer_types_no_override_word():
     """The row's override is its label on the side line (decision 200), not
     a typed "override:" after the Period. A key such as ``manual_override:``
     is the record's field name, not a word shown."""
-    assert re.search(r"(?<!\w)override:", read("app/renderer/app.js"), re.IGNORECASE) is None
+    assert re.search(r"(?<!\w)override:", renderer_text(APP_SCRIPTS), re.IGNORECASE) is None
 
 
 # A document just large enough for app.js's own el(): elements keep their
@@ -3818,15 +3810,12 @@ def _run_renderer(tmp_path, name: str, headers: tuple[str, ...], script: str):
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not on PATH (CI installs it)")
-    js = read("app/renderer/app.js")
-    start = js.index("const EL_ATTRIBUTES = new Set([")
-    allowed = js[start:js.index("]);", start) + 3]
+    allowed = lift_line("const EL_ATTRIBUTES = new Set([")
 
     def lifted(header: str) -> str:
         if header.startswith("const "):          # a declaration (DIALOGS): an object literal that ends "\n};\n"
-            at = js.index(header)
-            return js[at:js.index("\n};\n", at) + 3]
-        return js_function(re.match(r"(?:async )?function (\w+)\(", header).group(1), "app.js")
+            return js_block(header)
+        return js_function(re.match(r"(?:async )?function (\w+)\(", header).group(1))
 
     bodies = "\n".join([allowed] + [lifted(header) for header in (
         "function el(tag, attrs = {}, ...children) {", "function tipped(node, words) {", *headers)])
@@ -3947,7 +3936,7 @@ def test_a_notice_for_a_numeric_identifier_outlines_that_request_and_no_editor_r
     notice for request "2", run through ``outlineRefused`` as written,
     outlines the request table's row "2" and never the editor's or the
     wizard's third row (the restack review's S1)."""
-    drawing = js_function("requestRows", "app.js")
+    drawing = js_function("requestRows")
     assert "row:" not in drawing and "dataset.row" not in drawing
     seen = _run_renderer(tmp_path, "outline_numeric", (
         "function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack, "
@@ -4298,9 +4287,9 @@ def test_the_runbook_status_table_is_the_label_table():
 _DIALOG_IDS = re.compile(r'<div id="([a-z-]+)" class="modal-overlay')
 
 
-def _registry(js: str) -> set[str]:
+def _registry() -> set[str]:
     """The ids the one dialog registry names, at its top level."""
-    block = js.split("const DIALOGS = {", 1)[1].split("\n};\n", 1)[0]
+    block = js_block("const DIALOGS = {")
     return set(re.findall(r'^  "?([a-z-]+)"?: \{', block, flags=re.MULTILINE))
 
 
@@ -4308,19 +4297,19 @@ def test_every_dialog_is_in_the_one_registry_and_closes_through_one_guard():
     """D10: every ``.modal-overlay`` in the page is in ``DIALOGS``, and no
     code but ``closeDialog`` hides one - and none but ``openDialog`` shows
     one - so no dialog can close its own way again."""
-    js = read("app/renderer/app.js")
+    js = renderer_text(APP_SCRIPTS)
     html = read("app/renderer/index.html")
     ids = set(_DIALOG_IDS.findall(html))
     assert ids == {"editor", "household-modal", "handover-modal", "modal", "schedule-modal",
                    "roll-modal", "safeguards-modal", "about-modal", "misfits-modal", "unfile-modal"}
     # The registry also holds the side sheet (SPEC 7): it hides by its attribute.
-    assert _registry(js) == ids | {"sheet"}
+    assert _registry() == ids | {"sheet"}
     for ident in ids:
         assert f'$("{ident}").classList.add("hidden")' not in js, ident
         assert f'$("{ident}").classList.remove("hidden")' not in js, ident
         assert f'$("{ident}").classList.toggle("hidden"' not in js, ident
-    closing = js_function("closeDialog", "app.js")
-    opening = js_function("openDialog", "app.js")
+    closing = js_function("closeDialog")
+    opening = js_function("openDialog")
     assert '$(id).classList.add("hidden");' in closing
     assert 'overlay.classList.remove("hidden");' in opening
     rest = js.replace(closing, "").replace(opening, "")
@@ -4333,14 +4322,14 @@ def test_escape_and_an_overlay_click_reach_every_dialog_the_same_way():
     and every Cancel button makes it too. The one listener is found in
     whichever of the app's scripts holds it (R3.3); the pilot's terms and tour
     hold keys of their own in the capture phase (test_shell)."""
-    js = read("app/renderer/app.js")
+    js = renderer_text(APP_FAMILY)
     app = renderer_text(APP_SCRIPTS)
     assert app.count('document.addEventListener("keydown"') == 1
-    handler = app.split('document.addEventListener("keydown", (e) => {', 1)[1].split("\n});", 1)[0]
+    handler = js_block('document.addEventListener("keydown", (e) => {')
     assert 'e.key === "Escape"' in handler and "requestClose(id);" in handler
     assert "trapTab(e, id);" in handler
     assert js.count('"Escape"') == 1
-    overlay = js.split("for (const id of Object.keys(DIALOGS)) {", 1)[1].split("\n}\n", 1)[0]
+    overlay = js_block("for (const id of Object.keys(DIALOGS)) {")
     assert "if (e.target === $(id)) requestClose(id);" in overlay
     assert not re.search(r"e\.target === \$\(\"[a-z-]+\"\)", js)
     for button, dialog in (("hh-edit-cancel", "household-modal"), ("ho-cancel", "handover-modal"),
@@ -4353,11 +4342,10 @@ def test_every_dialog_opens_with_focus_inside_and_gives_it_back():
     """``openDialog`` remembers what had focus and puts it on a control
     inside; Tab is kept inside while it is open; ``closeDialog`` gives it
     back. Every opener goes through it."""
-    js = read("app/renderer/app.js")
-    opening = js_function("openDialog", "app.js")
+    opening = js_function("openDialog")
     assert "dialogOpener[id] = document.activeElement;" in opening
     assert "target.focus();" in opening and "DIALOGS[id].first()" in opening
-    closing = js_function("closeDialog", "app.js")
+    closing = js_function("closeDialog")
     assert "const back = dialogOpener[id];" in closing and "back.focus();" in closing
     for opener, ident in (("openEditor", "editor"),
                           ("openHouseholdEditor", "household-modal"),
@@ -4369,11 +4357,11 @@ def test_every_dialog_opens_with_focus_inside_and_gives_it_back():
                           ("openAbout", "about-modal"),
                           ("openMisfits", "misfits-modal"),
                           ("openUnfile", "unfile-modal")):
-        assert f'openDialog("{ident}")' in js_function(opener, "app.js"), opener
+        assert f'openDialog("{ident}")' in js_function(opener), opener
     assert 'openDialog("sheet");' in js_function("sheetFrame", "sheet.js")
-    registry = js.split("const DIALOGS = {", 1)[1].split("\n};\n", 1)[0]
+    registry = js_block("const DIALOGS = {")
     assert registry.count("first: () =>") == 11
-    trap = js_function("trapTab", "app.js")
+    trap = js_function("trapTab")
     assert "e.preventDefault();" in trap and "first.focus();" in trap and "last.focus();" in trap
 
 
@@ -4382,24 +4370,24 @@ def test_escape_never_discards_unsaved_work():
     means Keep editing; a dialog with changes raises the bar and does not
     close; and the bar's discard button is the only way from it to
     ``closeDialog``."""
-    js = read("app/renderer/app.js")
+    js = renderer_text(APP_SCRIPTS)
     html = read("app/renderer/index.html")
-    asking = js_function("requestClose", "app.js")
+    asking = js_function("requestClose")
     showing, rest = asking.split("keepEditing(id);", 1)
     assert 'bar && !bar.classList.contains("hidden")' in showing and "closeDialog" not in showing
     clean, dirty = rest.split("if (!isDirty(id)) {", 1)[1].split("}", 1)
     assert "closeDialog(id);" in clean
     assert "closeDialog" not in dirty and 'bar.querySelector(".dlg-keep").focus();' in dirty
-    assert "closeDialog" not in js_function("keepEditing", "app.js")
+    assert "closeDialog" not in js_function("keepEditing")
     assert js.count('.dlg-discard")') == 2          # its words, and its one listener
     assert 'bar.querySelector(".dlg-discard").addEventListener("click", () => closeDialog(id));' in js
     assert 'bar.querySelector(".dlg-keep").addEventListener("click", () => keepEditing(id));' in js
     # Every dialog a person types in carries the bar; the hand-over is two
     # picks and never dirty.
     assert html.count('class="dlg-unsaved banner warn hidden" role="alert"') == 4
-    assert "model: null," in js.split("const DIALOGS = {", 1)[1].split('"handover-modal": {', 1)[1]
+    assert "model: null," in js_block("const DIALOGS = {").split('"handover-modal": {', 1)[1]
     # Acts recorded at once move the snapshot: the rename renames it.
-    assert "for (const row of dialogSnapshot.editor.rows)" in js_function("renameRequest", "app.js")
+    assert "for (const row of dialogSnapshot.editor.rows)" in js_function("renameRequest")
 
 
 def test_the_editor_opens_on_the_state_on_screen_with_every_fold_closed():
@@ -4407,12 +4395,12 @@ def test_the_editor_opens_on_the_state_on_screen_with_every_fold_closed():
     reply the page is showing - and reads ``state`` only for a return a
     switch has not landed on yet, one call; each open starts with every
     fold closed, and the save is still judged by ``list_head``."""
-    body = js_function("openEditor", "app.js")
+    body = js_function("openEditor")
     assert body.count("call(") == 1 and 'call(withEng("state"))' in body
     assert "? { ...lastState }" in body and body.index("lastState") < body.index("call(")
     assert "refresh(" not in body
     assert body.index("editorAdvanced = false;") < body.index("renderEditorRows();")
-    assert "head: editorState.list_head" in js_function("saveEditor", "app.js")
+    assert "head: editorState.list_head" in js_function("saveEditor")
 
 
 def test_no_text_box_is_named_only_by_its_placeholder():
@@ -4420,14 +4408,14 @@ def test_no_text_box_is_named_only_by_its_placeholder():
     types no placeholder of its own; the keyword, spelling and note boxes
     are each built inside a visible label, by one builder each; and the
     setup page's two boxes are built inside labels."""
-    js = read("app/renderer/app.js")
+    js = renderer_text(APP_SCRIPTS)
     html = read("app/renderer/index.html")
     assert 'placeholder: "' not in js
     assert "keyword to learn" not in js.lower() and "Keyword to add to the request" not in js
     for cls, builder in (("r-keyword", "keywordBox"), ("r-note", "noteBox"), ("r-spelling", "teachSpelling")):
         assert js.count(f'"{cls}")') == 1, cls
-        assert f'"{cls}")' in js_function(builder, "app.js") and "labelledInput(" in js_function(builder, "app.js"), cls
-    label = js_function("labelledInput", "app.js")
+        assert f'"{cls}")' in js_function(builder) and "labelledInput(" in js_function(builder), cls
+    label = js_function("labelledInput")
     assert 'el("label", { className: boxClass ?' in label and 'className: inputClass' in label
     assert len(re.findall(r"\bkeywordBox\(\)", js)) == 3        # the builder and its two places
     # The setup page (shell.js) builds its two boxes inside labels; index.html
@@ -4444,7 +4432,7 @@ def test_the_issuer_action_has_one_call_site():
     through one function, as filing has one (decision 114) - the page
     sends the row, its version, the list's version and the name, and no
     identifier or row of its own."""
-    js = read("app/renderer/app.js")
+    js = renderer_text(APP_SCRIPTS)
     assert js.count('withEng("add-issuer-and-file")') == 1
     assert len(re.findall(r"\baddIssuerAndFile\(", js)) == 2     # the definition and its one caller
     sent = re.search(r'writeRow\(withEng\("add-issuer-and-file"\), \{(.*?)\}, \{', js, re.S).group(1)
@@ -4455,11 +4443,11 @@ def test_each_step_of_the_new_return_dialog_names_the_dialog_by_its_own_heading(
     """196's review N5, carried into decision 201: New household opens on
     its household step, where the form step's heading is hidden, so the
     dialog is named by the heading of whichever step it shows."""
-    js = read("app/renderer/app.js")
+    js = renderer_text(APP_SCRIPTS)
     html = read("app/renderer/index.html")
     assert ('const STEP_HEADINGS = { household: "household-title", form: "form-title", '
             'items: "items-title" };') in js
-    step = js_function("showStep", "app.js")
+    step = js_function("showStep")
     assert "setAttribute(\"aria-labelledby\", STEP_HEADINGS[step])" in step
     for heading in ("household-title", "form-title", "items-title"):
         assert f'<h3 id="{heading}"></h3>' in html, heading
@@ -5341,9 +5329,7 @@ def test_the_shell_and_the_api_agree_on_the_early_overview_and_the_count_line():
     assert runner.FIRM_COMMAND in early
     assert early <= set(api.HELD_READING_COMMANDS) and not early & api.WRITING_COMMANDS
 
-    app_js = read("app/renderer/app.js")
-    routed = app_js[app_js.index("function onPassMessage(m) {"):]
-    routed = routed[:routed.index("\n}\n")]
+    routed = js_function("onPassMessage")
     assert re.findall(r'm\.args\[0\] === "([a-z-]+)"', routed) == [runner.FIRM_COMMAND]
     assert routed.index("shellFirmProgress(m.progress)") < routed.index("scanning")
 

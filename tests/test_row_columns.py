@@ -387,7 +387,7 @@ def _through_the_api(values, status, ctx):
 
 def _editor_keys() -> set[str]:
     """The keys ``editorRow``'s object literal names (its top level)."""
-    return set(re.findall(r"^ {4}(\w+):", js_function("editorRow", "app.js"), flags=re.MULTILINE))
+    return set(re.findall(r"^ {4}(\w+):", js_function("editorRow"), flags=re.MULTILINE))
 
 
 def _editor_names(values, status, ctx):
@@ -406,7 +406,7 @@ def _run_editor_rows(rules: list[dict], ctx) -> list[dict]:
     script.write_text(
         "const input = JSON.parse(require('fs').readFileSync(0, 'utf8'));\n"
         "const vocab = input.vocab;\n"
-        f"{js_function('editorRow', 'app.js')}\n"
+        f"{js_function('editorRow')}\n"
         "process.stdout.write(JSON.stringify(input.rules.map(editorRow)));\n",
         encoding="utf-8", newline="\n")
     done = subprocess.run([node, str(script)], input=json.dumps({"vocab": api.vocab(), "rules": rules}),
@@ -728,16 +728,16 @@ def test_the_editor_sends_every_column_whether_folded_or_not():
     one cellInput that writes into the row, and the save sends the rows
     whole. The rows themselves are held above: ``editorRow`` carries every
     column (run by node), and the API reads them back whole."""
-    render = js_function("renderEditorRows", "app.js")
+    render = js_function("renderEditorRows")
     assert "columns: vocab.columns," in render
     assert "plain: vocab.editor.plain_columns," in render and "routing: vocab.editor.routing_columns," in render
-    rows = js_function("requestRows", "app.js")
+    rows = js_function("requestRows")
     folded = rows.split("if (fold) {", 1)[1].split("} else {", 1)[0]
     assert "plain.map((c) => el(\"td\", { className: `ed-${c.key}` }, cellInput(row, c, changed)))" in folded
     assert "inFold.map((c) => el(\"label\"" in folded and "cellInput(row, c, changed)" in folded
     assert "routing.filter((c) => !(custom && c.key === \"document\"))" in folded
     assert "custom ? cellInput(row, documentColumn, changed) : null" in folded
-    save = js_function("saveEditor", "app.js")
+    save = js_function("saveEditor")
     assert "items: editorRows," in save
     # Nothing between the boxes and the save drops a column: the rows go
     # as the boxes left them, never filtered or rebuilt on the way.

@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.node_harness import PILOT_SCRIPTS, content, read
+from tests.node_harness import APP_SCRIPTS, PILOT_SCRIPTS, content, read
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -78,7 +78,7 @@ def test_every_tour_line_is_five_words_or_fewer():
 def test_the_page_loads_the_pilot_after_the_app():
     html = read("index.html")
     assert html.index("pilot-style.css") > html.index('href="style.css"')
-    order = [html.index(f'src="{name}"') for name in ("app.js", *PILOT_SCRIPTS)]
+    order = [html.index(f'src="{name}"') for name in (*APP_SCRIPTS, *PILOT_SCRIPTS)]
     assert order == sorted(order)
 
 

@@ -38,7 +38,7 @@ from tests.api_driver import (
     where,
 )
 from tests.builders import TEST_CLIENT, make_engagement
-from tests.node_harness import read
+from tests.node_harness import APP_FAMILY, APP_SCRIPTS, read, renderer_text
 from tests.samples import PRIOR_YEAR, text_pdf
 from tracker import creation, household_edit, layout, ledger, screen_words
 from tracker.index import FILED, NEEDS_REVIEW, read_index
@@ -675,7 +675,7 @@ def test_the_sharing_words_are_the_apis_and_the_renderer_types_none(capsys, demo
     assert words["not_yet_shared_line"] == screen_words.NOT_YET_SHARED_LINE
     assert words["rollover_unticked"] == screen_words.ROLLOVER_UNTICKED_NOTE
 
-    js = read("app.js")
+    js = renderer_text(APP_FAMILY)
     html = read("index.html")
     for literal in (*screen_words.SHARING_CHECKLIST, screen_words.SHARING_HEADING, screen_words.SHARING_NOTE,
                     screen_words.MARK_SHARED_LABEL, screen_words.SHARED_ON_LINE, screen_words.NOT_YET_SHARED_LINE,
@@ -799,7 +799,7 @@ def test_propose_spellings_is_a_read_and_the_renderer_types_no_kind_label_or_not
     assert [k["value"] for k in words["kinds"]] == list(PERSON_KINDS)
     assert [k["label"] for k in words["kinds"]] == [PERSON_KIND_LABELS[k] for k in PERSON_KINDS]
 
-    js = read("app.js")
+    js = renderer_text(APP_SCRIPTS)
     html = read("index.html")
     # Every phrase of the block and the card, from its owner. The one-word
     # labels are not pinned here - "Who" and "Name" are English as much as
@@ -1099,7 +1099,7 @@ def test_the_renderer_types_none_of_the_feed_words(capsys, demo_root):
     the answer that files a document under another return - so the app
     cannot disagree with the tracker about any of them."""
     here = Path(__file__).resolve().parents[1]
-    js = (here / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
+    js = renderer_text(APP_SCRIPTS)
     html = (here / "app" / "renderer" / "index.html").read_text(encoding="utf-8")
     for word in (screen_words.FEEDS_LABEL, screen_words.FEEDS_HELP, screen_words.FEEDS_LINE, screen_words.FED_BY_LINE,
                  screen_words.ADD_FEED_LABEL, screen_words.FEED_WARNING, screen_words.RETURN_WARNING,

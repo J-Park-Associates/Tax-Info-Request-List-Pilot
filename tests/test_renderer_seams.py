@@ -335,7 +335,8 @@ def test_every_named_part_of_the_renderer_is_inside_the_scripts_the_page_loads()
         assert len(set(part)) == len(part), part
     assert set(SHELL_SCRIPTS) <= set(APP_SCRIPTS)
     assert sorted((*APP_SCRIPTS, *PILOT_SCRIPTS)) == sorted(RENDERER_SCRIPTS)
-    assert "app.js" in APP_SCRIPTS and len(set(RENDERER_SCRIPTS)) == len(RENDERER_SCRIPTS)
+    assert set(APP_FAMILY) <= set(APP_SCRIPTS) and APP_FAMILY[-1] in APP_SCRIPTS
+    assert len(set(RENDERER_SCRIPTS)) == len(RENDERER_SCRIPTS)
 
 
 def test_the_reader_keeps_code_and_blanks_what_is_not():
@@ -478,9 +479,10 @@ def test_the_double_defines_every_name_the_scripts_beside_it_use_of_app_js_and_o
 PLANNED = ("api-client.js", "notices.js", "dialogs.js", "reminder-card.js", "review-rows.js", "household.js", "editor.js",
            "schedule.js", "pass.js", "firm-loader.js", "shell-words.js", "logs.js", "last-pass-watch.js", "open-path.js",
            "menu.js", "engine.js")
-#: The scripts phase 6 splits whose readers are not yet retargeted: P6.2 takes
-#: app.js off this list and P6.3 the other two, then deletes it (R6.2.1, R6.3.1).
-NOT_YET = ("app.js", "shell.js", "main.js")
+#: The scripts phase 6 splits whose readers are not yet retargeted: P6.2 took
+#: app.js off this list; P6.3 takes the other two, then deletes it (R6.2.1,
+#: R6.3.1).
+NOT_YET = ("shell.js", "main.js")
 #: The scripts the page loads that phase 6 does not split: a test may name them.
 NOT_SPLIT = ("tooltip.js", "pages.js", "sheet.js", "pilot-content.js", "pilot.js", "tour.js")
 
@@ -501,6 +503,14 @@ FILE_NAMED: dict[tuple[str, str | None], str] = {
     ("test_renderer_seams.py", None):
         "SEAMS and WRITES are keyed by the scripts that share names, and PLANNED and NOT_YET name the scripts this"
         " guard watches: tables of the page's files, re-derived by each move (SPEC-architecture-p6 section 3).",
+    ("test_shell.py", "test_the_loading_order_is_the_specs_and_the_csp_is_unchanged"):
+        "The page's load order names app.js as the script the page starts from, after the vendored libraries and before the others.",
+    ("test_shell.py", "test_one_keydown_listener_owns_the_keyboard"):
+        "P76: the document's one keydown listener is app.js's own, so the claim is said of app.js itself (the count across every script stays by claim).",
+    ("test_shell.py", "test_the_app_starts_only_after_every_script_has_loaded"):
+        "app.js is the script that ends with startWhenLoaded(bootstrap); and the page loads it before shell.js: a claim about the file's end and its place.",
+    ("test_shell.py", "test_a_mac_is_known_from_the_browsers_own_platform_and_every_other_system_keeps_segoe"):
+        "The on-mac class is toggled at app.js's top level, before applyVocabulary: a claim about where in the file the statement sits.",
     ("test_renderer_seams.py", "the_double_mode"):
         "serve.mjs's double takes app.js out of the page by its file name.",
     ("test_renderer_seams.py", "test_the_double_defines_every_name_the_scripts_beside_it_use_of_app_js_and_of_the_scripts_it_drops"):

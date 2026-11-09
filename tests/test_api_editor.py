@@ -34,7 +34,7 @@ from tests.api_driver import (
     where,
 )
 from tests.builders import make_engagement
-from tests.node_harness import js_function
+from tests.node_harness import APP_SCRIPTS, js_function, renderer_text
 from tests.samples import text_pdf
 from tracker import layout, ledger, screen_words, store
 from tracker.households import load_household_info
@@ -335,7 +335,7 @@ def test_a_date_pattern_of_star_survives_an_unchanged_resave(capsys, demo_root):
                         stdin={"items": as_the_editor_sends, "engagement": {}})
     assert code == 0 and payload["saved"]["recorded"] is False, payload["saved"]
     assert payload["state"]["rules"][0]["date_pattern"] == ""
-    js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
+    js = renderer_text(APP_SCRIPTS)
     assert "(rule.date_pattern || vocab.editor.no_date_check)" in js
 
 
@@ -624,7 +624,7 @@ def test_the_editor_round_trips_asked_and_named(capsys, demo_root):
                         stdin={"items": flipped, "engagement": {}})
     assert code == 0 and payload["saved"]["changed"] == ["E01"]
 
-    js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
+    js = renderer_text(APP_SCRIPTS)
     assert 'named: rule.named === false ? vocab.editor.no : vocab.editor.yes' in js
     assert 'asked: rule.asked === false ? vocab.editor.no : vocab.editor.yes' in js
     assert "vocab.editor.yes_no_fields.includes(key)" in js
@@ -705,7 +705,7 @@ def test_the_returning_client_page_picks_the_returns_recorded_form_by_default(ca
     engagement = where(demo_root, "Recorded")
     assert [r["form"] for r in api.state(engagement)["household"]["returns"]] == ["1040"]
 
-    js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
+    js = renderer_text(APP_SCRIPTS)
     assert ": r.form;" in js and "const known = forms.some((f) => f.id === picked);" in js
     assert "selected: f.id === picked" in js and "selected: !known" in js
 
@@ -722,7 +722,7 @@ def _editor_rows_by_the_app(rules, vocab, tmp_path):
     import shutil
     import subprocess
 
-    source = js_function("editorRow", "app.js")
+    source = js_function("editorRow")
     assert re.search(r'^\s+short_title: rule\.short_title \|\| "",$', source, flags=re.MULTILINE)
     node = shutil.which("node")
     if node is None:

@@ -35,7 +35,7 @@ from tests.api_driver import (
     waiting_document,
     where,
 )
-from tests.node_harness import RENDERER_SCRIPTS, read, renderer_text, stripped_js
+from tests.node_harness import APP_SCRIPTS, RENDERER_SCRIPTS, js_block, js_function, renderer_text, stripped_js
 from tests.samples import text_pdf
 from tracker import firm_view, ledger, manifest, reasons, request_edit, screen_words, store, view
 from tracker.index import FILED, NEEDS_REVIEW, read_index
@@ -97,8 +97,9 @@ def test_the_assign_sentences_are_the_apis_and_the_page_types_none_of_them():
         for words in re.split(r"\{\w+\}", sentence):
             if len(words.split()) >= 2:
                 assert words.strip(' "') not in text, words
-    assert "a.said.filed" in read("app.js") and "a.said.keyword_added" in read("app.js")
-    assert "a.said.spelling_added" in read("app.js")
+    app = renderer_text(APP_SCRIPTS)
+    assert "a.said.filed" in app and "a.said.keyword_added" in app
+    assert "a.said.spelling_added" in app
 
 
 def teach(folder, identifier: str, keyword: str) -> None:
@@ -171,8 +172,7 @@ def test_unlearn_refuses_a_blank_or_unknown_pair_by_name(capsys, demo_root):
 def test_the_renderer_types_no_unlearn_word(capsys, demo_root):
     """The button beside a taught keyword and the sentence after it are the
     API's words, like every other word the editor shows."""
-    js = (Path(__file__).resolve().parents[1] / "app" / "renderer" / "app.js").read_text(
-        encoding="utf-8")
+    js = renderer_text(APP_SCRIPTS)
 
     between = screen_words.UNLEARNED_NOTE.split("}")[1].split("{")[0].strip()      # "unlearned from"
     tail = screen_words.UNLEARNED_NOTE.split("{identifier}")[1].strip()            # the rest of it
@@ -1064,7 +1064,7 @@ def test_the_renderer_types_none_of_the_moved_cards_words(capsys, demo_root):
     assert labels["moved_nowhere"] == screen_words.MOVED_NOWHERE
 
     renderer = Path(__file__).resolve().parent.parent / "app" / "renderer"
-    for rel in ("app.js", "index.html"):
+    for rel in (*APP_SCRIPTS, "index.html"):
         text = (renderer / rel).read_text(encoding="utf-8")
         for word in (screen_words.RESTORE_LABEL, screen_words.KEEP_LABEL, screen_words.SEND_TO_REVIEW_LABEL,
                      screen_words.MOVED_HEADING, screen_words.MOVED_SUMMARY, screen_words.MOVED_NOWHERE):
@@ -1110,14 +1110,11 @@ def test_the_moved_card_offers_mark_missing_on_a_row_whose_copy_and_original_are
 
     # The card draws that answer, and only that answer, on such a row - with
     # the API's own label, wired to the same command as the filed list's.
-    js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
-        encoding="utf-8")
-    moved_row = js[js.index("function movedRow("):js.index("async function restoreMoved(")]
+    moved_row = js_function("movedRow")
     gone_branch = moved_row[moved_row.index("if (m.gone)"):moved_row.index("\n  }\n")]
     assert "vocab.review_labels.mark_missing" in gone_branch and "r-withdraw" in gone_branch
     assert "r-restore" not in gone_branch and "r-review" not in gone_branch and "r-keep" not in gone_branch
-    listener = js[js.index('$("sheet").addEventListener("click"'):]
-    assert "withdrawAnswer(" in listener[:listener.index("\n});")]
+    assert "withdrawAnswer(" in js_block('$("sheet").addEventListener("click"')
 
 
 # ------------------------------- statuses in a preparer's words (d200) ----
@@ -1597,7 +1594,7 @@ def test_the_vocabulary_carries_every_word_201_shows():
     assert "add-issuer-and-file" in words["commands"]
     # None of them is typed in the renderer.
     here = Path(__file__).resolve().parents[1]
-    js = (here / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
+    js = renderer_text(APP_SCRIPTS)
     html = (here / "app" / "renderer" / "index.html").read_text(encoding="utf-8")
     for word in (*words["dialogs"].values(), labels["keyword"],
                  labels["issuer_label"], labels["issuer_add"], settings["firm_label"],
