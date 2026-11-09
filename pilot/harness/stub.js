@@ -9,8 +9,9 @@
 // `open_keys` and `paths`, and the reminder card), and the writes the side sheet
 // makes (assign, dismiss, restore, reminder, approve), which change the made-up
 // return so the sheet moves on. The words are the joined engine's (see below),
-// and tests/test_shell.py holds each reply it gives the screen to its type in
-// tracker/replies.py. Never loaded by the app; pytest does not run it.
+// and tests/test_shell.py holds its list, firm, firm-last, state and reminder
+// replies to their types in tracker/replies.py. Never loaded by the app; pytest
+// does not run it.
 "use strict";
 
 (() => {

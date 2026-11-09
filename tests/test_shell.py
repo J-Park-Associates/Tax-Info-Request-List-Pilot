@@ -2670,16 +2670,19 @@ def _short_of(reply: dict, kind: type) -> list[str]:
 
 
 @pytest.mark.parametrize("scenario", ["notices", "last-counts"])
-def test_every_reply_of_the_harness_stub_has_its_reply_type_in_replies_py(scenario):
-    """R6.4.6 (D-8, P2.3): the harness's stand-in engine answers in the types
+def test_the_harness_stubs_list_firm_firm_last_state_and_reminder_replies_match_their_types_in_replies_py(scenario):
+    """R6.4.6 (D-8, P2.3): the harness's stand-in engine answers ``list``,
+    ``firm``, ``firm-last``, ``state`` and ``reminder`` in the types
     tracker/replies.py writes down, the one written contract between the
     engine and the screen - every key a type requires is there, and no key
     the type does not name (``typing.get_type_hints``, ``__required_keys__``,
     ``__optional_keys__``). Held: the list, the firm whole and each list's
     first page, the last counts whole and paged (refused in one scenario,
     answered in the other), the first three returns' states, and their
-    reminders - one with a draft and one with none. The wire check above
-    holds the same replies to the engine's own, level by level."""
+    reminders - one with a draft and one with none. These and no others:
+    the side sheet's writes and the failure envelopes are not held here.
+    The wire check above holds the same replies to the engine's own, level
+    by level."""
     got = _stub_replies(scenario)
     assert got["firm_last"]["last"] is (True if scenario == "last-counts" else None)
     assert len(got["states"]) == 3 and {one["reminder"] is None for one in got["reminders"]} == {True, False}

@@ -2844,7 +2844,7 @@
       "id": "tracker/replies.py",
       "type": "module",
       "layer": "core",
-      "sha256": "58020b2457331d1b",
+      "sha256": "9b08b58bb7f03bb9",
       "lines": 209,
       "exports": [
         "AssignReply",
@@ -2860,7 +2860,7 @@
         "StateReply"
       ],
       "role": "The shape of every reply the API prints, written down once (SPEC-architecture 5.1 (6)): Failure {sentence, kind, seq, identifier, and lock or key where there is one} and Envelope {error, failure, warnings}, the error envelope progress.failure_reply() builds, and one TypedDict per recorded success reply - AssignReply, CreateReply, EditHouseholdReply, EditReply, FirmLastReply, FirmReply, ListReply, ReminderReply, StateReply - with the top-level keys of tests/golden/replies.<command>.keys.json and warnings: list[str].",
-      "notes": "SPEC-architecture-p2 R2.3.1. Layer 0, domain door: it imports typing and nothing else (test_layers and test_replies both hold that), so anything may name it; api imports Envelope and Failure - api._envelope_of() returns progress.failure_reply()'s envelope whole, through a cast because progress is typed -> dict, and _failure_of() is its failure alone - and the suite imports the rest. The types describe what api.main prints, warnings included, since main adds warnings after the handler returns; the _cmd_* handlers keep -> dict, because a body type per handler is the thin door's work (SPEC-architecture 5.1 (5)), not a move's. A key a reply carries on some paths only is NotRequired, so a recording holds required <= recorded <= required | optional. TypedDict and not dataclasses: a reply is the JSON object the screen reads by key, printed as it is, with no conversion between two shapes to drift. No `from __future__ import annotations`: written as strings, NotRequired is not seen when the class is made and every key reads as required. Owned by tests/test_replies.py. The harness's stub (pilot/harness/stub.js) is held to it by tests/test_shell.py's test_every_reply_of_the_harness_stub_has_its_reply_type_in_replies_py (SPEC-architecture-p6 R6.4.6, P353): its list, firm and firm-last whole and paged, three states and their reminders, each required key there and no key the type does not name."
+      "notes": "SPEC-architecture-p2 R2.3.1. Layer 0, domain door: it imports typing and nothing else (test_layers and test_replies both hold that), so anything may name it; api imports Envelope and Failure - api._envelope_of() returns progress.failure_reply()'s envelope whole, through a cast because progress is typed -> dict, and _failure_of() is its failure alone - and the suite imports the rest. The types describe what api.main prints, warnings included, since main adds warnings after the handler returns; the _cmd_* handlers keep -> dict, because a body type per handler is the thin door's work (SPEC-architecture 5.1 (5)), not a move's. A key a reply carries on some paths only is NotRequired, so a recording holds required <= recorded <= required | optional. TypedDict and not dataclasses: a reply is the JSON object the screen reads by key, printed as it is, with no conversion between two shapes to drift. No `from __future__ import annotations`: written as strings, NotRequired is not seen when the class is made and every key reads as required. Owned by tests/test_replies.py. The harness's stub (pilot/harness/stub.js) is held to it by tests/test_shell.py's test_the_harness_stubs_list_firm_firm_last_state_and_reminder_replies_match_their_types_in_replies_py (SPEC-architecture-p6 R6.4.6, P353): its list, firm and firm-last whole and paged, three states and their reminders, each required key there and no key the type does not name."
     },
     {
       "id": "tracker/request_edit.py",
@@ -4976,7 +4976,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "bb38426950c989da",
+      "sha256": "02dac08e829f12d6",
       "lines": 2058,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -5079,7 +5079,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ece0fbb9f02bff6b",
+      "sha256": "abe01a2360e4d666",
       "lines": 347
     },
     {
@@ -5460,7 +5460,7 @@
       "id": "pilot/harness/README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0961763d5117919e",
+      "sha256": "58dfd69b031de069",
       "lines": 27
     },
     {
@@ -5991,8 +5991,8 @@
       "id": "pilot/harness/stub.js",
       "type": "module",
       "layer": "root",
-      "sha256": "f74716c827d8bf43",
-      "lines": 681
+      "sha256": "596d323429765af4",
+      "lines": 682
     },
     {
       "id": "pilot/mactest/run_checks.sh",
@@ -11486,8 +11486,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1a2532ce21f5abf1",
-      "lines": 8361,
+      "sha256": "ecb46f351eecc3d5",
+      "lines": 8364,
       "exports": [
         "CARD_HOUSEHOLD",
         "COMPACT_FUNCTIONS",
@@ -11685,7 +11685,6 @@
         "test_every_menu_id_the_page_answers_is_in_the_template_and_the_rest_are_the_rows",
         "test_every_phrase_the_page_and_the_dialogs_draw_from_index_html_and_app_js_is_in_title_case",
         "test_every_renderer_script_keeps_the_renderers_guards",
-        "test_every_reply_of_the_harness_stub_has_its_reply_type_in_replies_py",
         "test_every_size_is_a_multiple_of_four",
         "test_every_space_is_a_step_of_the_grid",
         "test_every_token_has_the_value_the_spec_lists_in_both_themes",
@@ -11781,6 +11780,7 @@
         "test_the_harness_stub_answers_last_pass_with_the_pass_its_list_carries",
         "test_the_harness_stub_replies_have_the_shape_of_the_engines",
         "test_the_harness_stub_speaks_the_apis_vocabulary",
+        "test_the_harness_stubs_list_firm_firm_last_state_and_reminder_replies_match_their_types_in_replies_py",
         "test_the_header_row_and_grips_keep_the_rules_of_the_stylesheet",
         "test_the_hidden_reminder_letter_is_built_only_for_an_open_reminder_sheet",
         "test_the_household_and_year_pages_read_their_counts_from_return_counts",
@@ -11888,7 +11888,7 @@
         "CARD_HOUSEHOLD": "'\\n  const LINK = \"LINKTOKEN-share-me\";\\n  const hh = { name: \"Alpha\", path: \"c/Alpha\", contact: \"A Person\", members: [\"A Person\", \"Another\"], link: LINK,\\n               returns: [{ path: \"r/1040 - Alpha\", year: 2025, return_name: \"1040 - Alpha\", form: \"1040\", active: true },\\n                         { path: \"r/old\", year: 2024, return_name: \"1040 - Alpha\", form: \"1040\", active: true }] };\\n  shellHousehold = () => hh;\\n  shellRoute = { level: \"household\", household: \"c/Alpha\" };\\n  lastState = { household: { path: \"c/Alpha\", shared_on: \"2026-02-01\" } };\\n  const cls = (n) => n.className.split(\" \")[0];\\n  const facts = (page) => page.byClass(\"card-fact\").map((f) => [f.kids[0].textContent, f.kids.slice(1).map((k) => k.textContent)]);\\n'"
       },
       "role": "The shell's renderer half: the tokens and their contrast in both themes, the shell stylesheet's discipline, the guards every renderer file keeps, the words the app's scripts may not type, and the route, search, Sort Now button and menu enable list run in node against shell.js's own functions.",
-      "notes": "The files a claim covers are node_harness's RENDERER_SCRIPTS or a named part of it, and TITLE_FREE, built from it (SPEC-architecture R3.2): a script added to index.html is read by the guards every renderer script keeps, the no-title rule and the one keydown listener without anyone adding it. The typed-words guard (P63) reads TYPED_WORDS_READ, every script the page loads but pilot-content.js, the pilot's wording by design, whose words test_pilot holds (the pilot's pilot.js and tour.js are read since SPEC-architecture-p6 R6.4.2, and the tour's count line is the content file's words, R6.4.1); it passes over a query's whole selector argument, an error's text by where it goes (R6.4.3: inside a logging call, console.*(...) or window.tracker.logError(...), or inside a new Error(...) that is thrown or handed straight to failed( or failureSentence(, which log a page error's text and show the API's words; an error made anywhere else is read) and the first statement's \"use strict\", each found by where it sits and never by what it says, and holds the one literal typed today exact: RULED_LABELS, \"Belongs To\u2026\" (ruling 10) (SPEC-architecture R3.4); D-9's four, KNOWN_TYPED_SENTENCES until J5, are the API's since (R5.5: assign's said, the vocabulary's request_list) and the list is gone. S2 adds the menu half, S4 the pages' node tests and S5 the sheet's. The harness's stub is held to the engine's live replies level by level (S6b) and to tracker/replies.py's types, each required key there and no key a type does not name (SPEC-architecture-p6 R6.4.6). The contrast table and the token values are the SPEC's section 10, copied as data. Its node runners (run_shell, run_pages, run_pages_dom and the rest, with the fakes and function lists each uses) live in tests/node_harness.py since SPEC-architecture J2."
+      "notes": "The files a claim covers are node_harness's RENDERER_SCRIPTS or a named part of it, and TITLE_FREE, built from it (SPEC-architecture R3.2): a script added to index.html is read by the guards every renderer script keeps, the no-title rule and the one keydown listener without anyone adding it. The typed-words guard (P63) reads TYPED_WORDS_READ, every script the page loads but pilot-content.js, the pilot's wording by design, whose words test_pilot holds (the pilot's pilot.js and tour.js are read since SPEC-architecture-p6 R6.4.2, and the tour's count line is the content file's words, R6.4.1); it passes over a query's whole selector argument, an error's text by where it goes (R6.4.3: inside a logging call, console.*(...) or window.tracker.logError(...), or inside a new Error(...) that is thrown or handed straight to failed( or failureSentence(, which log a page error's text and show the API's words; an error made anywhere else is read) and the first statement's \"use strict\", each found by where it sits and never by what it says, and holds the one literal typed today exact: RULED_LABELS, \"Belongs To\u2026\" (ruling 10) (SPEC-architecture R3.4); D-9's four, KNOWN_TYPED_SENTENCES until J5, are the API's since (R5.5: assign's said, the vocabulary's request_list) and the list is gone. S2 adds the menu half, S4 the pages' node tests and S5 the sheet's. The harness's stub is held to the engine's live replies level by level (S6b), and its list, firm, firm-last, state and reminder replies to tracker/replies.py's types, each required key there and no key a type does not name (SPEC-architecture-p6 R6.4.6). The contrast table and the token values are the SPEC's section 10, copied as data. Its node runners (run_shell, run_pages, run_pages_dom and the rest, with the fakes and function lists each uses) live in tests/node_harness.py since SPEC-architecture J2."
     },
     {
       "id": "tests/test_shell_menu.py",
