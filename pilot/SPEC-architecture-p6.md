@@ -1823,6 +1823,8 @@ Overview after it, Setup's last step, the stack's Windows check).
 
 ## 7. Questions for Jason
 
+**Answered by Jason on 2026-11-08:** Q-D **(A)**, fold them (P6.17 is built); Q-E **yes, plan it now**: a job that type-checks the window's JavaScript with TypeScript's checker as a development-only tool reading JSDoc comments (no build step; the app still ships plain JavaScript, Setup installs nothing new) is planned for phase 7's SPEC, after phase 6 has split the scripts, with the package and its pinned version named there; Q-G **(A)**, keep the pilot's failed save silent (P6.16 builds `appReady` only, as written). The questions stay below as he was asked them.
+
 **Q-D. Should the stylesheets' overridden rules be folded into one home now?**
 
 Today `style.css` is never edited: the newer look in `pilot-ui.css` and `shell.css` overrides it rule by rule (decisions

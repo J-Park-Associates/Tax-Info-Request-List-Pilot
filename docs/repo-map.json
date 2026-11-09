@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-11-08",
+  "generated": "2026-11-09",
   "generator": "tools/repo_map.py",
   "generator_sha256": "7e9c444e4d6d6ab6",
   "module_table_sha256": "5b30684eeb42368c",
@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 414,
     "edges": 2455,
-    "reused": 360
+    "reused": 359
   },
   "node_types": [
     "artifact",
@@ -5114,7 +5114,7 @@
       "id": "pilot/HANDOFF-refactor.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3aec9b729ce22434",
+      "sha256": "0d6bdd6cc0b2bfbe",
       "lines": 1426
     },
     {
@@ -5192,8 +5192,8 @@
       "id": "pilot/SPEC-architecture-p6.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b3bb2c36d4a67164",
-      "lines": 1863
+      "sha256": "3be082654a1babcc",
+      "lines": 1865
     },
     {
       "id": "pilot/SPEC-architecture.md",

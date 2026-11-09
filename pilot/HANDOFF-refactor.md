@@ -216,10 +216,10 @@ None of this can run in the cloud. The ledger's last column is the record; gathe
 
 ## Open for Jason
 
-- **Phase 6's questions, to ask before phase 6 builds:** **Q-D** (fold the overriding CSS into one home now that P309
-  ends merges; recommended yes) and **Q-E** (check the JavaScript's types with TypeScript's checker as a
-  development-only dependency reading JSDoc; recommended: decide after phase 6). The phase 6 SPEC measures both and
-  words them for him.
+- **Phase 6's questions are answered** (Jason, 2026-11-08; SPEC-architecture-p6 section 7): Q-D (A) fold the
+  overriding stylesheet rules into one home (P6.17 is built); Q-E yes, plan it now: phase 7's SPEC carries a job that
+  type-checks the window's JavaScript with TypeScript's checker, development-only, reading JSDoc (no build step,
+  nothing new installed by Setup); Q-G (A) the pilot's failed save stays silent (P6.16 builds `appReady` only).
 - **P313's Q-B** (whether the re-send road's across-household park carries a shortlist): kept as today until his word;
   phase 4 carried it as `_settle`'s `shortlist_across` (P4.3).
 - **P3.8's office `verify`** (above): its list, if any, is his before P3.8 merges.
