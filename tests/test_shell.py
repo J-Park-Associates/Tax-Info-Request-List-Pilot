@@ -25,11 +25,13 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import typing
 from pathlib import Path
 
 import pytest
 
 import tracker.api as api
+import tracker.replies as replies
 import tracker.screen_words as screen_words
 from tests.api_driver import run, sample_engagement, scan
 from tests.css_rules import GRID_PROPS, GRID_TOKEN, blocks, colour_faults, declarations, stripped, top_level
@@ -2485,8 +2487,8 @@ PAGE_ASKS = {"overview": {"tab": "all"}, "needs_review": {"reason": ""}, "remind
 
 
 def _stub_replies(scenario: str) -> dict:
-    """The stub's ``list``, ``firm``, ``firm-last`` and first three ``state`` replies, run in node
-    on the live vocabulary, as the harness serves it."""
+    """The stub's ``list``, ``firm``, ``firm-last`` and first three ``state`` and ``reminder``
+    replies, run in node on the live vocabulary, as the harness serves it."""
     if NODE is None:
         pytest.skip("node is not on PATH (CI installs it)")
     stub = (REPO / "pilot" / "harness" / "stub.js").read_text(encoding="utf-8")
@@ -2503,7 +2505,9 @@ vm.runInContext({json.dumps(stub)}, vm.createContext({{ window, location: {{ sea
   const page_last = await window.tracker.call(["firm-last"], {{ page: {{ list: "overview", at: 0, order: null, filter: {{ tab: "all" }} }} }});
   const states = [];
   for (const one of list.engagements.slice(0, 3)) states.push(await window.tracker.call(["state", "--engagement", one.path]));
-  console.log(JSON.stringify({{ list, firm, firm_last, pages, page_last, states }}));
+  const reminders = [];
+  for (const one of list.engagements.slice(0, 3)) reminders.push(await window.tracker.call(["reminder", "--engagement", one.path]));
+  console.log(JSON.stringify({{ list, firm, firm_last, pages, page_last, states, reminders }}));
 }})();
 """
     # From a file, never ``node -e``: the stub alone is longer than Windows'
@@ -2585,7 +2589,7 @@ def test_the_harness_stub_replies_have_the_shape_of_the_engines(capsys, scratch_
     stub = _stub_replies("notices")
 
     # list
-    assert set(stub["list"]) == set(real["list"]) - {"warnings"}
+    assert set(stub["list"]) == set(real["list"])
     assert _keys(stub["list"]["engagements"]) == _keys(real["list"]["engagements"])
     assert _keys(stub["list"]["households"]) == _keys(real["list"]["households"])
     optional = {"form", "people", "rollable"}      # only while a roll is offered
@@ -2599,7 +2603,7 @@ def test_the_harness_stub_replies_have_the_shape_of_the_engines(capsys, scratch_
     assert set(stub["list"]["paths"]) == set(real["list"]["paths"])
 
     # firm: paused on every return, an open key on every file, one paths table
-    assert set(stub["firm"]) == set(real["firm"]) - {"warnings"}
+    assert set(stub["firm"]) == set(real["firm"])
     assert _keys(stub["firm"]["returns"]) == _keys(real["firm"]["returns"])
     assert all(isinstance(one["paused"], bool) for one in stub["firm"]["returns"] + real["firm"]["returns"])
     assert _keys(stub["firm"]["files"]) == _keys(real["firm"]["files"])
@@ -2612,7 +2616,7 @@ def test_the_harness_stub_replies_have_the_shape_of_the_engines(capsys, scratch_
     # firm, a page of a list (P278): the page, the totals, each return's counts, only its rows' paths and, on Needs Review, every file
     for name, real_page in real["pages"].items():
         got = stub["pages"][name]
-        assert set(got) == set(real_page) - {"warnings"}, name
+        assert set(got) == set(real_page), name
         assert isinstance(got["view"], str) and isinstance(real_page["view"], str)
         assert _keys(got["return_counts"]) == _keys(real_page["return_counts"]) == {"path", "household", "year", "form", "counts", "files", "problem", "paused"}
         assert set(got["totals"]) == set(real_page["totals"]) and set(got["page"]) == set(real_page["page"]), name
@@ -2638,10 +2642,10 @@ def test_the_harness_stub_replies_have_the_shape_of_the_engines(capsys, scratch_
     assert set(real["firm_last"]) == set(stub["firm_last"]) == {"last", "warnings"}
     assert real["firm_last"]["last"] is None and stub["firm_last"]["last"] is None
     answered = _stub_replies("last-counts")["firm_last"]
-    assert set(answered) - {"last", "as_of"} == set(real["firm"]) - {"warnings"}
+    assert set(answered) - {"last", "as_of"} == set(real["firm"])
     assert answered["last"] is True and re.fullmatch(r"\d{2}:\d{2}", answered["as_of"])
     answered_page = _stub_replies("last-counts")["page_last"]
-    assert set(answered_page) - {"last", "as_of"} == set(real["pages"]["overview"]) - {"warnings"} and answered_page["view"] is None and answered_page["last"] is True
+    assert set(answered_page) - {"last", "as_of"} == set(real["pages"]["overview"]) and answered_page["view"] is None and answered_page["last"] is True
 
     # state: the stub is a subset of the engine's, level by level
     for reply in stub["states"]:
@@ -2653,6 +2657,38 @@ def test_the_harness_stub_replies_have_the_shape_of_the_engines(capsys, scratch_
     assert moved and set(moved[0]) - {"named"} == {
         "original_name", "pbc_location", "handle", "seq", "home", "now", "in_request", "gone",
         "open_key", "identifier", "group"}
+
+
+def _short_of(reply: dict, kind: type) -> list[str]:
+    """What keeps ``reply`` from being a ``kind`` of tracker/replies.py: each
+    key the type requires that the reply lacks, and each key the reply
+    carries that the type does not name."""
+    named = set(typing.get_type_hints(kind))
+    assert named == kind.__required_keys__ | kind.__optional_keys__, kind
+    return ([f"lacks {key}" for key in sorted(kind.__required_keys__ - set(reply))]
+            + [f"adds {key}" for key in sorted(set(reply) - named)])
+
+
+@pytest.mark.parametrize("scenario", ["notices", "last-counts"])
+def test_every_reply_of_the_harness_stub_has_its_reply_type_in_replies_py(scenario):
+    """R6.4.6 (D-8, P2.3): the harness's stand-in engine answers in the types
+    tracker/replies.py writes down, the one written contract between the
+    engine and the screen - every key a type requires is there, and no key
+    the type does not name (``typing.get_type_hints``, ``__required_keys__``,
+    ``__optional_keys__``). Held: the list, the firm whole and each list's
+    first page, the last counts whole and paged (refused in one scenario,
+    answered in the other), the first three returns' states, and their
+    reminders - one with a draft and one with none. The wire check above
+    holds the same replies to the engine's own, level by level."""
+    got = _stub_replies(scenario)
+    assert got["firm_last"]["last"] is (True if scenario == "last-counts" else None)
+    assert len(got["states"]) == 3 and {one["reminder"] is None for one in got["reminders"]} == {True, False}
+    held = [("list", got["list"], replies.ListReply), ("firm", got["firm"], replies.FirmReply),
+            ("firm-last", got["firm_last"], replies.FirmLastReply), ("firm-last paged", got["page_last"], replies.FirmLastReply),
+            *[(f"firm {name}", page, replies.FirmReply) for name, page in got["pages"].items()],
+            *[(f"state {at}", one, replies.StateReply) for at, one in enumerate(got["states"])],
+            *[(f"reminder {at}", one, replies.ReminderReply) for at, one in enumerate(got["reminders"])]]
+    assert {name: short for name, reply, kind in held if (short := _short_of(reply, kind))} == {}
 
 
 def test_the_three_info_dialogs_close_with_the_apis_close_word():

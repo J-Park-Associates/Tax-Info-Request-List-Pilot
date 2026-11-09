@@ -8,8 +8,9 @@
 // and `open_key`, and the top-level `paths` of those keys, when not), `state` (with `shown_key`, `open_key`,
 // `open_keys` and `paths`, and the reminder card), and the writes the side sheet
 // makes (assign, dismiss, restore, reminder, approve), which change the made-up
-// return so the sheet moves on. The words are the joined engine's (see below).
-// Never loaded by the app; pytest does not run it.
+// return so the sheet moves on. The words are the joined engine's (see below),
+// and tests/test_shell.py holds each reply it gives the screen to its type in
+// tracker/replies.py. Never loaded by the app; pytest does not run it.
 "use strict";
 
 (() => {
@@ -278,10 +279,23 @@
       override_reason: "", named: true, asked: true, short_title: "",
     })) : undefined;
     if (longList) items.forEach((it, i) => { it.catalog_row = true; if (scenario === "long-editor" && i % 10 === 9) it.manual_override = "Not Applicable"; });
+    const card = reminderReply(body, path, null);
     return {
       paths: Object.assign({ engagement: path, inbox: owner ? owner.inbox : "", client_folder: owner ? owner.client_folder : "", status: `${ROOT}/status.html` }, keys),
-      rules, items, index, review, moved: movedList, lock, engagement: { due: dueOf(body.due) || "", form: "", people: [] },
-      reminder_card: reminderReply(body, path, null),
+      rules: rules || [], items, index, review, moved: movedList, lock, engagement: { due: dueOf(body.due) || "", form: "", people: [] },
+      reminder_card: card,
+      // The rest of what the engine's `state` always sends (tracker/replies.py's StateReply, which
+      // tests/test_shell.py holds this reply to), in its shapes. Where the page reads one of these it
+      // falls back to the value given here when the key is missing - "" for the summary's line and the
+      // list's version, {} for the taught keywords, [] for the rules and the editor's warnings - so the
+      // harness draws what it drew before they were sent; the rest the page does not read.
+      view: { state: "unknown", path: `${path}/Status Report.html` },
+      summary: { line: "", counts: {}, total: 0, received: 0, outstanding: 0, not_applicable: 0, unscanned: 0, also_received: 0, not_asked: 0 },
+      list_head: "", learned: {}, warnings: [],
+      room: { need: 0, least: 0, floor: 0, parks: 0, short: 0, limit: 260 }, room_note: "",
+      reminder: { held: card.reminder ? card.reminder.held.map((one) => ({ ...one, label: `${one.identifier} - ${one.document}` })) : [], unsorted: 0,
+                  last_drafted: body.draft ? body.draft.drafted : null },
+      carries_code: [],
       household: {
         path: owner ? owner.path : "", name: hh, members: owner ? owner.members : [], contact: owner ? owner.contact : "", link: "",
         open_years: noticing ? [2025, 2024] : [2025],
@@ -601,7 +615,7 @@
       const command = args[0];
       if (command === "list") {
         const base = { engagements: rootSet ? engagements : [], households: rootSet ? households.map(({ rollYear, ...sent }) => sent) : [], misfits: loud.misfits || [], root: rootSet ? ROOT : "", needs_root: !rootSet, vocab,
-          reader_warning: loud.reader_warning || "", last_pass: lastPass, after_install: loud.after_install || null, machine_warnings: loud.machine_warnings || [] };
+          reader_warning: loud.reader_warning || "", last_pass: lastPass, after_install: loud.after_install || null, machine_warnings: loud.machine_warnings || [], warnings: [] };
         if (rootSet) base.paths = { clients_root: ROOT, status: `${ROOT}/status.html` };
         return wait(20, base);
       }
@@ -614,7 +628,7 @@
         if (scenario === "firm-fails" || scenario === "last-counts-fail") {
           return wait(scenario === "last-counts-fail" ? 1500 : 20, { error: "The counts could not be read.", failure: { sentence: "The counts could not be read.", kind: "failed" } });
         }
-        return wait(scenario === "slow" || scenario === "last-counts" ? 1500 : 30, payload && payload.page ? pagedFirm(payload) : firm());
+        return wait(scenario === "slow" || scenario === "last-counts" ? 1500 : 30, { ...(payload && payload.page ? pagedFirm(payload) : firm()), warnings: [] });
       }
       // P229: the counts the Overview last had today - the firm reply's own
       // fields, with last: true and the cache's "HH:MM" - as tracker.api's
@@ -622,13 +636,13 @@
       if (command === "firm-last") {
         if (scenario !== "last-counts" && scenario !== "last-counts-fail") return wait(10, { last: null, warnings: [] });
         const counts = payload && payload.page ? pageOf(firm(), payload) : firm();
-        return wait(10, { ...counts, last: true, as_of: "09:14" });
+        return wait(10, { ...counts, last: true, as_of: "09:14", warnings: [] });
       }
       if (command === "state") {
         if (scenario === "state-fails" && calls.filter((c) => c === "state").length > 0) return wait(20, { error: "The return could not be read.", failure: { sentence: "The return could not be read.", kind: "failed" } });
         return wait(scenario === "slow-state" ? 600 : 20, stateOf(args[args.length - 1]));
       }
-      if (command === "reminder") return wait(10, reminderReply(bodies[args[args.length - 1]], args[args.length - 1], payload && payload.stage));
+      if (command === "reminder") return wait(10, { ...reminderReply(bodies[args[args.length - 1]], args[args.length - 1], payload && payload.stage), warnings: [] });
       if (["assign", "dismiss", "restore", "unfile", "approve"].indexOf(command) !== -1) {
         window.HARNESS.writes.push({ command, payload });
         const path = args[args.length - 1];

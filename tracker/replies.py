@@ -8,7 +8,11 @@ and the JavaScript are held to it. ``tests/test_replies.py`` holds each
 recording's top-level keys to its type here, holds the one envelope
 :func:`tracker.progress.failure_reply` builds to :class:`Envelope` and
 :class:`Failure`, and holds every failure kind the screen names to
-:data:`tracker.progress.FAILURE_KINDS`.
+:data:`tracker.progress.FAILURE_KINDS`. ``tests/test_shell.py`` holds every
+reply the harness's stub (``pilot/harness/stub.js``) gives the screen -
+``list``, ``firm`` and ``firm-last`` whole and paged, ``state`` and
+``reminder`` - to its type here: each key the type requires is there, and
+no key it does not name.
 
 **Why ``TypedDict`` and not dataclasses.** A reply is a JSON object the
 screen reads by key. A ``TypedDict`` is that dictionary with its keys
