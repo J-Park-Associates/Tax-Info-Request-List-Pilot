@@ -498,7 +498,6 @@ const shellPopup = (name, token, x, y, enable) => popups.push([name, token, x, y
 const unanswered = (id) => failures.push(`unanswered ${id}`);
 let shellReturn = (path) => ({ return_name: "1040 - John & Jane Smith", household: "h1", year: 2025 });
 const PAGES_LINK_WORDS = { file: "show_in_explorer", household: "navigate_client", return: "navigate_return" };
-const PAGES_GROUPS = ["needs_you", "waiting", "received", "set_aside"];
 const PAGES_TONES = { needs: "is-attention", waiting: "is-waiting", done: "is-done", plain: "is-plain" };
 let pagesUid = 0; const pagesTokens = new Map(); let pagesSetAsideOpen = false; let pagesBroken = []; let pagesDrawn = "";
 let pagesFocus = null; let pagesLastLevel = ""; let pagesClientsAll = false;
@@ -511,6 +510,7 @@ const vocab = {
   client_type_forms: { individuals: ["1040"], businesses: ["1120", "1120S", "1065"], trusts: ["1041"], nonprofits: ["990"] },
   layout: { return_name_pattern: "{form} - {client}" },
   decisions: { needs_review: "Needs Review", dismissed: "Not Requested", filed: "Filed", file_moved: "File Moved" },
+  groups: ["needs_you", "waiting", "received", "set_aside"],
   labels: { Missing: { label: "Outstanding" }, Received: { label: "Received" }, Partial: { label: "Partly in" }, Rejected: { label: "Could not use" }, NotAsked: { label: "Not asked" } },
   overrides: { not_applicable: "Not Applicable" },
   review_labels: { bucket_order: ["document", "container", "not_a_document"], dismiss: "Not requested",
@@ -590,6 +590,51 @@ def pages_consts() -> str:
     return "\n".join(out)
 
 
+#: The page's retired rules, kept as the oracle (SPEC-architecture-p6 R6.5.6,
+#: P354). Until P6.5 the page worked out three things for itself: the group
+#: names (``PAGES_GROUPS``), a return's counts by group (``pagesTally``) and
+#: who a parked file may be handed to (``fedReturns``). The engine sends them
+#: now (``vocab.groups``, ``state.tally``, ``state.hand_over_targets``) and the
+#: page draws them, so the code that worked them out left the page; it stays
+#: here as what the engine's answers must equal, on every return, for nothing
+#: a person sees to change. Each is its text exactly as at ``9df1724``, the
+#: SPEC's base, and nothing here is read from the page. A test hands the ones
+#: it uses to a runner through ``setup`` - ``pagesTally`` with
+#: ``PAGES_GROUPS``, which it reads. The page still has a ``fedReturns`` (its
+#: first branch reads the engine's list), so a test that runs both gives the
+#: retired one a scope of its own.
+RETIRED_PAGE_RULES = {
+    "PAGES_GROUPS": 'const PAGES_GROUPS = ["needs_you", "waiting", "received", "set_aside"];\n',
+    "pagesTally": r"""function pagesTally(state) {
+  const tally = { needs_you: 0, waiting: 0, received: 0, set_aside: 0 };
+  for (const item of state.items || []) {
+    // An item with no known group is counted in none (the draw names it).
+    if (PAGES_GROUPS.indexOf(item.group) !== -1) tally[item.group] += 1;
+  }
+  // Files count where the engine put them (`index[].group`): parked and moved-by-hand files are Needs you,
+  // files set aside and moved files marked missing are Set aside; filed files count in no group (their
+  // request does).
+  for (const entry of state.index || []) {
+    if (entry.group === "needs_you" || entry.group === "set_aside") tally[entry.group] += 1;
+  }
+  return tally;
+}
+""",
+    "fedReturns": r"""function fedReturns() {
+  const hh = lastState && lastState.household;
+  if (!hh) return [];
+  const open = hh.open_years || [];
+  const own = (hh.returns || [])
+    .filter((r) => r.active && open.includes(r.year) && r.path !== active)
+    .map((r) => ({ path: r.path, label: r.label }));
+  const fed = (hh.feeds || []).filter((f) => f.path)
+    .map((f) => ({ path: f.path, label: f.label }));
+  return [...own, ...fed];
+}
+""",
+}
+
+
 RETURN_STATE = r"""
 const item = (id, group, extra = {}) => ({ identifier: id, document: `Doc ${id}`, short_name: `Doc ${id}`, group, status_key: "Missing", manual_override: "",
   period: "", year: 2025, file_count: 0, expected_count: 1, received_date: null, ...extra });
@@ -606,7 +651,7 @@ def run_pages_dom(probe: str, tmp_path: Path, setup: str = "", functions=None):
     wanted = functions or [
         "pagesReturn", "pagesReturnName", "pagesTitle", "pagesCaption", "pagesDue", "pagesSince", "pagesDay", "pagesReturnGroups", "pagesItemName",
         "pagesItemStatus", "pagesItemDetail", "pagesByName", "pagesReason", "pagesBlocks", "pagesRow", "pagesStepWords",
-        "pagesReturnPlan", "pagesGroup", "pagesGroupStep", "pagesList", "pagesWorkRows", "pagesCounts", "pagesTally",
+        "pagesReturnPlan", "pagesGroup", "pagesGroupStep", "pagesList", "pagesWorkRows", "pagesCounts",
         "pagesHouseholdNotices", "pagesRoute", "pagesFiles", "h", "icon", "screenWords", "pagesSafe", "pagesEach", "pagesLabel",
         "pagesSafeName", "pagesTitleFor", "pagesReportBroken", "pagesRouteKey", "pagesDraw", "pagesBuild", "pagesYear", "pagesReturnSpecs",
         "pagesClientSpecs", "pagesRemember", "pagesRestore", "pagesFirmReturn", "pagesActivate", "pagesOverview", "pagesNeedsReview",
@@ -922,8 +967,8 @@ const pageOf = (list, at = 0, view = "v1", more = {}) => ({ ...firmOf(1), view,
   page: { list, at, pages: 3, from: at * 50 + 1, to: at * 50 + 50, total: 150, order: null,
           filter: { overview: { tab: "all" }, needs_review: { reason: "" }, reminders: {}, clients: { all: false, type: "" } }[list], counts: {}, many_years: false, rows: [], ...more } });
 let failedAs = null;   // a probe that records the failures the page says, with their Retry, in place of throwing them
-const stateOf = (n) => ({ paths: { engagement: "r1" }, counts: { needs_you: n } });
-const pagesTally = (state) => state.counts; const sheetStateArrived = () => {};
+const stateOf = (n) => ({ paths: { engagement: "r1" }, tally: { needs_you: n } });
+const sheetStateArrived = () => {};
 let shellChanged = () => {};
 const noticedAs = [];   // each notice said directly, with its kind and its Retry
 const notice = (failure, opts = {}) => { notices.push(failure.sentence); noticedAs.push({ sentence: failure.sentence, kind: failure.kind, retry: opts.retry }); };

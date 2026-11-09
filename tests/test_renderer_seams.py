@@ -254,8 +254,7 @@ SEAMS = {
         " order and widths.": """
             pagesAdopt pagesClientsAll pagesClientType pagesClosePanel pagesColumnKey pagesDraw
             pagesEnter pagesKey pagesLeave pagesListOf pagesMenu pagesPageAt pagesPanelOpen
-            pagesReasonPick pagesResetWidths pagesStoredOrder pagesTab pagesTally
-            pagesVirtualMeasureSaid
+            pagesReasonPick pagesResetWidths pagesStoredOrder pagesTab pagesVirtualMeasureSaid
         """,
     },
     ("shell.js", "sheet.js"): {

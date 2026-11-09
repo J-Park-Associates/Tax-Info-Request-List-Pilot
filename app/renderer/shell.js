@@ -29,7 +29,6 @@
 // What this file calls in pages.js, sheet.js and app.js (all loaded before it):
 //   pagesDraw(route, page)   draw the route's page into #page
 //   pagesLeave()             the setup page took the screen: the pages' notices go
-//   pagesTally(state)        how many of each group a state holds
 //   pagesKey(e)              a key on a row list (the one keydown listener
 //                            stays in app.js and hands keys here)
 //   pagesMenu(id, token)     a right-click menu item on a row
@@ -880,7 +879,7 @@ function shellCountsDiffer(state) {
   const firm = shellFirmNow.data;
   const mine = firm && state.paths ? firm.return_counts.find((one) => one.path === state.paths.engagement) : null;
   if (!mine) return false;
-  const tally = pagesTally(state);
+  const tally = state.tally;
   return Object.keys(tally).some((key) => tally[key] !== mine.counts[key]);
 }
 

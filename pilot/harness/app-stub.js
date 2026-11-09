@@ -305,6 +305,7 @@ function notADocument(row) {
 function fedReturns() {
   const hh = lastState && lastState.household;
   if (!hh) return [];
+  if (lastState.paths && lastState.paths.engagement === active) return lastState.hand_over_targets || [];
   const open = hh.open_years || [];
   const own = (hh.returns || [])
     .filter((r) => r.active && open.includes(r.year) && r.path !== active)

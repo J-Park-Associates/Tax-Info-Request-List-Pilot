@@ -4237,12 +4237,12 @@ def test_the_side_sentence_is_shown_nowhere_on_a_return_page(tmp_path):
                       "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName"], f"""
 let pagesBroken = [];
 const vocab = {{ decisions: {{ needs_review: "Needs Review", dismissed: "Not Requested", filed: "Filed" }},
+  groups: ["needs_you", "waiting", "received", "set_aside"],
   labels: {{ Missing: {{ key: "missing", label: "Outstanding" }} }}, overrides: {{ not_applicable: "Not Applicable" }},
   review_labels: {{ bucket_order: ["document"], buckets: {{}}, dismiss: "Not requested" }} }};
 const screenWords = () => ({{ moved: "Moved by hand", partly: "{{n}} of {{total}}", counts: {{ files: "{{n}} files" }} }});
 const fill = (p, v) => p.replace(/\\{{(\\w+)\\}}/g, (_, k) => v[k] ?? "");
 const isSetAside = () => false, overrideLabel = (o) => o;
-const PAGES_GROUPS = ["needs_you", "waiting", "received", "set_aside"];
 const state = {{ paths: {{ engagement: "r1" }}, items: {json.dumps(items)}, index: [], review: [], moved: [] }};
 """, "return JSON.stringify(pagesReturnGroups(state, 2025));", tmp_path)
     for side in reminder.SIDES:
@@ -4262,12 +4262,12 @@ def test_an_accepted_rows_status_word_is_the_label_tables_not_the_records(tmp_pa
                       "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName"], f"""
 let pagesBroken = [];
 const vocab = {{ decisions: {{ needs_review: "Needs Review", dismissed: "Not Requested", filed: "Filed" }},
+  groups: ["needs_you", "waiting", "received", "set_aside"],
   labels: {{ Accepted: {{ key: "Accepted", label: "Signed off (fabricated)", sentence: "A fabricated sentence." }} }},
   overrides: {{ not_applicable: "Not Applicable" }}, review_labels: {{ bucket_order: ["document"], buckets: {{}}, dismiss: "Not requested" }} }};
 const screenWords = () => ({{ moved: "Moved by hand", partly: "{{n}} of {{total}}", counts: {{ files: "{{n}} files" }} }});
 const fill = (p, v) => p.replace(/\\{{(\\w+)\\}}/g, (_, k) => v[k] ?? "");
 const isSetAside = () => false, overrideLabel = (o) => o;
-const PAGES_GROUPS = ["needs_you", "waiting", "received", "set_aside"];
 const state = {{ paths: {{ engagement: "r1" }}, items: [{json.dumps(item)}], index: [], review: [], moved: [] }};
 """, "return JSON.stringify(pagesReturnGroups(state, 2025));", tmp_path)
     groups = json.loads(ran)

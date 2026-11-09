@@ -54,7 +54,6 @@
 
 "use strict";
 
-const PAGES_GROUPS = ["needs_you", "waiting", "received", "set_aside"];
 const PAGES_TONES = { needs: "is-attention", waiting: "is-waiting", done: "is-done", plain: "is-plain" };
 
 let pagesUid = 0;              // ids of the rows and headings of the page being drawn
@@ -1429,7 +1428,7 @@ function pagesReturnGroups(state, year) {
   // worked out here from its decision; a file with none is set aside and named, as an item is.
   for (const entry of index) {
     pagesSafe(entry, () => {
-      if (PAGES_GROUPS.indexOf(entry.group) === -1) throw new Error("group");
+      if (vocab.groups.indexOf(entry.group) === -1) throw new Error("group");
     });
   }
   const filesIn = (group) => index.filter((one) => one.group === group);
@@ -1470,7 +1469,7 @@ function pagesReturnGroups(state, year) {
   // every other row is drawn (SPEC 6, loud and safe).
   for (const item of items) {
     pagesSafe(item, () => {
-      if (PAGES_GROUPS.indexOf(item.group) === -1) throw new Error("group");
+      if (vocab.groups.indexOf(item.group) === -1) throw new Error("group");
       const filed = filedBy(item.identifier);
       const detail = item.group === "received"
         ? (filed.length > 1 ? fill(words.counts.files, { n: filed.length }) : filed.length ? filed[0].original_name : "")
@@ -1588,23 +1587,6 @@ function pagesReturn(route) {
     });
   });
   return out.filter(Boolean);
-}
-
-// How many of each group a `state` holds, counted the way `firm` counts
-// (SPEC 9.1, 9.2): shell.js asks for the firm's counts again when they differ.
-function pagesTally(state) {
-  const tally = { needs_you: 0, waiting: 0, received: 0, set_aside: 0 };
-  for (const item of state.items || []) {
-    // An item with no known group is counted in none (the draw names it).
-    if (PAGES_GROUPS.indexOf(item.group) !== -1) tally[item.group] += 1;
-  }
-  // Files count where the engine put them (`index[].group`): parked and moved-by-hand files are Needs you,
-  // files set aside and moved files marked missing are Set aside; filed files count in no group (their
-  // request does).
-  for (const entry of state.index || []) {
-    if (entry.group === "needs_you" || entry.group === "set_aside") tally[entry.group] += 1;
-  }
-  return tally;
 }
 
 // ── notices that belong to a household's pages (SPEC 6.5) ─────────────

@@ -47,6 +47,7 @@ from tests.node_harness import (
     NODE,
     RENDERER,
     RENDERER_SCRIPTS,
+    RETIRED_PAGE_RULES,
     js_block,
     js_function,
     lift_line,
@@ -1153,9 +1154,16 @@ def test_a_status_that_is_a_tag_always_carries_the_words_it_stands_for_as_its_to
     assert ran["loud"] == "reason_tips"
 
 
+#: The page's retired tally and the group names it reads (``tests/node_harness.py``'s RETIRED_PAGE_RULES, P354): the
+#: four tests of the page's tally below keep their claims against it, and the oracle holds the engine's to it.
+RETIRED_TALLY = RETIRED_PAGE_RULES["PAGES_GROUPS"] + RETIRED_PAGE_RULES["pagesTally"]
+
+
 def test_the_pages_groups_and_the_firms_tally_of_them_cannot_disagree(tmp_path):
     """SPEC 9.1: the Overview's counts and the return page's groups come from
-    the same `group`. pagesTally is what shell.js compares with the firm."""
+    the same `group`. pagesTally, the page's retired rule, is what shell.js
+    compared with the firm. The engine's `state.tally`, which it compares
+    now, is held to the same rule by the oracle."""
     ran = run_pages_dom("""
       const state = stateOf([item("A", "needs_you"), item("B", "waiting"), item("C", "waiting"), item("D", "received", { status_key: "Received" }),
                              item("E", "set_aside", { status_key: "NotAsked" })],
@@ -1163,7 +1171,7 @@ def test_the_pages_groups_and_the_firms_tally_of_them_cannot_disagree(tmp_path):
         [{ handle: "m1", original_name: "m1.pdf", identifier: "A" }]);
       const groups = pagesReturnGroups(state, 2025);
       return { tally: pagesTally(state), drawn: Object.fromEntries(Object.entries(groups).map(([key, rows]) => [key, rows.length])) };
-    """, tmp_path)
+    """, tmp_path, setup=RETIRED_TALLY)
     assert ran["tally"] == ran["drawn"] == {"needs_you": 4, "waiting": 2, "received": 1, "set_aside": 2}
 
 
@@ -1369,7 +1377,8 @@ def test_one_item_without_a_group_is_named_in_a_notice_and_every_other_row_is_dr
     `group` is not guessed at: it is drawn in no group, counted in none and
     named in one notice of its own, its detail going to the error log; every
     other row and group of the return page is drawn, and the page is never
-    emptied. Nothing throws out of the draw or the firm's tally."""
+    emptied. Nothing throws out of the draw or the firm's tally. The engine's
+    `state.tally` is held to the same rule by the oracle."""
     ran = run_pages_dom("""
       const bad = { ...item("X", "waiting"), group: undefined, short_name: "Doc X" };
       lastState = stateOf([item("A", "needs_you", { status_key: "Rejected" }), bad, item("C", "waiting"), item("D", "received", { status_key: "Received" })], [parked("p1")]);
@@ -1379,7 +1388,7 @@ def test_one_item_without_a_group_is_named_in_a_notice_and_every_other_row_is_dr
       const rows = box.byClass("row-name").map((one) => one.textContent);
       return { threw, titles: box.byClass("group-title").map((one) => one.textContent), rows, h1: box.find((one) => one.tag === "h1").length,
                notices: notices[notices.length - 1], failures, tally: pagesTally(lastState) };
-    """, tmp_path)
+    """, tmp_path, setup=RETIRED_TALLY)
     assert ran["threw"] is None and ran["failures"] == []
     assert ran["titles"] == ["Needs you", "Waiting on client", "Received"] and ran["h1"] == 1
     assert ran["rows"] == ["p1.pdf", "Doc A", "Doc C", "Doc D"], "every other row is drawn, the one without a group is not"
@@ -1439,13 +1448,12 @@ def test_an_error_after_the_state_arrives_never_reaches_the_write_that_brought_i
       let threw = null;
       try { shellStateArrived({ paths: { engagement: "r1" }, items: [] }); } catch (err) { threw = err.message; }
       shellDraw = () => {};
-      pagesTally = () => { throw new Error("tally"); };
-      try { shellStateArrived({ paths: { engagement: "r1" }, items: [] }); } catch (err) { threw = err.message; }
+      try { shellStateArrived({ paths: { engagement: "r1" }, items: [], get tally() { throw new Error("tally"); } }); } catch (err) { threw = err.message; }
       return [threw, said];
     """
     setup = """
       const said = []; const failed = (err) => said.push(err.message);
-      let shellDraw = null; let pagesTally = null; const sheetStateArrived = () => {};
+      let shellDraw = null; const sheetStateArrived = () => {};
       const shellFirmNow = { data: { return_counts: [{ path: "r1", counts: {} }] } };
       const shellLoadFirm = () => {};
       const shellFirmSentAt = 0; const shellWroteAt = 0; const shellFirmHeld = new Map();
@@ -1622,7 +1630,8 @@ def test_a_moved_file_marked_missing_is_set_aside_and_the_tally_equals_the_firms
     moved file a person marked missing is Set aside, so the return page draws
     it under Set aside, and the page's tally equals the firm's counts (which
     the engine makes from the same groups) - otherwise the tally is one lower
-    and the whole firm reply is read again each time the return opens."""
+    and the whole firm reply is read again each time the return opens. The
+    engine's `state.tally` is held to the same rule by the oracle."""
     ran = run_pages_dom("""
       const state = stateOf([item("A", "needs_you"), item("B", "waiting"), item("E", "set_aside", { status_key: "NotAsked" })],
         [parked("p1"), movedRow("m1"), setAsideRow("d1"), movedRow("lost", { group: "set_aside", received: "2026-02-20" }),
@@ -1637,7 +1646,7 @@ def test_a_moved_file_marked_missing_is_set_aside_and_the_tally_equals_the_firms
       return { tally: pagesTally(state), firmCounts, setAside: groups.set_aside.map((one) => [one.name, one.status, one.step ? one.step.kind : null]),
                drawn: Object.fromEntries(Object.entries(groups).map(([key, rows]) => [key, rows.length])), titles: box.byClass("group-title").map((one) => one.textContent),
                broken: pagesBroken.length };
-    """, tmp_path)
+    """, tmp_path, setup=RETIRED_TALLY)
     assert ran["tally"] == ran["firmCounts"], "one lower than the firm's would re-read the firm each time the return opens"
     assert ran["drawn"] == ran["tally"], "what is drawn and what is counted cannot disagree"
     assert ["lost.pdf", "Moved by hand", None] in ran["setAside"], "a moved file marked missing sits in Set aside, with no step (it has no copy to check)"
@@ -1645,13 +1654,157 @@ def test_a_moved_file_marked_missing_is_set_aside_and_the_tally_equals_the_firms
 
 
 def test_a_file_without_a_group_is_named_and_not_counted(tmp_path):
+    """The engine's `state.tally` is held to the same rule by the oracle."""
     ran = run_pages_dom("""
       const bare = { ...parked("p2"), group: undefined };
       const state = stateOf([item("A", "needs_you")], [parked("p1"), bare]);
       const groups = pagesReturnGroups(state, 2025);
       return { names: groups.needs_you.map((one) => one.name), broken: pagesBroken.map((one) => one.name), tally: pagesTally(state) };
-    """, tmp_path)
+    """, tmp_path, setup=RETIRED_TALLY)
     assert ran["names"] == ["p1.pdf", "Doc A"] and ran["broken"] == ["p2.pdf"] and ran["tally"]["needs_you"] == 2
+
+
+def test_the_engines_groups_tally_and_hand_over_list_equal_the_pages_retired_rules_on_every_return(
+        capsys, scratch_root, tmp_path):
+    """The oracle (SPEC-architecture-p6 R6.5.6, P354). The engine sends what
+    the page worked out for itself until P6.5 - the group names, a return's
+    counts by group and who a parked file may be handed to - and the page's
+    rules for them are kept in ``RETIRED_PAGE_RULES``. Under node, for every
+    return's real ``state``, asked by the path its ``list`` row gives (which
+    ``state.paths.engagement`` equals, as the page's first branch needs): the
+    retired ``pagesTally`` equals ``state.tally``, and so do the counts
+    ``pagesReturnGroups`` draws, by group (a file drawn under its request,
+    one of several filed under it, is that request's and counts in no group);
+    with the state's return ``active``, the retired ``fedReturns`` equals
+    ``state.hand_over_targets`` and so does the page's ``fedReturns`` (its
+    first branch); with ``active`` another return of the pile (the window
+    between ``select()`` and the next ``render``, R6.5.5), the page's
+    ``fedReturns`` equals the retired rule (its second branch); and the
+    retired ``PAGES_GROUPS`` equals ``vocab.groups``.
+
+    **Why it builds its replies.** The recordings in ``tests/golden/`` hold
+    key trees only, with no values (P2.3's shape contract), so they cannot be
+    the oracle's inputs. The pile is made on a scratch root through the API,
+    as ``tests/test_golden.py`` makes its scene, and every reply is real.
+
+    **What the pile holds,** each made the way a person or a pass makes it:
+    a group with a count of every kind across the returns; a parked file; a
+    file set aside by a person (``dismiss``); a file moved by hand; and a file
+    moved by hand that a person marked missing (``mark-missing`` on a moved
+    row whose copy and original are both gone) - ``file_group``'s three
+    branches that are not Received, the last counted in Set aside by both;
+    an inactive return beside active ones in one household; a household with
+    two feeds, one resolved and one not, beside the feed to its own return
+    that the editor refuses (``FEED_REFUSED``); and a household whose record
+    holds two feed lines for one return, written as another machine's
+    tracker writes it, which both lists name twice."""
+    from tests.api_driver import _a_practice_for_the_firm_view, two_households
+    from tests.builders import written_elsewhere
+    from tracker import ledger
+    from tracker.index import FILE_MOVED, FILED, NEEDS_REVIEW, NOT_REQUESTED
+    from tracker.layout import locate, private_household_dir
+    from tracker.records import FEED_REFUSED
+
+    def ok(*argv, stdin=None):
+        code, payload = run(capsys, *argv, stdin=stdin)
+        assert code == 0, (argv, payload)
+        return payload
+
+    def sorted_state(engagement):
+        code, payload = scan(capsys, engagement)
+        assert code == 0, payload
+        return payload["state"]
+
+    # The sample pile, sorted: filed files (one request holds two), and parked files.
+    smith = sample_engagement(capsys, scratch_root, tmp_path)
+    index = sorted_state(smith)["index"]
+    [notes] = [one for one in index if one["original_name"] == "Mortgage Notes.docx"]
+    ok("dismiss", api.ENGAGEMENT_FLAG, str(smith), stdin={"original": notes["pbc_location"], "note": "made up", "seq": notes["seq"]})
+    filed = {one["original_name"]: one for one in index if one["decision"] == FILED}
+    home = smith / filed["Form 1098 Mortgage Interest.pdf"]["prepared_location"]
+    (home.parent / "Moved By Hand").mkdir()
+    home.rename(home.parent / "Moved By Hand" / home.name)
+    lost = filed["2024 Form 1040 Tax Return.pdf"]
+    (smith / lost["prepared_location"]).unlink()
+    locate(smith, lost["pbc_location"]).unlink()
+    [gone] = [one for one in sorted_state(smith)["moved"] if one["gone"]]
+    ok("mark-missing", api.ENGAGEMENT_FLAG, str(smith),
+       stdin={"original": gone["pbc_location"], "identifier": gone["identifier"], "seq": gone["seq"]})
+    # Three more returns in the sample's household, one of them inactive.
+    _a_practice_for_the_firm_view(capsys, scratch_root)
+    # Two feeds, one resolved and one not; the feed to the household's own return is refused.
+    father, _llc = two_households(capsys, scratch_root)
+    own = {"household": "Park Family", "return_name": "1040 - John Park"}
+    code, refused = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(father), stdin={"feeds": [own]})
+    assert code == 1 and refused["error"] == FEED_REFUSED.format(**own)
+    ok("edit-household", api.ENGAGEMENT_FLAG, str(father), stdin={"feeds": [
+        {"household": "Park & Lee LLC", "return_name": "1120S - Park & Lee LLC"},
+        {"household": "Park & Lee LLC", "return_name": "1065 - nobody"}]})
+    # Two lines for the LLC's one return, the second in other case, in the record's own linked format.
+    ok("create", stdin={"household": "Lee Family", "contact": "Sam", "return_name": "1040 - Sam Lee",
+                        "items": [{"identifier": "A01", "document": "W-2"}]})
+    written_elsewhere(private_household_dir(scratch_root, "Lee Family"), {
+        ledger.EVENT_KEY: ledger.HOUSEHOLD_CHANGED, ledger.AT_KEY: "2026-01-01T00:00:00Z",
+        ledger.HOUSEHOLD_KEY: {"feeds": [{"household": "Park & Lee LLC", "return_name": "1120S - Park & Lee LLC"},
+                                         {"household": "park & lee llc", "return_name": "1120s - PARK & LEE LLC"}]}})
+
+    listed = ok("list")["engagements"]
+    returns = []
+    for row in listed:
+        state = ok("state", api.ENGAGEMENT_FLAG, row["path"])
+        assert state["paths"]["engagement"] == row["path"]
+        returns.append({"path": row["path"], "year": row["year"], "state": state})
+    by_path = {one["path"]: one["state"] for one in returns}
+    assert len(returns) == 7
+    # Each return's window: another return of its own household where it has one, else the next of the pile.
+    other = {}
+    for at, one in enumerate(returns):
+        kin = [row["path"] for row in listed if row["household"] == listed[at]["household"] and row["path"] != one["path"]]
+        other[one["path"]] = kin[0] if kin else returns[(at + 1) % len(returns)]["path"]
+    page_fed = js_function("fedReturns")
+    setup = (f"Object.assign(vocab, {json.dumps(api.vocab())});\n"
+             f"const RETURNS = {json.dumps(returns)};\nconst OTHER = {json.dumps(other)};\nlet active = null;\n"
+             + RETIRED_TALLY
+             + "const retiredFedReturns = (() => {\n" + RETIRED_PAGE_RULES["fedReturns"] + "return fedReturns;\n})();\n"
+             + page_fed)
+    ran = run_pages_dom("""
+      const out = RETURNS.map((one) => {
+        const state = one.state;
+        const groups = pagesReturnGroups(state, one.year);
+        const drawn = Object.fromEntries(Object.entries(groups).map(([key, rows]) => [key, rows.filter((row) => !row.child).length]));
+        lastState = state; active = state.paths.engagement;
+        const shown = { retired: retiredFedReturns(), page: fedReturns(), engines: fedReturns() === state.hand_over_targets };
+        active = OTHER[one.path];
+        const gap = { retired: retiredFedReturns(), page: fedReturns(), engines: fedReturns() === state.hand_over_targets };
+        return { path: one.path, retiredTally: pagesTally(state), drawn, shown, gap, setAside: groups.set_aside.map((row) => row.name) };
+      });
+      return { out, groups: PAGES_GROUPS, vocabGroups: vocab.groups, broken: pagesBroken.map((one) => one.name), failures };
+    """, tmp_path, setup=setup)
+    assert ran["broken"] == [] and ran["failures"] == [], "every row of every return was drawn"
+    assert ran["groups"] == ran["vocabGroups"] == list(api.vocab()["groups"])
+    for one in ran["out"]:
+        state = by_path[one["path"]]
+        assert one["retiredTally"] == state["tally"] == one["drawn"], one["path"]
+        assert one["shown"]["retired"] == state["hand_over_targets"] == one["shown"]["page"], one["path"]
+        assert one["shown"]["engines"] and not one["gap"]["engines"], "the first branch hands on the engine's own list"
+        assert one["gap"]["page"] == one["gap"]["retired"], one["path"]
+
+    # The pile holds what the oracle must see.
+    tallies = [state["tally"] for state in by_path.values()]
+    assert all(any(tally[group] for tally in tallies) for group in api.vocab()["groups"]), "every group counts somewhere"
+    files = {(row["original_name"], row["decision"], row["group"]) for row in by_path[str(smith)]["index"]}
+    assert {("Mortgage Notes.docx", NOT_REQUESTED, "set_aside"), ("Form 1098 Mortgage Interest.pdf", FILE_MOVED, "needs_you"),
+            ("2024 Form 1040 Tax Return.pdf", FILE_MOVED, "set_aside")} <= files
+    assert any(decision == NEEDS_REVIEW for _name, decision, _group in files)
+    [smith_out] = [one for one in ran["out"] if one["path"] == str(smith)]
+    assert "2024 Form 1040 Tax Return.pdf" in smith_out["setAside"], "the file marked missing is drawn in Set aside"
+    assert any(not row["active"] for row in by_path[str(smith)]["household"]["returns"])
+    fed = by_path[str(father)]["household"]["feeds"]
+    assert [bool(one["path"]) for one in fed] == [True, False]
+    [sam] = [path for path in by_path if path.endswith("1040 - Sam Lee")]
+    assert [one["path"] for one in by_path[sam]["hand_over_targets"]] == [fed[0]["path"]] * 2, "a feed line held twice"
+    # The window is not idle: in it the page's list is not the engine's for some return.
+    assert any(one["gap"]["page"] != by_path[one["path"]]["hand_over_targets"] for one in ran["out"])
 
 
 # ── S5: the links, the side sheet, the right-click menus and the dialogs ───────
@@ -6209,7 +6362,6 @@ const closeSheet = () => {}; const hideFound = () => {}; const hideTip = () => {
 const $ = () => ({ focus() {}, scrollTop: 0 });
 const shellDraw = () => drawn.push(shellRoute.level); const shellChanged = () => events.push("changed");
 const sheetStateArrived = () => events.push("sheet"); const shellLoadFirm = () => {};
-const pagesTally = () => ({}); 
 const stateFor = (path, household) => ({ paths: { engagement: path }, household: { path: household } });
 // As app.js's showReturn does: the state is read, becomes the one on screen, and the shell is told.
 const showReturn = async (path) => {
@@ -8241,9 +8393,9 @@ def test_the_household_and_year_pages_read_their_counts_from_return_counts(tmp_p
       shellFirmNow = { status: "ok", data: { totals: {}, return_counts: [{ path: "r1", counts: { needs_you: 3, waiting: 0 }, problem: "" }, { path: "r2", counts: { needs_you: 0, waiting: 0 }, problem: "Could Not Be Read" }], replies: {} } };
       const [spec] = pagesReturnSpecs([one]);
       const [broken] = pagesReturnSpecs([{ ...one, path: "r2" }]);
-      const differ = (counts) => shellCountsDiffer({ paths: { engagement: "r1" }, counts });
+      const differ = (tally) => shellCountsDiffer({ paths: { engagement: "r1" }, tally });
       return { status: spec.status, broken: broken.status, same: differ({ needs_you: 3, waiting: 0 }), moved: differ({ needs_you: 2, waiting: 0 }) };
-    """, tmp_path, setup="let shellFirmNow = null; const shellFirm = () => shellFirmNow; const pagesTally = (state) => state.counts;",
+    """, tmp_path, setup="let shellFirmNow = null; const shellFirm = () => shellFirmNow;",
         functions=["pagesReturnSpecs", "pagesEach", "pagesSafe", "pagesLabel", "pagesSafeName", "pagesByName", "pagesFirmReturn", "pagesCounts", "pagesTaxpayer",
                    "pagesReturnName", "screenWords", "shellCountsDiffer"])
     assert ran == {"status": "3 need you", "broken": "Could Not Be Read", "same": False, "moved": True}

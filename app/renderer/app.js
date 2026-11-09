@@ -1041,12 +1041,20 @@ function waitsFor(triage, className) {
 
 // Every return this drop folder feeds, as the picker offers them: the
 // household's own open-year returns and the return lines a person extended
-// it to, minus the one being looked at. The state carries both, so the
-// page asks nothing of its own and can offer nothing the feed list does
-// not already go to.
+// it to, minus the one being looked at. The engine sends that list with the
+// state (`hand_over_targets`, P354): the one a hand-over may name, so the
+// page works nothing out and can offer nothing the feed list does not
+// already go to. It leaves out the state's own return, so it is read while
+// that return is `active`. In the one window where it is not - after
+// select() and before the new state reaches render (showReturn's await,
+// loadEngagements' select) - a row menu on a firm page still asks
+// (pagesCanHandOver), and there the page keeps the rule it used before, over
+// the household the state holds, leaving out `active` as it always did
+// (SPEC-architecture-p6 R6.5.5).
 function fedReturns() {
   const hh = lastState && lastState.household;
   if (!hh) return [];
+  if (lastState.paths && lastState.paths.engagement === active) return lastState.hand_over_targets || [];
   const open = hh.open_years || [];
   const own = (hh.returns || [])
     .filter((r) => r.active && open.includes(r.year) && r.path !== active)
