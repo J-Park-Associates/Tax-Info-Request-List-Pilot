@@ -1,33 +1,31 @@
-# Refactor handoff: phase 5 complete (P5.1-P5.16), the phase 6 SPEC next
+# Refactor handoff: phase 6 under way (P6.1-P6.5 landed), P6.6 next
 
-Phases 3, 4 and 5 are complete. Phase 5's SPEC ([`SPEC-architecture-p5.md`](SPEC-architecture-p5.md), 16 jobs,
-`608a3d4`; Jason's answers of 2026-11-08: Q-C (A) "keep separate copy", Q-F (C) "one shared check") landed in full, the
-last job (P5.16) in the commit that carries this file. This file was brought up to date at that landing and is the
-whole hand-over. A new session reads it, `CLAUDE.md`, [`PROMPT-refactor.md`](PROMPT-refactor.md) (sections 1 and 2) and
-the ledger ([`SPEC-architecture.md`](SPEC-architecture.md) section 13), and nothing of an earlier session's transcript.
+Phases 3, 4 and 5 are complete, and phase 6 ("the shell") is building. Its SPEC
+([`SPEC-architecture-p6.md`](SPEC-architecture-p6.md), 18 jobs, `dca0e84`; Jason's answers of 2026-11-08 recorded at
+`1204a19`: Q-D (A) fold the overriding stylesheet rules, Q-E plan the JavaScript type check for phase 7, Q-G (A) keep
+the pilot's failed save silent) has landed P6.1 to P6.5. This file was brought up to date after P6.5's landing, because
+the container restarted twice during P6.5. A new session reads it, `CLAUDE.md`, [`PROMPT-refactor.md`](PROMPT-refactor.md)
+(sections 1 and 2) and the ledger ([`SPEC-architecture.md`](SPEC-architecture.md) section 13), and nothing of an earlier
+session's transcript.
 
 ## Where it stopped
 
-- **Branch** `claude/quirky-johnson-22edtv`, pushed, with P5.16's landing commit at its head (the commit that carries
-  this file). No build job is in flight.
-- **Landed on the branch:** tranche 1 (J1-J6), phases 2, 3 and 4, phase 5's SPEC and all of phase 5, each with its row
-  in the ledger: P5.1 `e6a6c9d` (type burn-down), P5.2 `b14b29b` (`api.vocab`/`api.state`), P5.3 `0c2444d`
-  (`screen_words.py`), P5.4 `543a42b` (`request_edit.py`, with Q-F's one shared check), P5.5 `a3bfbc5`
-  (`household_edit.py`), P5.6 `e277ee0` (`creation.py`), P5.7 `61eac98` (`firm_view.py` at L4), P5.8 `f98caa6`
-  (`run_log.py`), P5.9 `b45b415` (`status_page.py`; one misfits heading), P5.10 `c5f862b` (`pass_order.py`), P5.11
-  `efa17ff` (`letter_render.py`), P5.12 `0efa22e`/`0f1d389` (after_install's jobs as one table), P5.13 `1ffb8dc` (a
-  family test file is owned by its module), P5.14 `b07f2ac` (test_api and test_runner split into ten family files),
-  P5.15 `aad3e56`..`678ddcb` (phase 4's loose ends; the Mac kit's list widened by rule) and P5.16 `51cdd69` with this
-  file (the guard holds phase 5's moves). `api.py` is 4,961 lines (6,778 before phase 5), `runner.py` 2,454 (3,640),
-  `reminder.py` 2,067 (2,262).
+- **Branch** `claude/quirky-johnson-22edtv`, pushed, with P6.5's landing commit (`8a7e2cc`) or this file's commit at its
+  head. No build job is in flight.
+- **Landed on the branch:** tranche 1, phases 2-5 (P5.16 `51cdd69`; phase 5's end with the handoff at `9df1724`), phase
+  6's SPEC (`dca0e84`, answers `1204a19`) and, each with its ledger row:
+  - P6.1 `fe2600c`..`2910bcd`: the tests read the shell's scripts by claim; the named-script guard; the load test;
+  - P6.2 `deeb3a3`, `509ae64`, `144879f`: `app.js`'s 255 readers by claim;
+  - P6.3 `6f6d920`, `a2c6dbf`: `shell.js`'s and `main.js`'s readers by claim; `NOT_YET` deleted;
+  - P6.4 `f7a8c26`..`cf9578b`: J3's open guards, the tour's count words, the stub held to `replies.py`;
+  - P6.5 `d5fe397`, `dba6df0`, `4da963c`: the engine sends `hand_over_targets` (a list by the page's rule, repeats kept:
+    question 001, option A), `tally` and `groups`; the page's retired rules are the oracle.
 - **Nothing is on `main`.** Landing on `main` is a person's step, and no pull request is open: Jason has not asked for
-  one. When he does, CLAUDE.md's cost rules apply (open it as a draft, mark it ready once), and **P3.8's office
-  `verify`, phase 4's two office backtests and phase 5's office steps must be recorded first** (section "Owed to the
-  office PC").
-- **Next: the phase 6 SPEC** ("The shell": app.js, main.js and shell.js split; the engine sends what the page
-  re-derives). The phase-SPEC loop (appendix C) writes it from the orchestrator's brief, which is message 000 of the
-  board page's thread `P6` (its text is also in this file's section "The phase 6 SPEC brief"). It names Q-D and Q-E,
-  which are Jason's; the orchestrator asks him before phase 6 builds, as for phases 4 and 5. Then phase 7.
+  one. When he does, CLAUDE.md's cost rules apply, and **every office step in "Owed to the office PC" must be recorded
+  first**.
+- **Next: P6.6** (the engine sends each return's `taxpayer`, D-3 c; Opus), then P6.7-P6.18 in the SPEC's order, then the
+  phase 7 SPEC. Each job is briefed on its board thread (`threads/P6.k/000`) by the orchestrator, built and reviewed with
+  appendix B, and landed by the checklist below.
 
 ## What did not survive the session, and where it is now
 
@@ -107,14 +105,13 @@ so it outlives the container.
 7. **Arm the watch:** a Monitor on `ORCH/board/threads` for new `*report*.md`, `*review*.md` and `*question*.md` files
    (30 minutes, re-armed on expiry). Copy ORCH, `board-sync`, `workflows` and `land` to `/home/user/.orch-backup` after
    every board change.
-8. **Write the phase 6 SPEC** with appendix C (`scriptPath`): `phase` "6", `repo`, `branch`, `orch`, `py311`,
-   `py314`, `base` (this file's commit), `thread` "P6", `draft` `ORCH/jobs/P6/SPEC-architecture-p6.md`, `reviews`
-   `ORCH/spec-p6` (a link to `ORCH/jobs/P6`). If the board page's thread `P6` holds a finished draft, start from it.
-   When the SPEC passes review, commit it as `pilot/SPEC-architecture-p6.md` with the map, ask Jason its questions,
-   then **build each job** with appendix B from the orchestrator's brief and **land it** by the checklist below.
-   Appendix B's arguments: `job`, `title`, `spec`, `section` (the job's `### P6.k ...` heading, verbatim), `tier`,
-   `base`, `repo`, `branch`, `orch`, `py311`, `py314` (the environment folders), `extra` (the brief's path and the
-   rules that bind the job).
+8. **Build phase 6's next job.** The SPEC is committed and Jason has answered its questions. For each job in order
+   (P6.6 next): write its brief to `ORCH/board/threads/P6.k/000-orchestrator-brief.md` (re-measure the anchors at the
+   base; quote the SPEC's rules; name the office steps and the gate), update the board, then run appendix B
+   (`scriptPath`) with `job`, `title`, `spec` `pilot/SPEC-architecture-p6.md`, `section` (the job's `### P6.k ...`
+   heading verbatim), `tier`, `base`, `repo`, `branch`, `orch`, `py311`, `py314`, `extra` (the brief's path and the rules
+   that bind the job). Land each by the checklist below. After P6.18, refresh this file and write the phase 7 SPEC brief
+   (it carries Jason's Q-E: a job that type-checks the window's JavaScript, development-only).
 
 ## The orchestrator's habits, learned the hard way
 
@@ -165,6 +162,11 @@ so it outlives the container.
 - **A brief quotes the SPEC's rules, never paraphrases them.** P4.8's brief narrowed section 4.0's stand-in rule
   ("where the test drives the received list"); the builder followed it and review 1 found the gap. The rule the family
   follows: a stand-in goes on every module that reads the name as a global, whichever road the test takes.
+- **Twice in a row, during P6.5, the container restarted under a builder.** The first time nothing was committed and
+  the tree was clean: the job was relaunched with a note on its thread. The second time commit 1 was in and commit 2 was
+  partial in the tree: the partial was saved (`git diff HEAD --binary` to the job folder), the verified commit 1 pushed,
+  and the job relaunched with a note saying the partial was unverified; the new builder read it against the SPEC,
+  finished it, and ran the whole gate. Re-arm the board watch and back up after every restart.
 - **A container restart under a builder.** Committed work and the repository's working tree survive; the scratch
   folder may not. Check `git status` (a partial in the tree is the builder's: save `git diff HEAD --binary` to the
   job folder, then relaunch the job with a note on its thread to continue it, treating the partial as unreviewed),
@@ -205,6 +207,13 @@ None of this can run in the cloud. The ledger's last column is the record; gathe
      the ten family files (`test_api_returns,test_api_review,test_api_editor,test_api_root,test_api_household,test_api_reminder,test_api_firm,test_runner_household,test_runner_watch,test_runner_reports`)
      and `test_layers,test_single_source,test_repo_map`. The script builds the installer beside the tests.
   5. **Mac:** no run is owed; the next scheduled Mac check runs P5.15's widened list.
+- **Phase 6 so far:**
+  - **P6.4:** `pilot\wintest\run_checks.ps1 -Tests test_tour,test_pilot,test_shell`; hands-on: start the tour once
+    (Help > Take the tour) and read "Step 1 of 11".
+  - **P6.5:** `pilot\wintest\run_checks.ps1 -Tests test_firm_view,test_api,test_api_returns,test_api_review,test_api_firm,test_golden,test_shell,test_api_household,test_single_source,test_renderer_seams`;
+    hands-on: open a return with a parked file whose household feeds another and see the same Hand Over list; file a
+    document and see the Overview's counts follow as before.
+  - P6.1-P6.3 owe nothing (tests only).
 - **P4.1:** `pilot\wintest\run_checks.ps1 -Tests test_locking,test_resident`.
 - **P4.4:** `pilot\wintest\run_checks.ps1 -Tests test_copies,test_filer,test_scaffold,test_runner,test_api,test_rollover,test_errors`.
 - **P4.6:** `pilot\wintest\run_checks.ps1 -Tests test_intents,test_filer,test_api,test_runner,test_errors,test_containers`.
@@ -815,6 +824,54 @@ Two points from that work hold whichever is chosen:
 - **N3:** P4.13's guard walks `tracker`, `tools` and `tests`, not `pilot/` or `api_entry.py`; P5.16's reviewer swept
   both by hand. A later phase may widen the walk.
 
+### Phase 6, from P6.1's build and review 1 (`ORCH/jobs/P6.1/handoff.md`, `review-1.md`)
+
+- **For P6.2's brief (N7):** the guard counts **255** `app.js` reads at P6.1's head, not the SPEC's 272.
+- **For P6.3's brief (N2):** P6.3 deletes `SHELL_SCRIPTS` in the same commit that takes `shell.js` off `NOT_YET`.
+- `stripped_js` reaches `js_code`'s scanner through a `str` subclass that records each `startswith("//")`/`("/*")`
+  match, so `js_code` stays byte for byte; a test pins it (P6.1 handoff's Difference 1).
+- P6.1 review 2's N1: `top_level_statements` still misses a punctuation-led statement after a declaration's `}` on the
+  same line (`function a() {} (init)();`) and an indented statement after a semicolon-free line; approximation limits,
+  a cheap tightening is named in `ORCH/jobs/P6.1/review-2.md`.
+
+### Phase 6, from P6.2's build and review 1 (`ORCH/jobs/P6.2/handoff.md`, `review-1.md`)
+
+- **Nine `APP_FAMILY` claims, not the SPEC's seven:** test_api_household's sharing words and test_api_root's schedule
+  dialog words also differ over `APP_SCRIPTS` (both read `shell.js`). `509ae64`'s body says "Eleven" and another body
+  miscounts; neither can be amended once pushed. The ledger row says the right number.
+- **For P6.3:** it starts with 118 reads (52 `shell.js`, 66 `main.js`), not 149 (whole tuples in loops already read
+  `APP_SCRIPTS`/`RENDERER_SCRIPTS`). Two helpers joined `tests/node_harness.py`: `without_comments`, `stripped_text`.
+- **For P6.8 (review note):** a first-match `re.search` on `"assign"` (see `review-1.md`) finds the first occurrence in
+  load order; when `review-rows.js` loads before `app.js`, check which `assign` it lands on.
+- test_replies: one `MUST_NOT_FIND` anchor is also found in `sheet.js:307` by side (same scripts and lines caught as
+  before for every row).
+- P6.2 review 2's note: `144879f`'s message and after.txt line 190 say the bootstrap plant went into `tooltip.js`
+  "before app.js", but `tooltip.js` loads after `app.js`; the reviewer's own plant before `app.js` covers the case.
+
+### Phase 6, from P6.3's review 1 (`ORCH/jobs/P6.3/review-1.md`, notes)
+
+- **For P6.13/P6.14's briefs (N4):** "`ipcMain.handle` is registered in `main.js` alone" is held as a `main.js` file
+  claim but not checked across `MAIN_SCRIPTS`; once P6.13/P6.14 add modules, a registration in one of them would pass.
+  The job that first adds a main-process module also asserts no `ipcMain.handle(` in any `MAIN_SCRIPTS` script but
+  `main.js` (a by-claim absence beside the file claim).
+- N1: `MAIN_ENTRY` replaces the "main.js is the entry" file claim; the icon test's reason still calls `main.js` "the
+  entry". N2: the setAppUserModelId value claims read `main_text()`. N3: the icon line could read `createWindow`.
+  N5: `script_literals`' `named` field is unused (dead code for the next job that edits the guard). N6: `6f6d920`'s
+  message lists a narrower gate than was run.
+
+### Phase 6, from P6.4's build and review 1 (`ORCH/jobs/P6.4/handoff.md`, `review-1.md`)
+
+- **For P6.5's brief (builder's next note):** the stub must send any new required `state` key P6.5 adds; P6.4's test
+  holds the stub's replies to `replies.py`'s types (required keys present, no extra key).
+- **A test-only race (review N5):** `tests/test_api_household.py` uses a fixed path `/tmp/Real root`; run side by side
+  under PY311 and PY314 the two processes can collide (one PY314 failure seen; alone it passes 59 of 59). A later job
+  that edits that file gives the path a `tmp_path` home; until then, rerun it alone and cite both runs.
+- The stub's omissions (`warnings` and nine `state` keys) were filled at the page's own fallback values; no reply
+  carried a key its type lacks.
+- P6.4's next note (`threads/P6.4/001-builder-next.md`) gives the stub test's old name; since `cf9578b` it is
+  `test_the_harness_stubs_list_firm_firm_last_state_and_reminder_replies_match_their_types_in_replies_py`. The side
+  sheet's writes and the failure envelopes are not held by it.
+
 ## Appendix A: the board's status table now (`ORCH/board/STATUS.md`)
 
 ~~~~markdown
@@ -843,8 +900,8 @@ Each phase's SPEC (pilot/SPEC-architecture-p<N>.md) is written when the phase be
 | 2 Types and shared low layers | landed (14 jobs; last landing 144c5d2; no facade left) |
 | 3 The record | landed: P3.1-P3.9, last 68b9212 (P3.8's office verify owed before main) |
 | 4 The sorting engine | landed: P4.1-P4.13 (the two office backtests owed before main) |
-| 5 The door and the pass | building: SPEC 608a3d4; Jason answered Q-C (A) and Q-F (C) |
-| 6 The shell | queued |
+| 5 The door and the pass | landed: P5.1-P5.16, last 9df1724 (phase 5's office steps owed before main) |
+| 6 The shell | building: SPEC dca0e84; Jason answered Q-D (A), Q-E (plan now, phase 7), Q-G (A) |
 | 7 State | queued |
 
 ## Phase 2, `pilot/SPEC-architecture-p2.md`
@@ -920,6 +977,29 @@ Each phase's SPEC (pilot/SPEC-architecture-p<N>.md) is written when the phase be
 | P5.16 | The moved names read from their home; `MOVED_OUT` rows | sonnet | landed (review 1 clean) | 032955b | 1 |
 
 Carried to later phases: `carry-forward.md` (open items a job found outside its own scope).
+
+## Phase 6, `pilot/SPEC-architecture-p6.md`
+
+| Job | Title | Tier | State | Base | Round |
+|---|---|---|---|---|---|
+| P6.1 | The shell's scripts read by claim: the readers, the named-script guard, the load test | opus | landed (review 2 clean; F1.1 fixed) | 1204a19 | 2 |
+| P6.2 | `app.js`'s readers read by claim | sonnet | landed (review 2 clean; F1.1 fixed) | f061690 | 2 |
+| P6.3 | `shell.js`'s and `main.js`'s readers read by claim | sonnet | landed (review 1 clean) | 91afe5c | 1 |
+| P6.4 | J3's open guards; the tour's count words; the stub held to `replies.py` | opus | landed (review 2 clean; F1.1 fixed) | e901a22 | 2 |
+| P6.5 | The engine sends `hand_over_targets`, `tally` and `groups` (D-3) | opus | landed (review 2 clean; F1.1 fixed; question 001: option A) | 074a317 | 2 |
+| P6.6 | The engine sends each return's `taxpayer` (D-3) | opus | queued | - | - |
+| P6.7 | `api-client.js`, `notices.js`, `dialogs.js` (D-1) | opus | queued | - | - |
+| P6.8 | `reminder-card.js` and `review-rows.js` (D-1) | opus | queued | - | - |
+| P6.9 | `household.js` (D-1) | opus | queued | - | - |
+| P6.10 | `editor.js`; the paste parser's test (D-1, D-12) | opus | queued | - | - |
+| P6.11 | `schedule.js` and `pass.js` (D-1) | opus | queued | - | - |
+| P6.12 | `firm-loader.js` out of `shell.js` (D-7) | opus | queued | - | - |
+| P6.13 | `shell-words.js`, `logs.js`, `last-pass-watch.js`, `open-path.js` out of `main.js` (D-4; windows) | opus | queued | - | - |
+| P6.14 | `menu.js` out of `main.js` (D-4) | opus | queued | - | - |
+| P6.15 | `engine.js` out of `main.js`; the sender check's words (D-4; windows) | opus | queued | - | - |
+| P6.16 | `appReady` for `pilot.js` (D-6) | opus | queued | - | - |
+| P6.17 | The overriding stylesheet rules in one home (D-11; Jason's Q-D yes) | opus | queued | - | - |
+| P6.18 | Phase 5's loose ends; the phase's close | sonnet | queued | - | - |
 ~~~~
 
 ## Appendix B: the one-job loop (`Workflow` script)
