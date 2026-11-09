@@ -154,10 +154,10 @@ SEAMS = {
         """,
     },
     ("app.js", "pages.js"): {
-        "app.js says a day, a time, a stage, a taxpayer and a request's name as the pages do, routes to a"
+        "app.js says a day, a time, a stage and a request's name as the pages do, routes to a"
         " return the pages' way, and windows its long editor tables at the pages' thresholds (P279).": """
             PAGES_VIRTUAL_FROM PAGES_VIRTUAL_OVER_LEAST pagesDay pagesItemName pagesRoute pagesStage
-            pagesTaxpayer pagesTime
+            pagesTime
         """,
     },
     ("app.js", "sheet.js"): {

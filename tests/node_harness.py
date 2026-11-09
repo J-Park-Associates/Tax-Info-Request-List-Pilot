@@ -496,7 +496,7 @@ const shellGo = (route) => went.push(route);
 const popups = [];
 const shellPopup = (name, token, x, y, enable) => popups.push([name, token, x, y, enable]);
 const unanswered = (id) => failures.push(`unanswered ${id}`);
-let shellReturn = (path) => ({ return_name: "1040 - John & Jane Smith", household: "h1", year: 2025 });
+let shellReturn = (path) => ({ return_name: "1040 - John & Jane Smith", form: "1040", taxpayer: "John & Jane Smith", household: "h1", year: 2025 });
 const PAGES_LINK_WORDS = { file: "show_in_explorer", household: "navigate_client", return: "navigate_return" };
 const PAGES_TONES = { needs: "is-attention", waiting: "is-waiting", done: "is-done", plain: "is-plain" };
 let pagesUid = 0; const pagesTokens = new Map(); let pagesSetAsideOpen = false; let pagesBroken = []; let pagesDrawn = "";
@@ -567,7 +567,7 @@ COLUMN_FUNCTIONS = ("pagesListOf", "pagesOrderBy",
                     "pagesClosePanel", "pagesOpenRowLinks", "pagesFootOf", "pagesFoot", "pagesTurn", "pagesPick", "pagesRedraw", "pagesPickButton", "pagesTabs",
                     "pagesFileCount", "pagesReasonCards", "pagesReviewGroup", "pagesSwitch", "pagesTypeFilter", "pagesReopenPanel",
                     # One field per column (pilot SPEC-firm-columns; P194, P195).
-                    "pagesTaxpayer", "pagesFormCell", "pagesReturnHeading", "pagesReturnCells",
+                    "pagesTaxpayer", "pagesFirmTaxpayer", "pagesFormCell", "pagesReturnHeading", "pagesReturnCells",
                     # The engine pages the lists (P278): the replies held, the choices forgotten on leaving, the page adopted.
                     "pagesReply", "pagesHeldPage", "pagesEnter", "pagesAdopt", "shellFirmAsk", "shellFirmMerge", "shellFirmShaped")
 
@@ -768,7 +768,9 @@ FIRM_LISTS = ENGINE_BRIDGE + r"""
   });
   vocab.reminder = { stages: [{ number: 1, short: "Heads Up" }, { number: 2, short: "Checking In" }, { number: 3, short: "Final Notice" }] };
   vocab.reasons = { unmatched: { short: "Could Not Tell" }, "opened-not-across": { short: "Came in Email or Zip" } };
-  shellReturn = (path) => ({ return_name: path.split("/").pop(), household: "", year: 2025 });
+  // The list's row as the engine sends it: the name, its form (as `line` below gives the firm row) and the taxpayer cut from them.
+  shellReturn = (path) => { const name = path.split("/").pop(); const [form, ...rest] = name.split(" - ");
+                            return { return_name: name, form, taxpayer: rest.join(" - ") || name, household: "", year: 2025 }; };
   households = ["Alpha", "Bravo", "Charlie", "Delta", "Echo"].map((name) => ({ name, path: `c/${name}` }));
   const zero = { needs_you: 0, waiting: 0, received: 0, set_aside: 0 };
   const line = (name, household, extra) => ({ path: `r/${name}`, household, year: 2025, form: name.split(" - ")[0], counts: { ...zero }, oldest: null, due: null, problem: "",

@@ -217,6 +217,10 @@ function pagesLinkWords(kind) {
 // never cut by a guess. Letter case and a hyphen inside the form number are
 // not differences (the catalog's own labels write a form number with a hyphen). The year is
 // its own column, heading or title.
+// The engine cuts every list row's taxpayer by this rule (`firm_pages.taxpayer`,
+// with this trim; P355), and the page draws that. This is the page's cut of a
+// firm row the list cannot answer - pagesFirmTaxpayer's second branch - held
+// equal to `firm_pages.taxpayer` by tests/test_shell.py.
 function pagesTaxpayer(name, form) {
   const pattern = vocab.layout ? vocab.layout.return_name_pattern : "";
   if (!pattern) throw new Error("layout.return_name_pattern");
@@ -227,6 +231,20 @@ function pagesTaxpayer(name, form) {
   const same = (text) => text.replace(/-/g, "").toLowerCase();
   const rest = cut > 0 && same(name.slice(0, cut)) === same(form) ? name.slice(cut + sep.length).trim() : "";
   return rest || name;
+}
+
+// A firm row's taxpayer (Needs Review's return heading; the Overview's and
+// Reminders' rows), drawn from the list's row for the return, as its name is
+// (P355): the firm reply carries no taxpayer, because a name cut on the firm
+// walk is not the list's when the two replies are from different moments (the
+// launch's last counts; after a write that renames, until the next firm reply).
+// When the list holds the return with the firm row's form, its `taxpayer` is
+// the engine's cut of the very name and form the page cut before. When it does
+// not - the return left the list since the firm reply, or the list holds it
+// with another form - the page cuts the firm row as it always has.
+function pagesFirmTaxpayer(path, form) {
+  const one = shellReturn(path);
+  return one && (one.form || "") === (form || "") ? one.taxpayer : pagesTaxpayer(pagesReturnName(path), form || "");
 }
 
 // The absolute path the API reported under a key, from the map that came with
@@ -379,7 +397,7 @@ function pagesFormCell(spec) {
 // link to the return) and the form tag, each once, in the columns' order.
 function pagesReturnHeading(path, year, form) {
   return [year ? h("span", { className: "head-year" }, String(year)) : null,
-    pagesHeadLink({ kind: "return", path }, pagesTaxpayer(pagesReturnName(path), form)),
+    pagesHeadLink({ kind: "return", path }, pagesFirmTaxpayer(path, form)),
     form ? h("span", { className: "form-tag" }, form) : null];
 }
 
@@ -1065,7 +1083,7 @@ function pagesReturnCells(one) {
   const said = screenWords().columns;
   if (!said.taxpayer_tip) throw new Error("columns.taxpayer_tip");
   const tip = one.household ? fill(said.taxpayer_tip, { action: pagesLinkWords("return"), household: one.household }) : "";
-  return { returnRow: true, year: one.year || "", name: pagesTaxpayer(pagesReturnName(one.path), one.form || ""), form: one.form || "",
+  return { returnRow: true, year: one.year || "", name: pagesFirmTaxpayer(one.path, one.form || ""), form: one.form || "",
            household: one.household || "", links: one.links || [], linksIn: "name", linkOwner: one.household || "",
            nameLink: { kind: "return", path: one.path, tip } };
 }
@@ -1340,7 +1358,7 @@ function pagesReturnSpecs(returns) {
     const detail = one.superseded_by ? words.rolled : one.active === false ? words.inactive : "";
     // The form tag and the taxpayer, each once; the year is the heading
     // above the rows or the page's title (P195).
-    return { name: pagesTaxpayer(one.return_name || pagesReturnName(one.path), one.form || ""), form: one.form || "", detail, status: said.text, tone: said.tone, date: "", menu: "return",
+    return { name: one.taxpayer, form: one.form || "", detail, status: said.text, tone: said.tone, date: "", menu: "return",
              statusNext: true,
              waiting: waiting && !firm,
              nameLink: { kind: "return", path: one.path },

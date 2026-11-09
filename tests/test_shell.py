@@ -1183,7 +1183,7 @@ def test_the_overview_words_each_row_the_engine_sends_in_the_order_it_sends_them
     and sorts, drops and adds none."""
     ran = run_pages_dom("""
       const names = { a: "Alpha", b: "Bravo", d: "Delta", e: "Echo", f: "Foxtrot" };
-      shellReturn = (path) => ({ return_name: names[path], household: "h", year: 2025 });
+      shellReturn = (path) => ({ return_name: names[path], form: "", taxpayer: names[path], household: "h", year: 2025 });
       const make = (path, bucket, counts, extra = {}) => ({ kind: "return", bucket, path, household: "h", counts: { needs_you: 0, waiting: 0, received: 0, set_aside: 0, ...counts }, oldest: null, due: null, problem: "", ...extra });
       const rows = pagesWorkRows([
         { kind: "paused", household: "Gamma", household_path: "g" },
@@ -1406,13 +1406,13 @@ def test_a_row_that_cannot_be_built_is_left_out_and_named_on_every_page(tmp_path
       const rows = [
         { path: "a", household: "h", counts: { needs_you: 0, waiting: 1, received: 0, set_aside: 0 }, oldest: null, due: null, draft: { ready: true, stage: 1, held: 0, drafted: null }, problem: "" },
         { path: "b", household: "h", counts: { needs_you: 0, waiting: 1, received: 0, set_aside: 0 }, oldest: null, due: null, draft: { ready: true, stage: 9, held: 0, drafted: null }, problem: "" } ];
-      shellReturn = (path) => ({ return_name: path === "a" ? "Alpha" : "Bravo", household: "h", year: 2025 });
+      shellReturn = (path) => ({ return_name: path === "a" ? "Alpha" : "Bravo", form: "", taxpayer: path === "a" ? "Alpha" : "Bravo", household: "h", year: 2025 });
       vocab.reminder = { stages: [{ number: 1, short: "Heads up" }] };
       pagesBroken = [];
       const specs = pagesReminderSpecs(rows);
       return { specs: specs.map((one) => [one.name, one.status]), broken: pagesBroken.map((one) => one.name) };
     """, tmp_path, functions=["pagesReminderSpecs", "pagesStage", "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName", "pagesReturnName",
-                              "pagesByName", "pagesDay", "screenWords", "pagesLinkWords", "pagesTaxpayer", "pagesReturnCells"])
+                              "pagesByName", "pagesDay", "screenWords", "pagesLinkWords", "pagesTaxpayer", "pagesFirmTaxpayer", "pagesReturnCells"])
     assert ran["specs"] == [["Alpha", "Heads up"]] and ran["broken"] == ["Bravo"]
 
 
@@ -1465,7 +1465,7 @@ def test_an_error_after_the_state_arrives_never_reaches_the_write_that_brought_i
 def test_the_year_page_leaves_a_gap_under_its_h1_before_its_rows(tmp_path):
     """The mock-up (3.6): a list starts --sp-6 below what precedes it."""
     ran = run_pages_dom("""
-      const hh = { name: "Smith Family", returns: [{ path: "r1", year: 2025, return_name: "1040 - John & Jane Smith", active: true }] };
+      const hh = { name: "Smith Family", returns: [{ path: "r1", year: 2025, return_name: "1040 - John & Jane Smith", taxpayer: "1040 - John & Jane Smith", active: true }] };
       shellHousehold = () => hh;
       globalThis.shellRoute = { household: "h1" };
       const nodes = pagesYear({ level: "year", household: "h1", year: 2025 });
@@ -1572,8 +1572,8 @@ def test_no_page_draws_a_path_as_text_or_as_a_tooltip(tmp_path):
       const clients = "C:\\Clients\\J Park & Associates\\Smith Family";
       const known = clients + "\\2025\\1040 - John & Jane Smith";
       const gone = "/srv/clients/J Park & Associates/Gone Family/2025/1040 - Gone Trust";
-      shellReturn = (path) => (path === known ? { return_name: "1040 - John & Jane Smith", household: "Smith Family", year: 2025 } : null);
-      const hh = { name: "Smith Family", path: clients, contact: "Jane Smith", returns: [{ path: known, return_name: "1040 - John & Jane Smith", label: "x", year: 2025, active: true }] };
+      shellReturn = (path) => (path === known ? { return_name: "1040 - John & Jane Smith", form: "", taxpayer: "1040 - John & Jane Smith", household: "Smith Family", year: 2025 } : null);
+      const hh = { name: "Smith Family", path: clients, contact: "Jane Smith", returns: [{ path: known, return_name: "1040 - John & Jane Smith", taxpayer: "1040 - John & Jane Smith", label: "x", year: 2025, active: true }] };
       shellHousehold = (path) => (path === clients ? hh : null);
       households = [{ name: "Smith Family", path: clients }, { name: "Gone Family", path: "/srv/clients/Gone Family" }];
       const counts = (n, w) => ({ needs_you: n, waiting: w, received: 1, set_aside: 0 });
@@ -1827,8 +1827,14 @@ def test_every_list_row_carries_the_taxpayer_the_page_would_cut_from_its_own_nam
     2025", a 1040), a name cut at its form ("1040 - Chidi & Ada Okafor"), a
     hyphenated form in the name beside the catalog's ("1120-S - Rivera Design
     LLC", an 1120S), and returns created with no form ("1040 - John Park",
-    "1120S - Park & Lee LLC")."""
+    "1120S - Park & Lee LLC"). Beside them, three rows ``_return_row`` makes
+    for names holding U+FEFF, U+0085 and U+001C at the cut, where Python's own
+    trim and the page's part, show it cuts with the page's (``PAGE_TRIM``)."""
+    from dataclasses import replace
+
     from tests.api_driver import two_households
+    from tracker import firm_pages
+    from tracker.registry import discover_engagements
 
     def ok(*argv, stdin=None):
         code, payload = run(capsys, *argv, stdin=stdin)
@@ -1847,14 +1853,135 @@ def test_every_list_row_carries_the_taxpayer_the_page_would_cut_from_its_own_nam
     states = [one for row in engagements for one in ok("state", api.ENGAGEMENT_FLAG, row["path"])["household"]["returns"]]
     assert len(engagements) == len(households) == 5 and len(states) == 5
     rows = [*engagements, *households, *states]
+    # A name made here is normalised and the name rule refuses U+FEFF, so no reply above holds a character the two
+    # trims part on; three made-up rows show `_return_row` cuts such a name as the page does (PAGE_TRIM).
+    [okafor] = [one for one in discover_engagements(scratch_root).engagements if one.info.return_name == "1040 - Chidi & Ada Okafor"]
+    odd = [api._return_row(replace(okafor, info=replace(okafor.info, return_name=name)))
+           for name in ("1040 - \ufeffChidi Okafor", "1040 - Chidi Okafor\x85", "1040 - \x1cChidi Okafor")]
+    assert all(row["taxpayer"] != firm_pages.taxpayer(row["return_name"], row["form"]) for row in odd), "the trims part on each"
     ran = run_pages_dom(f"""
-      return {json.dumps(rows)}.map((row) => pagesTaxpayer(row.return_name, row.form || ""));
+      return {json.dumps(rows + odd)}.map((row) => pagesTaxpayer(row.return_name, row.form || ""));
     """, tmp_path, setup=f"Object.assign(vocab, {json.dumps(api.vocab())});", functions=["pagesTaxpayer"])
-    assert ran == [row["taxpayer"] for row in rows]
+    assert ran == [row["taxpayer"] for row in rows + odd]
     said = {(row["return_name"], row["form"] or ""): row["taxpayer"] for row in rows}
     assert said == {("Smith Family 2025", "1040"): "Smith Family 2025", ("1040 - Chidi & Ada Okafor", "1040"): "Chidi & Ada Okafor",
                     ("1120-S - Rivera Design LLC", "1120S"): "Rivera Design LLC", ("1040 - John Park", ""): "1040 - John Park",
                     ("1120S - Park & Lee LLC", ""): "1120S - Park & Lee LLC"}, "the pile meets each branch of the rule"
+
+
+def test_a_firm_rows_taxpayer_is_the_pages_own_cut_in_every_window(capsys, scratch_root, tmp_path):
+    """The firm lists' oracle, on the page's own inputs (SPEC-architecture-p6
+    R6.6.4, P355). Needs Review's return headings and the Overview's and
+    Reminders' rows draw ``pagesFirmTaxpayer(path, form)``; before P6.6 they
+    drew ``pagesTaxpayer(pagesReturnName(path), form)`` - the list's name for
+    the return, found by path, cut with the firm row's form. Under node, for
+    every Overview and Reminders row (``pagesReturnCells``) and every Needs
+    Review group (``pagesReturnHeading``) the two are equal, with the list and
+    the firm reply from one moment and in each window where they are not:
+
+    - (i) the launch's last counts (``firm-last``), taken before a return was
+      renamed by Accept Folder Name, drawn beside the list read after it;
+    - (ii) the firm rows taken before that accept, beside the list its reply
+      carried;
+    - (iii) a firm row whose path the list does not hold (its return left out
+      of ``engagements``), whose recorded name differs from its folder's: the
+      page cuts the folder's name, as it always has (the second branch);
+    - a list row whose form differs from the firm row's (made up): the page
+      cuts the list's name with the firm row's form (the second branch).
+
+    **Why the firm reply carries no taxpayer.** A firm row is from the firm
+    walk, and the walk's name for a return (``firm_pages._Walk.name_of``) is
+    the list's only when both replies are from one moment. In (i) and (ii) a
+    taxpayer cut from it would show the name before the accept, and in (iii)
+    the record's name where the page shows the folder's; the test shows each
+    differs from what is drawn. The list's own row is the page's input, so
+    reading it changes nothing in any window, and where the list cannot
+    answer, the page keeps its own cut.
+
+    **The pile,** made through the API and a pass, as the oracles above make
+    theirs: the sample (a 1040 whose name does not begin with its form) and
+    the firm view's practice (returns with no form, a file parked in two of
+    them), a 1040 cut at its form whose folder a person renamed, and an 1120S
+    named "1120-S - ..." whose reminder a pass drafted, so every list has a
+    row."""
+    import datetime as dt
+
+    from tests.api_driver import _a_practice_for_the_firm_view, _aged, where
+    from tests.passes import a_pass
+    from tracker import firm_pages
+    from tracker.registry import discover_engagements
+    from tracker.runner import last_draft_day
+
+    def ok(*argv, stdin=None):
+        code, payload = run(capsys, *argv, stdin=stdin)
+        assert code == 0, (argv, payload)
+        return payload
+
+    def rows(command):
+        """The firm rows each list draws a taxpayer for, from one page of each."""
+        pages = {name: ok(command, stdin={"page": {"list": name}}) for name in ("overview", "reminders", "needs_review")}
+        assert all(one.get("last", True) for one in pages.values()), "firm-last answered"
+        return {"overview": [row for row in pages["overview"]["page"]["rows"] if row["kind"] == "return"],
+                "reminders": pages["reminders"]["page"]["rows"], "needs_review": pages["needs_review"]["page"]["rows"]}
+
+    smith = sample_engagement(capsys, scratch_root, tmp_path)
+    assert scan(capsys, smith)[0] == 0
+    _a_practice_for_the_firm_view(capsys, scratch_root)
+    for household, contact, name, form in (("Okafor Family", "Ada", "1040 - Chidi & Ada Okafor", "1040"),
+                                           ("Rivera Design", "Marco", "1120-S - Rivera Design LLC", "1120S")):
+        ok("create", stdin={"household": household, "contact": contact, "return_name": name, "form": form, "due": "2026-03-15",
+                            "items": [{"identifier": "A01", "document": "W-2"}]})
+    rivera = where(scratch_root, "1120-S - Rivera Design LLC", household="Rivera Design")
+    [drafting] = [one for one in discover_engagements(scratch_root).engagements if one.path == rivera]
+    a_pass(drafting, today=last_draft_day(dt.date.today()))
+    # A person renames the return's folder: the record keeps its name until the folder's is accepted.
+    okafor = where(scratch_root, "1040 - Chidi & Ada Okafor", household="Okafor Family")
+    renamed = okafor.rename(okafor.parent / "1040 - Chidi & Ada Okafor-Bell")
+    _aged(scratch_root)
+    assert ok("firm")["returns"], "the firm view keeps the practice, for firm-last"
+    before = ok("list")["engagements"]
+    firm = rows("firm")
+    last = rows("firm-last")
+    pause = ok("state", api.ENGAGEMENT_FLAG, str(renamed))["household"]["pause"]
+    accepted = ok("accept-folder-name", api.ENGAGEMENT_FLAG, str(renamed), stdin={"seq": pause["seq"], "scope": "return"})
+    after = ok("list")["engagements"]
+    assert accepted["list"]["engagements"] == after
+    other_form = [{**one, "form": "1065", "taxpayer": firm_pages.taxpayer(one["return_name"], "1065", chars=firm_pages.PAGE_TRIM)}
+                  if one["path"] == str(renamed) else one for one in before]
+    cases = {"fresh": (before, firm), "i": (after, last), "ii": (accepted["list"]["engagements"], firm),
+             "iii": ([one for one in before if one["path"] != str(renamed)], firm), "other form": (other_form, firm)}
+
+    ran = run_pages_dom(f"""
+      const CASES = {json.dumps(cases)};
+      const out = {{}};
+      for (const [name, [listed, firm]] of Object.entries(CASES)) {{
+        shellReturn = (path) => listed.find((one) => one.path === path) || null;
+        const branch = (path, form) => {{ const one = shellReturn(path); return one && (one.form || "") === (form || "") ? 1 : 2; }};
+        const cells = [...firm.overview, ...firm.reminders].map((one) => [one.path, pagesReturnCells(one).name, pagesFirmTaxpayer(one.path, one.form || ""),
+                                                                          pagesTaxpayer(pagesReturnName(one.path), one.form || ""), branch(one.path, one.form)]);
+        const heads = firm.needs_review.map((group) => [group.path, pagesReturnHeading(group.path, group.year, group.form)[1].textContent,
+                                                        pagesFirmTaxpayer(group.path, group.form), pagesTaxpayer(pagesReturnName(group.path), group.form),
+                                                        branch(group.path, group.form)]);
+        out[name] = {{ cells, heads }};
+      }}
+      return out;
+    """, tmp_path, setup=f"Object.assign(vocab, {json.dumps(api.vocab())});")
+    for name, drawn in ran.items():
+        for path, shown, new, today, _branch in [*drawn["cells"], *drawn["heads"]]:
+            assert shown == new == today, (name, path)
+    # Every list and window is met, and each case reaches the branch it names.
+    assert all(firm[name] for name in firm) and all(last[name] for name in last)
+    branches = {name: {path: branch for path, *_said, branch in [*drawn["cells"], *drawn["heads"]]} for name, drawn in ran.items()}
+    assert set(branches["fresh"].values()) == set(branches["i"].values()) == set(branches["ii"].values()) == {1}
+    assert branches["iii"][str(renamed)] == branches["other form"][str(renamed)] == 2
+    assert {branch for path, branch in branches["iii"].items() if path != str(renamed)} == {1}
+    # The windows are real: a taxpayer cut on the firm walk's names would show another name.
+    said = {name: {path: shown for path, shown, *_rest in drawn["cells"]} for name, drawn in ran.items()}
+    walked = firm_pages.taxpayer("1040 - Chidi & Ada Okafor", "1040")
+    assert said["fresh"][str(renamed)] == walked == "Chidi & Ada Okafor"
+    assert said["i"][str(renamed)] == said["ii"][str(renamed)] == "Chidi & Ada Okafor-Bell" != walked
+    assert said["iii"][str(renamed)] == "Chidi & Ada Okafor-Bell" != walked, "the folder's name, as the page cuts it"
+    assert said["other form"][str(renamed)] == "Chidi & Ada Okafor", "the list's name, cut with the firm row's form"
 
 
 # ── S5: the links, the side sheet, the right-click menus and the dialogs ───────
@@ -2074,7 +2201,7 @@ def test_the_link_kinds_are_built_from_the_apis_keys_and_navigate_without_the_en
 
 def test_running_a_link_reveals_a_file_and_only_navigates_for_a_household_or_a_return(tmp_path):
     ran = run_pages_dom("""
-      shellReturn = (path) => ({ return_name: "1120-S - Rivera Design LLC", household: "hh", year: 2025 });
+      shellReturn = (path) => ({ return_name: "1120-S - Rivera Design LLC", form: "1120S", taxpayer: "Rivera Design LLC", household: "hh", year: 2025 });
       pagesRunLink({ kind: "file", key: "k1", paths: { k1: "/abs/one.pdf" } });
       pagesRunLink({ kind: "file", key: "missing", paths: {} });
       pagesRunLink({ kind: "household", path: "hh" });
@@ -2115,7 +2242,7 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
     ran = run_pages_dom("""
       const known = "/c/Smith/2025/1040 - Smith";
       vocab.reminder = { stages: [{ number: 1, short: "Heads Up" }] };
-      shellReturn = (path) => ({ return_name: "1040 - Smith", household: "/c/Smith", year: 2025 });
+      shellReturn = (path) => ({ return_name: "1040 - Smith", form: "1040", taxpayer: "Smith", household: "/c/Smith", year: 2025 });
       households = [{ name: "Smith Family", path: "/c/Smith" }];
       const firmData = { paths: { "shown_copy h1": "/abs/h1.pdf" }, returns: [
         { path: known, household: "Smith Family", year: 2025, form: "1040", label: "Smith Family 2025 1040 - Smith", counts: { needs_you: 2, waiting: 0, received: 0, set_aside: 0 }, oldest: "2026-03-03", due: null,
@@ -3395,7 +3522,7 @@ def test_a_needs_review_group_that_cannot_be_built_is_named_by_its_return_and_ne
     functions = re.findall(r"^function (\w+)\(", pages_text, flags=re.M) + ["h", "icon", "screenWords", "folderName"]
     ran = run_pages_dom(r"""
       const known = "C:\\Clients\\J Park & Associates\\Smith Family\\2025\\1040 - John & Jane Smith";
-      shellReturn = (path) => (path === known ? { return_name: "1040 - John & Jane Smith", household: "Smith Family", year: 2025 } : null);
+      shellReturn = (path) => (path === known ? { return_name: "1040 - John & Jane Smith", form: "", taxpayer: "1040 - John & Jane Smith", household: "Smith Family", year: 2025 } : null);
       households = [{ name: "Smith Family", path: "C:\\Clients\\J Park & Associates\\Smith Family" }];
       shellFirmData = { returns: [{ path: known, household: "Smith Family", year: 2025, counts: { needs_you: 1, waiting: 0, received: 0, set_aside: 0 }, files: 1, oldest: "2026-03-03", due: null,
                                     draft: { ready: false, stage: 0, held: 0, drafted: null }, problem: "" }],
@@ -4142,8 +4269,8 @@ def test_needs_review_household_and_year_pages_say_each_field_once(tmp_path):
     ran = run_lists("""
       const review = draw("needs-review");
       const heads = review.byClass("group-title").map((t) => t.kids.map((k) => [k.className, k.textContent]));
-      const hh = { name: "Alpha", path: "c/Alpha", returns: [{ path: "r/1040 - Alpha", year: 2025, return_name: "1040 - Alpha", form: "1040", active: true },
-                                                             { path: "r/old", year: 2024, return_name: "1040 - Alpha", form: "1040", active: true }] };
+      const hh = { name: "Alpha", path: "c/Alpha", returns: [{ path: "r/1040 - Alpha", year: 2025, return_name: "1040 - Alpha", form: "1040", taxpayer: "Alpha", active: true },
+                                                             { path: "r/old", year: 2024, return_name: "1040 - Alpha", form: "1040", taxpayer: "Alpha", active: true }] };
       shellHousehold = () => hh;
       shellRoute = { level: "household", household: "c/Alpha" };
       const page = pagesHousehold(shellRoute);
@@ -4409,9 +4536,9 @@ def test_the_order_chosen_by_a_header_is_kept_on_this_pc_across_a_restart(tmp_pa
 
 SORT_SAID = r"""
 const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? '');
-const known = { r24: { year: 2024, form: "1040", return_name: "1040 - John A. Smith" },
-                r25: { year: 2025, form: "1040", return_name: "1040 - John A. Smith" },
-                b24: { year: 2024, form: "", return_name: "Smith Bakery Books" } };
+const known = { r24: { year: 2024, form: "1040", return_name: "1040 - John A. Smith", taxpayer: "John A. Smith" },
+                r25: { year: 2025, form: "1040", return_name: "1040 - John A. Smith", taxpayer: "John A. Smith" },
+                b24: { year: 2024, form: "", return_name: "Smith Bakery Books", taxpayer: "Smith Bakery Books" } };
 function shellReturn(path) { return known[path] || null; }
 const run = (over) => ({ path: "r25", label: "Smith Family 2025 1040 - John A. Smith", ok: true, error: "", code: "", skipped: "", filed: 0,
   review: 0, waiting: 0, file_errors: [], warnings: [], cancelled: false, ...over });
@@ -4426,8 +4553,8 @@ def test_another_returns_line_keeps_its_bullet_and_says_the_return_by_its_fields
     the year, the taxpayer and the form, each once; the household is the
     page's own. A return the list does not hold keeps its label."""
     words = api.vocab()
-    setup = (f"const vocab = {{ scan: {json.dumps(words['scan'])}, layout: {json.dumps(words['layout'])} }};\n"
-             + SORT_SAID + js_function("pagesTaxpayer", "pages.js") + r"""
+    setup = (f"const vocab = {{ scan: {json.dumps(words['scan'])} }};\n"
+             + SORT_SAID + r"""
       let scanning = null, active = "r25", viewGeneration = 1, kept = [];
       function scanDone() {}
       function shellWriteLanded() {}
@@ -4931,7 +5058,7 @@ def test_a_return_row_waiting_for_its_counts_shows_an_outline_never_a_blank(tmp_
     bar - never a pill, never a blank; with the counts failed it is empty (the
     notice says why); with them in, it is the status."""
     probe = """
-      const one = { path: "r1", return_name: "1040 - John & Jane Smith", form: "1040", year: 2025, active: true };
+      const one = { path: "r1", return_name: "1040 - John & Jane Smith", form: "1040", taxpayer: "John & Jane Smith", year: 2025, active: true };
       const cell = (status, data) => {
         firmNow = { status, data };
         const [spec] = pagesReturnSpecs([one]);
@@ -7673,8 +7800,8 @@ def test_escape_never_dismisses_a_notice():
 CARD_HOUSEHOLD = r"""
   const LINK = "LINKTOKEN-share-me";
   const hh = { name: "Alpha", path: "c/Alpha", contact: "A Person", members: ["A Person", "Another"], link: LINK,
-               returns: [{ path: "r/1040 - Alpha", year: 2025, return_name: "1040 - Alpha", form: "1040", active: true },
-                         { path: "r/old", year: 2024, return_name: "1040 - Alpha", form: "1040", active: true }] };
+               returns: [{ path: "r/1040 - Alpha", year: 2025, return_name: "1040 - Alpha", form: "1040", taxpayer: "Alpha", active: true },
+                         { path: "r/old", year: 2024, return_name: "1040 - Alpha", form: "1040", taxpayer: "Alpha", active: true }] };
   shellHousehold = () => hh;
   shellRoute = { level: "household", household: "c/Alpha" };
   lastState = { household: { path: "c/Alpha", shared_on: "2026-02-01" } };
@@ -7897,7 +8024,7 @@ def test_a_list_of_one_hundred_rows_is_drawn_whole_and_may_wrap(tmp_path):
     rows are registered, not drawn, until the page measures them."""
     ran = run_pages_dom("""
       const year = (n) => {
-        const hh = { name: "Smith Family", returns: Array.from({ length: n }, (_, i) => ({ path: `r${i}`, year: 2025, return_name: `1040 - Person ${i}`, active: true })) };
+        const hh = { name: "Smith Family", returns: Array.from({ length: n }, (_, i) => ({ path: `r${i}`, year: 2025, return_name: `1040 - Person ${i}`, taxpayer: `1040 - Person ${i}`, active: true })) };
         shellHousehold = () => hh;
         pagesUid = 0; pagesTokens.clear();
         const list = pagesYear({ level: "year", household: "h1", year: 2025 })[2].kids[0];
@@ -8438,7 +8565,7 @@ def test_the_household_and_year_pages_read_their_counts_from_return_counts(tmp_p
     state's tally with the firm's counts, read `return_counts` - the compact list the engine sends
     with every page - never a list of whole returns."""
     ran = run_pages_dom("""
-      const one = { path: "r1", return_name: "1040 - John & Jane Smith", form: "1040", year: 2025, active: true };
+      const one = { path: "r1", return_name: "1040 - John & Jane Smith", form: "1040", taxpayer: "John & Jane Smith", year: 2025, active: true };
       globalThis.shellRoute = { level: "household", household: "h1" };
       shellFirmNow = { status: "ok", data: { totals: {}, return_counts: [{ path: "r1", counts: { needs_you: 3, waiting: 0 }, problem: "" }, { path: "r2", counts: { needs_you: 0, waiting: 0 }, problem: "Could Not Be Read" }], replies: {} } };
       const [spec] = pagesReturnSpecs([one]);
@@ -8446,7 +8573,7 @@ def test_the_household_and_year_pages_read_their_counts_from_return_counts(tmp_p
       const differ = (tally) => shellCountsDiffer({ paths: { engagement: "r1" }, tally });
       return { status: spec.status, broken: broken.status, same: differ({ needs_you: 3, waiting: 0 }), moved: differ({ needs_you: 2, waiting: 0 }) };
     """, tmp_path, setup="let shellFirmNow = null; const shellFirm = () => shellFirmNow;",
-        functions=["pagesReturnSpecs", "pagesEach", "pagesSafe", "pagesLabel", "pagesSafeName", "pagesByName", "pagesFirmReturn", "pagesCounts", "pagesTaxpayer",
+        functions=["pagesReturnSpecs", "pagesEach", "pagesSafe", "pagesLabel", "pagesSafeName", "pagesByName", "pagesFirmReturn", "pagesCounts",
                    "pagesReturnName", "screenWords", "shellCountsDiffer"])
     assert ran == {"status": "3 need you", "broken": "Could Not Be Read", "same": False, "moved": True}
 
@@ -8472,7 +8599,8 @@ def test_search_on_needs_review_finds_files_on_every_page(tmp_path):
     """, tmp_path, setup="""
       let shellFirmNow = null; let shellFound = []; let shellFindTimer = null; const hideTip = () => {};
       const shellFirm = () => shellFirmNow;
-      const engagements = [{ path: "r1", return_name: "1040 - John Smith", household: "h1", year: 2025 }, { path: "r2", return_name: "1040 - Pat Jones", household: "h2", year: 2025 }];
+      const engagements = [{ path: "r1", return_name: "1040 - John Smith", form: "1040", taxpayer: "John Smith", household: "h1", year: 2025 },
+                           { path: "r2", return_name: "1040 - Pat Jones", form: "1040", taxpayer: "Pat Jones", household: "h2", year: 2025 }];
       const shellOwnReturns = () => [];
     """, functions=["drawFound", "fold", "foldedName", "findOptions", "shellFirmHolds", "screenWords", "h"])
     assert [one[0] for one in ran["onReview"]] == ["Smith W-2.pdf", "Smith K-1.pdf", "1040 - John Smith"], "a file that is not on the page shown is found, before the returns"

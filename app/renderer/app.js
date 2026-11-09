@@ -2339,7 +2339,7 @@ function scanFailed(run) {
 function sortReturnSaid(run) {
   const one = shellReturn(run.path);
   if (!one) return run.label;
-  return [one.year, pagesTaxpayer(one.return_name, one.form || ""), one.form].filter(Boolean).join(" ");
+  return [one.year, one.taxpayer, one.form].filter(Boolean).join(" ");
 }
 
 // What a Sort & Scan pass said, as the banner's lines and its colour: the
