@@ -35,7 +35,7 @@ def tour_lines(content_: dict):
 def test_the_pilot_content_is_json_between_its_markers():
     data = content()
     assert set(data) == {"edition", "contact", "terms", "tour"}
-    assert set(data["tour"]) == {"steps"}
+    assert set(data["tour"]) == {"count", "steps"}
 
 
 def test_the_edition_version_is_a_plain_version_number():

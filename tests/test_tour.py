@@ -5,10 +5,15 @@ step is complete, every element it points at exists on the page, and that the
 script only points - it never presses, dispatches or calls the tracker.
 """
 
+import json
 import re
+import subprocess
+import tempfile
 from pathlib import Path
 
-from tests.node_harness import content, read
+import pytest
+
+from tests.node_harness import NODE, content, read
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -64,8 +69,9 @@ def test_every_tour_title_and_line_is_in_title_case_but_the_inbox_folders_own_na
 
 def test_the_tour_has_no_stage_strip_and_no_callouts_left():
     """The strength, limit and fallback lines and the stage chips are gone
-    (P63, SPEC-shell 12), from the content and from the script."""
-    assert set(tour()) == {"steps"}
+    (P63, SPEC-shell 12), from the content and from the script: the tour
+    holds its steps and the count line's words (SPEC-architecture-p6 R6.4.1)."""
+    assert set(tour()) == {"count", "steps"}
     js = read("tour.js")
     for gone in ("stagesStrip", "callout(", "fallback", "PILOT.tour.stages", "step.strength", "step.limit"):
         assert gone not in js, gone
@@ -98,13 +104,47 @@ def test_the_tour_text_carries_no_placeholder_but_the_email():
             for item in node.values():
                 yield from strings(item)
 
-    # The terms' "signed" line is the one other filled sentence: pilot.js puts
-    # the signed name and the day into it (P188), so it is checked on its own.
+    # Two other sentences are filled, each checked on its own: the terms'
+    # "signed" line, which pilot.js puts the signed name and the day into
+    # (P188), and the tour's count line, which tour.js puts the step's number
+    # and the number of steps into (SPEC-architecture-p6 R6.4.1).
     text = content()
     signed = text["terms"].pop("signed")
     assert set(re.findall(r"\{[^}]*\}", signed)) == {"{name}", "{date}"}, signed
+    count = text["tour"].pop("count")
+    assert set(re.findall(r"\{[^}]*\}", count)) == {"{n}", "{total}"}, count
     tokens = {t for s in strings(text) for t in re.findall(r"\{[^}]*\}", s)}
     assert tokens <= {"{email}"}, tokens
+
+
+def test_the_count_line_says_what_it_said_before_its_words_moved():
+    """R6.4.1: the count's words are the pilot's, in pilot-content.js, and
+    tour.js fills them, so the card says exactly what it said while tour.js
+    typed them (``Step ${index + 1} of ${all.length}``). The one line that
+    makes the count is lifted from tour.js and run under node against the
+    content file as it is: the second of nine steps, and the first of the
+    tour's own."""
+    if NODE is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    lines = [line for line in read("tour.js").splitlines() if '"pilot-tour-count"' in line]
+    assert len(lines) == 1, lines
+    probe = f"""
+const PILOT = require({json.dumps(str(REPO / "app" / "renderer" / "pilot-content.js"))});
+const shown = [];
+const card = {{ appendChild: (text) => shown.push(text) }};
+const make = (tag, className, text) => text;
+for (const [index, all] of [[1, new Array(9)], [0, PILOT.tour.steps]]) {{
+{lines[0]}
+}}
+process.stdout.write(JSON.stringify(shown));
+"""
+    with tempfile.TemporaryDirectory() as folder:
+        script = Path(folder) / "count.js"
+        script.write_text(probe, encoding="utf-8", newline="\n")
+        done = subprocess.run([NODE, str(script)], capture_output=True, text=True, encoding="utf-8", timeout=60,
+                              check=False)
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout) == ["Step 2 of 9", f"Step 1 of {len(tour()['steps'])}"]
 
 
 def test_the_spot_follows_its_anchors_corner():

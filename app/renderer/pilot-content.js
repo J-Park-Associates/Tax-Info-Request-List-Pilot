@@ -75,6 +75,7 @@ const PILOT =
     "close": "Close"
   },
   "tour": {
+    "count": "Step {n} of {total}",
     "steps": [
       {
         "id": "welcome",

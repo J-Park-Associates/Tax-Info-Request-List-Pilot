@@ -7,8 +7,9 @@
 // talks to the tracker - that it was seen is pilot.js's to keep (P46), and
 // while it is open the layer under the card takes
 // every click, so a tester reading a step cannot set something off by
-// accident. The wording lives in pilot-content.js (P8); the buttons and the
-// step count below are UI labels, not copy.
+// accident. The wording lives in pilot-content.js (P8), the step count's
+// with it ("Step {n} of {total}", filled below; SPEC-architecture-p6
+// R6.4.1); the buttons below are UI labels of one word each, not copy.
 //
 // Each step names the ids it can point at, in order. The shell's parts (the
 // side panel, the path, the page; the Sort Now button on a household's pages) are on the screen,
@@ -55,7 +56,7 @@ const PilotTour = (() => {
     anchor = findAnchor(step);
 
     card.replaceChildren();
-    card.appendChild(make("div", "pilot-tour-count", `Step ${index + 1} of ${all.length}`));
+    card.appendChild(make("div", "pilot-tour-count", PILOT.tour.count.replace("{n}", index + 1).replace("{total}", all.length)));
     const title = make("h2", "", step.title);
     title.id = "pilot-tour-title";
     card.appendChild(title);

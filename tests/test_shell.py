@@ -666,8 +666,9 @@ _PLAIN_WORD = re.compile(r"^[A-Za-z][A-Za-z'\u2019]*[.,;:!?\u2026]*$")
 _LITERAL = re.compile(r'"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'|`(?:[^`\\]|\\.)*`')
 #: What a literal that is a query's whole selector argument follows.
 _SELECTOR_CALL = re.compile(r"\.(?:querySelector|querySelectorAll|closest|matches)\(\s*$")
-#: A call whose arguments are an error's text: one thrown or one logged.
-_ERROR_CALL = re.compile(r"(?<![\w$.])(?:new Error|console\.[A-Za-z]+)\(")
+#: A call whose arguments are an error's text: one thrown or one logged, to
+#: the console or to the error log through the shell (R6.4.2).
+_ERROR_CALL = re.compile(r"(?<![\w$.])(?:new Error|console\.[A-Za-z]+|window\.tracker\.logError)\(")
 
 #: The one label a ruling lets the page type (R3.4): the reassign picker's
 #: aria-label and first option, app.js's BELONGS_TO, in Title Case by Jason's
@@ -675,6 +676,11 @@ _ERROR_CALL = re.compile(r"(?<![\w$.])(?:new Error|console\.[A-Za-z]+)\(")
 #: test_every_phrase_the_page_and_the_dialogs_draw_from_index_html_and_app_js_is_in_title_case
 #: already pins.
 RULED_LABELS = ('"Belongs To\u2026"',)
+
+#: The scripts the typed-words guard reads: every one the page loads but
+#: pilot-content.js, the pilot's wording by design (P8), whose words test_pilot
+#: holds. The pilot's own pilot.js and tour.js are read as the app's are (R6.4.2).
+TYPED_WORDS_READ = tuple(name for name in RENDERER_SCRIPTS if name != "pilot-content.js")
 
 
 def typed_literals(text: str) -> list[str]:
@@ -686,8 +692,9 @@ def typed_literals(text: str) -> list[str]:
     what it says, since none is on screen (R3.4): a literal that is the whole
     selector argument of ``querySelector``, ``querySelectorAll``, ``closest``
     or ``matches``; the text of an error, every literal inside the brackets
-    of ``new Error(...)`` (``throw new Error(...)`` included) or of
-    ``console.*(...)``; and ``"use strict"`` as the script's first statement.
+    of ``new Error(...)`` (``throw new Error(...)`` included), of
+    ``console.*(...)`` or of ``window.tracker.logError(...)``; and
+    ``"use strict"`` as the script's first statement.
     A pattern over the text - "a literal that looks like a selector" - would
     pass a sentence that happened to look like one, so there is none. A
     template's ``${...}`` counts as no word, and a literal inside it is not
@@ -728,14 +735,15 @@ def typed_literals(text: str) -> list[str]:
 def test_the_apps_scripts_type_no_words_of_their_own():
     """P63: every word on screen is the API's. A string literal of two or
     more plain words in a script the app loads would be one the page typed
-    (R3.4). Every script but the pilot's three, whose words are
-    pilot-content.js's by design and test_pilot's to hold: read across them
-    all, so a sentence is found in whichever script it moves to. The one
+    (R3.4). Every script but pilot-content.js, the pilot's wording by design
+    and test_pilot's to hold; the pilot's pilot.js and tour.js are read too
+    (R6.4.2), so the tour's count is the content file's words: read across
+    them all, so a sentence is found in whichever script it moves to. The one
     literal typed today is the label a ruling lets the page type, found
     exactly once: D-9's sentences are the API's since J5 (R5.5), and nothing
     may join that label."""
     assert len(RULED_LABELS) == 1
-    found = [literal for name in APP_SCRIPTS for literal in typed_literals(stripped_js(name))]
+    found = [literal for name in TYPED_WORDS_READ for literal in typed_literals(stripped_js(name))]
     listed = [*RULED_LABELS]
     assert [one for one in found if one not in listed] == [], "a literal the page typed"
     assert sorted(found) == sorted(listed), "each listed literal is in a script, once"
@@ -782,10 +790,10 @@ def test_the_typed_words_guard_passes_a_whole_selector_argument_and_nothing_besi
     assert typed_literals(f'row.{query}("tbody input" + "Typed here");\n') == ['"tbody input"', '"Typed here"']
 
 
-@pytest.mark.parametrize("call", ["new Error", "console.error", "console.warn", "console.log"])
+@pytest.mark.parametrize("call", ["new Error", "console.error", "console.warn", "console.log", "window.tracker.logError"])
 def test_the_typed_words_guard_passes_an_errors_text_and_nothing_beside_it(call):
-    """R3.4: the text of a thrown or logged error is for whoever reads the
-    log, never on screen, and is passed over, a bracket inside it included; a
+    """R3.4, R6.4.2: the text of a thrown or logged error is for whoever reads
+    the log, never on screen, and is passed over, a bracket inside it included; a
     sentence just outside the call - the next argument of the call around
     it, the line after - is still one the page typed."""
     error = f'{call}(`el(): attribute not allowed: ${{key}}`, "while drawing the row")'
