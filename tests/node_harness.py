@@ -26,11 +26,11 @@ one declaration (:func:`lift_line`), or the whole of a set of scripts
 is whole, never a slice from a point to the end of a joined text: as phase 6
 carves scripts out of ``app.js`` and ``main.js``, what follows a point in the
 joined text changes, and a claim that something is absent from such a slice
-would go on passing on code it no longer reads (its review 1's S13). Each
-reader finds its code by name across a set of scripts and asserts it is there
-exactly once, so code that moves to another script is read where it lands,
-and a test names a script by its file only where the claim is about the file
-(``test_renderer_seams``' ``FILE_NAMED``).
+would go on passing on code it no longer reads (the phase 6 SPEC's review 1,
+S13). Each reader finds its code by name across a set of scripts and asserts
+it is there exactly once, so code that moves to another script is read where
+it lands, and a test names a script by its file only where the claim is about
+the file (``test_renderer_seams``' ``FILE_NAMED``).
 """
 
 import json
