@@ -44,7 +44,16 @@ named a script the page does not load would be a claim about nothing.
 import re
 from functools import cache
 
-from tests.node_harness import APP_SCRIPTS, PILOT_SCRIPTS, RENDERER_SCRIPTS, REPO, SHELL_SCRIPTS, js_code, read
+from tests.node_harness import (
+    APP_SCRIPTS,
+    PILOT_SCRIPTS,
+    RENDERER_SCRIPTS,
+    REPO,
+    SHELL_SCRIPTS,
+    js_code,
+    read,
+    stripped_js,
+)
 
 HARNESS = REPO / "pilot" / "harness"
 
@@ -326,6 +335,33 @@ def test_the_reader_keeps_code_and_blanks_what_is_not():
         " " * 17 + "const c = text.replace(/" + " " * 6 + "/g, '') / 2;",   # a division after a bracket
         "if (x) return /" + " " * 8 + "/.test(y);",                  # a regular expression after return
     ]
+
+
+def test_stripped_js_takes_out_the_comments_the_reader_finds_and_nothing_inside_a_string(tmp_path):
+    """SPEC-architecture-p6 R6.1.2: stripped_js removes what js_code reads as
+    a comment - a block comment to nothing, a line comment with the blank space
+    before it, as it always took one (here the blank line and the whole-line
+    comment after the template go together) - and keeps a ``//`` or a ``/*``
+    inside a string, a template or a regular expression, where the old reader
+    cut the template's ``/* this */`` and its second line."""
+    script = tmp_path / "made-up.js"
+    script.write_text("\n".join([
+        'const a = "http://x"; // a comment',
+        "/* a block",
+        "   comment */ const b = `see /* this */ and",
+        "// this, still the template`;",
+        "",
+        "// a whole-line comment",
+        "const c = s.split(/\\/\\//);   // and a trailing one",
+        "",
+    ]), encoding="utf-8", newline="\n")
+    assert stripped_js(script) == "\n".join([
+        'const a = "http://x";',
+        " const b = `see /* this */ and",
+        "// this, still the template`;",
+        "const c = s.split(/\\/\\//);",
+        "",
+    ])
 
 
 def test_the_reader_reads_every_script_the_page_loads_and_the_double():

@@ -17,6 +17,20 @@ renderer used to write out for itself (``test_pilot``, ``test_pilot_ui``).
 and regular expressions blanked: the one reader of a script's code, moved byte
 for byte from ``tests/test_renderer_seams.py``, whose tests of it stay there
 (SPEC-architecture-p6 R6.1.2).
+
+**Reading by claim** (SPEC-architecture-p6 R6.1.1, D-5). A claim reads the
+code it is about, not a file: one function (:func:`js_function` for the page,
+:func:`main_function` for the main process), one block (:func:`js_block`),
+one declaration (:func:`lift_line`), or the whole of a set of scripts
+(:func:`renderer_text`, :func:`main_text`). A read is bounded like those or it
+is whole, never a slice from a point to the end of a joined text: as phase 6
+carves scripts out of ``app.js`` and ``main.js``, what follows a point in the
+joined text changes, and a claim that something is absent from such a slice
+would go on passing on code it no longer reads (its review 1's S13). Each
+reader finds its code by name across a set of scripts and asserts it is there
+exactly once, so code that moves to another script is read where it lands,
+and a test names a script by its file only where the claim is about the file
+(``test_renderer_seams``' ``FILE_NAMED``).
 """
 
 import json
@@ -33,6 +47,8 @@ import tracker.api as api
 
 REPO = Path(__file__).resolve().parent.parent
 RENDERER = REPO / "app" / "renderer"
+#: The main process's folder: main.js and every module it requires sit directly in it.
+APP = REPO / "app"
 
 
 def read(name: str) -> str:
@@ -59,6 +75,12 @@ APP_SCRIPTS = tuple(name for name in RENDERER_SCRIPTS if name not in PILOT_SCRIP
 #: The scripts SPEC-shell added beside app.js (P67), the ones its claims about
 #: the new files name.
 SHELL_SCRIPTS = ("shell.js", "tooltip.js", "pages.js", "sheet.js")
+#: app.js and every script index.html lists between the vendored libraries and
+#: it, in load order, so app.js is its last: what a claim about app.js's code,
+#: as against the other app scripts, reads (SPEC-architecture-p6 R6.2.1). The
+#: scripts P6.7-P6.11 carve out of app.js load just before it, so such a claim
+#: follows the code they take. Derived from RENDERER_SCRIPTS, never typed.
+APP_FAMILY = RENDERER_SCRIPTS[:RENDERER_SCRIPTS.index("app.js") + 1]
 
 
 #: A word after which a ``/`` begins a regular expression rather than a division.
@@ -169,6 +191,41 @@ def js_code(text: str) -> str:
     return "".join(out)
 
 
+def _main_scripts() -> tuple[str, ...]:
+    """main.js and every script of ``app/`` it requires by a ``"./name"``
+    string, and every one those require, in the order each is first required,
+    as node loads them. A require is read from the code (:func:`js_code`), so
+    one in a comment is not one; ``./package.json`` is data, not a script."""
+    order: list[str] = []
+
+    def walk(name: str) -> None:
+        if name in order:
+            return
+        order.append(name)
+        text = (APP / name).read_text(encoding="utf-8")
+        for found in re.finditer(r"""\brequire\((["'])""", js_code(text)):
+            required = text[found.end():text.index(found.group(1), found.end())]
+            if required.startswith("./") and "/" not in required[2:] and not required.endswith(".json"):
+                walk(required[2:] if required.endswith(".js") else f"{required[2:]}.js")
+
+    walk("main.js")
+    return tuple(order)
+
+
+#: The main process's scripts: main.js and every script of app/ it requires,
+#: transitively, in the order first required (SPEC-architecture-p6 R6.1.1). A
+#: module P6.13-P6.15 carve out of main.js joins it as soon as main.js requires
+#: it, so a claim about the main process reads it without anyone adding it.
+MAIN_SCRIPTS = _main_scripts()
+
+
+def _text(name: str) -> str:
+    """One of the app's scripts by its name, read from its own folder: ``app/``
+    for the main process's (:data:`MAIN_SCRIPTS`), ``app/renderer/`` for the
+    page's."""
+    return (APP / name).read_text(encoding="utf-8") if name in MAIN_SCRIPTS else read(name)
+
+
 def renderer_text(scripts: tuple[str, ...] = RENDERER_SCRIPTS) -> str:
     """The renderer's scripts as one text, every one the page loads unless
     ``scripts`` names a part: what a claim about the renderer as a whole reads,
@@ -176,13 +233,69 @@ def renderer_text(scripts: tuple[str, ...] = RENDERER_SCRIPTS) -> str:
     return "\n".join(read(name) for name in scripts)
 
 
+def main_text() -> str:
+    """The main process's scripts as one text (:data:`MAIN_SCRIPTS`): what a
+    claim about the main process as a whole reads, so code that moves out of
+    main.js into a module it requires is read where it lands."""
+    return "\n".join(_text(name) for name in MAIN_SCRIPTS)
+
+
+class _NotedComments(str):
+    """A script's text that notes where :func:`js_code` opens a comment. The
+    reader asks ``startswith("//", i)``, then ``startswith("/*", i)``, at each
+    place it reads as code and nowhere else (a string, a template's text and a
+    regular expression it reads a character at a time), so each yes is the
+    first character of a comment: what is a comment is decided once, by the
+    reader, unchanged. ``starts`` holds them in order."""
+
+    starts: list[int]
+
+    def startswith(self, prefix, *where):
+        found = super().startswith(prefix, *where)
+        if found and prefix in ("//", "/*"):
+            self.starts.append(where[0])
+        return found
+
+
+#: A line comment as stripped_js has always taken one, with the blank space
+#: before it: from the start of a line, or from just after ``;``, ``{``, ``}``,
+#: ``)`` or ``,``, across any blank lines between, to the comment's end.
+_LINE_COMMENT = re.compile(r"(?m)^\s*//.*$|(?<=[;{}),])\s*//.*$")
+
+
 def stripped_js(name: str | Path) -> str:
-    """The file without its comments (no string in these files holds //): a
-    name is a script in ``app/renderer/``, and a path is read as it is, for a
-    script :func:`read` cannot reach (``app/main.js``)."""
-    text = name.read_text(encoding="utf-8") if isinstance(name, Path) else read(name)
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    return re.sub(r"(?m)^\s*//.*$|(?<=[;{}),])\s*//.*$", "", text)
+    """The file without its comments: a name is a script in ``app/renderer/``,
+    and a path is read as it is, for a script :func:`read` cannot reach
+    (``app/main.js``).
+
+    What is a comment is :func:`js_code`'s answer (SPEC-architecture-p6
+    R6.1.2), so a ``//`` or a ``/*`` inside a string, a template or a regular
+    expression is not one (``shell.js``'s ``"http://www.w3.org/2000/svg"``).
+    What is removed of one is what always was: a block comment goes to nothing,
+    then a line comment goes to the end of its line as :data:`_LINE_COMMENT`
+    takes it, so the text every claim on it reads is the one it always read."""
+    source = name.read_text(encoding="utf-8") if isinstance(name, Path) else read(name)
+    noted = _NotedComments(source)
+    noted.starts = []
+    js_code(noted)
+    # A block comment to nothing; each line comment's // found again in what is left.
+    kept, at, length, lines = [], 0, 0, set()
+    for start in noted.starts:
+        if source.startswith("/*", start):
+            kept.append(source[at:start])
+            length += start - at
+            at = source.index("*/", start + 2) + 2
+        else:
+            lines.add(length + start - at)
+    text = "".join(kept) + source[at:]
+    out, at, pos = [], 0, 0
+    while found := _LINE_COMMENT.search(text, pos):
+        if found.start() + len(found.group()) - len(found.group().lstrip()) in lines:
+            out.append(text[at:found.start()])
+            at = pos = found.end()
+        else:
+            pos = found.start() + 1
+    return "".join(out) + text[at:]
 
 
 NODE = shutil.which("node")
@@ -210,16 +323,32 @@ sys.stdout.write(json.dumps(reply))
 ENGINE_ENV = {**os.environ, "FIRM_PY": sys.executable, "FIRM_REPO": str(Path(__file__).resolve().parent.parent), "FIRM_SNIPPET": ENGINE_SNIPPET}
 
 
+def _function_in(name: str, scripts: tuple[str, ...], where: str) -> str:
+    """One function exactly as written, from ``function name(`` (or ``async
+    function name(``) to the first ``"\\n}\\n"``, that line included, defined
+    exactly once among ``scripts``."""
+    found = []
+    for script in scripts:
+        text = _text(script)
+        for match in re.finditer(rf"(?m)^[ \t]*((?:async )?function {re.escape(name)}\()", text):
+            found.append((text, match.start(1)))
+    assert len(found) == 1, f"{name} is defined {len(found)} times in {where}"
+    text, start = found[0]
+    return text[start:text.index("\n}\n", start) + 3]
+
+
 def js_function(name: str, file: str | None = None) -> str:
     """One function of the renderer's own scripts exactly as written: from
     ``function name(`` (or ``async function name(``) to the first ``"\\n}\\n"``,
     that line included.
 
-    With ``file`` (``"app.js"``) the function is cut from that script. Without
-    one, every script ``index.html`` loads is searched (:data:`RENDERER_SCRIPTS`,
-    never ``vendor/``). Either way it must be defined exactly once: a name two
-    scripts define (``show``, ``fill`` and ``render`` are) needs the script said,
-    so a test never claims about the one it did not mean.
+    Without ``file`` the app's own scripts are searched (:data:`APP_SCRIPTS`),
+    so a claim reads the function wherever it now sits (SPEC-architecture-p6
+    R6.1.1). The pilot's three are left out: they keep their functions inside
+    their own namespaces, and their ``show``, ``fill`` and ``render`` are why a
+    search of every script needed the file said. With ``file`` (``"pilot.js"``)
+    the function is cut from that script. Either way it must be defined exactly
+    once, so a test never claims about a function it did not mean.
 
     This is the one lifter. It replaced seven (``test_shell``'s, two of
     ``test_single_source``'s, two of ``test_row_columns``', and inline cuts in
@@ -229,14 +358,35 @@ def js_function(name: str, file: str | None = None) -> str:
     read this text, which holds the header and ends at the line of the closing
     brace.
     """
-    found = []
-    for script in (file,) if file else RENDERER_SCRIPTS:
-        text = read(script)
-        for match in re.finditer(rf"(?m)^[ \t]*((?:async )?function {re.escape(name)}\()", text):
-            found.append((text, match.start(1)))
-    assert len(found) == 1, f"{name} is defined {len(found)} times in {file or 'the renderer scripts'}"
+    return _function_in(name, (file,) if file else APP_SCRIPTS, file or "the app's scripts")
+
+
+def main_function(name: str) -> str:
+    """One function of the main process exactly as written, cut as
+    :func:`js_function` cuts one, from whichever of :data:`MAIN_SCRIPTS`
+    defines it, asserting exactly one does: a claim about main.js's code reads
+    the function wherever P6.13-P6.15 move it (SPEC-architecture-p6 R6.1.1)."""
+    return _function_in(name, MAIN_SCRIPTS, "the main process's scripts")
+
+
+def js_block(head: str, scripts: tuple[str, ...] = APP_SCRIPTS) -> str:
+    """One table or block exactly as written, for a claim about a block rather
+    than a function (SPEC-architecture-p6 R6.1.1): from ``head``, a
+    declaration's first line (``const MENU_ANSWERS = {``) found exactly once
+    across ``scripts``, to the block's closing line, that line included - the
+    first later line that starts at the head's own indentation with ``}`` or
+    ``]`` (``};``, ``]);``, ``});`` and ``}`` alike). ``scripts`` is
+    :data:`MAIN_SCRIPTS` for a block of the main process (``const BAR = [``);
+    each script is read from its own folder."""
+    found = [(text, at.start()) for text in map(_text, scripts) for at in re.finditer(re.escape(head), text)]
+    assert len(found) == 1, f"{head!r} is found {len(found)} times in {', '.join(scripts)}"
     text, start = found[0]
-    return text[start:text.index("\n}\n", start) + 3]
+    indent = text[text.rfind("\n", 0, start) + 1:start]
+    assert not indent.strip(), f"{head!r} does not begin its line"
+    closing = re.compile(rf"(?m)^{re.escape(indent)}[}}\]]").search(text, text.index("\n", start) + 1)
+    assert closing, f"{head!r} has no closing line at its own indentation"
+    end = text.find("\n", closing.start())
+    return text[start:len(text) if end < 0 else end + 1]
 
 
 def store_functions() -> str:
@@ -246,12 +396,15 @@ def store_functions() -> str:
 
 
 def run_shell(functions: list[str], setup: str, probe: str, tmp_path: Path, source: str = "shell.js"):
-    """Lift the named functions out of shell.js (or ``source``) as they are,
-    put fakes for what app.js provides around them, and return what the
-    probe prints."""
+    """Lift the named functions out of the app's scripts as they are, each
+    found by name wherever it sits (:func:`js_function`), put fakes for what
+    app.js provides around them, and return what the probe prints. ``source``
+    is accepted and no longer read: P6.2 and P6.3 retarget the callers that
+    still name a script, and P6.3 removes it (SPEC-architecture-p6 R6.1.1,
+    R6.3.4)."""
     if NODE is None:
         pytest.skip("node is not on PATH (CI installs it)")
-    lifted = "\n".join(js_function(name, source if f"function {name}(" in read(source) else "shell.js") for name in functions)
+    lifted = "\n".join(js_function(name) for name in functions)
     if "PAGES_COLLATOR" in lifted:
         lifted = lift_line("const PAGES_COLLATOR = ", "pages.js") + lifted   # a module-level const the lifted sorts compare through
     script = tmp_path / "probe.js"
@@ -263,8 +416,9 @@ def run_shell(functions: list[str], setup: str, probe: str, tmp_path: Path, sour
 
 
 def run_pages(functions: list[str], setup: str, probe: str, tmp_path: Path):
-    """The same, lifting the named functions out of pages.js."""
-    return run_shell(functions, setup, probe, tmp_path, "pages.js")
+    """The same, for a probe of the pages' functions: each is found by name as
+    run_shell finds it."""
+    return run_shell(functions, setup, probe, tmp_path)
 
 
 #: A small DOM, enough for h(), icon() and the pages' own builders: elements
@@ -585,21 +739,24 @@ def run_lists(probe: str, tmp_path: Path, extra: str = ""):
 
 
 def lift(*names: str) -> str:
-    """The named functions as they are written, each from the renderer file
-    that defines it: one of the app's own scripts (the pilot's define
-    ``show``, ``fill`` and ``render`` of their own, inside their namespaces)."""
-    out = []
-    for name in names:
-        source = next((one for one in APP_SCRIPTS if f"function {name}(" in read(one)), None)
-        assert source, name
-        out.append(js_function(name, source))
-    return "\n".join(out)
+    """The named functions as they are written, each found by name in the
+    app's own scripts (:func:`js_function`; the pilot's define ``show``,
+    ``fill`` and ``render`` of their own, inside their namespaces)."""
+    return "\n".join(js_function(name) for name in names)
 
 
-def lift_line(head: str, source: str) -> str:
+def lift_line(head: str, source: str | None = None) -> str:
     """One top-level declaration that starts with ``head``, to its end (a
-    one-line ``let``, or a ``new Set([`` list)."""
-    text = read(source)
+    one-line ``let``, or a ``new Set([`` list). Without ``source`` the head is
+    found exactly once across the app's own scripts (:data:`APP_SCRIPTS`), as
+    :func:`js_function` finds a function (SPEC-architecture-p6 R6.1.1); with
+    one it is read from that script."""
+    if source:
+        text = read(source)
+    else:
+        texts = [read(name) for name in APP_SCRIPTS]
+        assert sum(one.count(head) for one in texts) == 1, f"{head!r} is not found exactly once in the app's scripts"
+        text = next(one for one in texts if head in one)
     start = text.index(head)
     end = text.index("]);\n", start) + 4 if head.endswith("[") else text.index("\n", start) + 1
     return text[start:end]
