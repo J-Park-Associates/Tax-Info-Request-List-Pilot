@@ -39,13 +39,33 @@ here.
 The lists of scripts a claim covers are :data:`tests.node_harness.RENDERER_SCRIPTS`
 - the ones ``index.html`` loads - or a named part of it (R3.2), so a part that
 named a script the page does not load would be a claim about nothing.
+
+**Before phase 6 splits the scripts** (SPEC-architecture-p6 P6.1, D-5), two
+nets go under the moves. A test reads a script by what it claims - the
+function, the block, the code as a whole - and names one by its file only
+where the claim is about the file, listed in ``FILE_NAMED`` with why; the
+named-script guard walks every test file's literals (an ``ast`` walk, so a
+script name in a comment or a docstring is not a read) and fails on any other.
+And every script the page loads runs in order in one node context, as the
+window runs them: a script carved out of ``app.js`` holds declarations only
+and loads before it, so a split that moved a statement ahead of the binding
+it meets at load fails here, not in the window.
 """
 
+import ast
+import json
 import re
+import subprocess
 from functools import cache
+from pathlib import Path
+
+import pytest
 
 from tests.node_harness import (
+    APP_FAMILY,
     APP_SCRIPTS,
+    MAIN_SCRIPTS,
+    NODE,
     PILOT_SCRIPTS,
     RENDERER_SCRIPTS,
     REPO,
@@ -443,3 +463,257 @@ def test_the_double_defines_every_name_the_scripts_beside_it_use_of_app_js_and_o
     missing = sorted(used - set(declared(js_code(stub))))
     assert missing == [], missing
     assert el_attributes(stub) == el_attributes(read("app.js"))
+
+
+# ── the named-script guard (SPEC-architecture-p6 R6.1.3) ──────────────────
+#
+# Phase 6 takes app.js, shell.js and main.js apart, so a test that read one by
+# its file name would lose the code a move takes out of it, and a claim that
+# something is absent would go on passing on code it no longer reads.
+
+#: The sixteen scripts phase 6 creates (SPEC-architecture-p6 section 1), named
+#: before they exist so a test that names one fails from the start. Each joins
+#: RENDERER_SCRIPTS or MAIN_SCRIPTS in the job that creates it; P6.18 deletes
+#: this list once every one has (R6.18.4).
+PLANNED = ("api-client.js", "notices.js", "dialogs.js", "reminder-card.js", "review-rows.js", "household.js", "editor.js",
+           "schedule.js", "pass.js", "firm-loader.js", "shell-words.js", "logs.js", "last-pass-watch.js", "open-path.js",
+           "menu.js", "engine.js")
+#: The scripts phase 6 splits whose readers are not yet retargeted: P6.2 takes
+#: app.js off this list and P6.3 the other two, then deletes it (R6.2.1, R6.3.1).
+NOT_YET = ("app.js", "shell.js", "main.js")
+#: The scripts the page loads that phase 6 does not split: a test may name them.
+NOT_SPLIT = ("tooltip.js", "pages.js", "sheet.js", "pilot-content.js", "pilot.js", "tour.js")
+
+#: Each place a test names a split script on purpose, to why: the claim is
+#: about that file as a file. A place is (test file, function), the function
+#: being the outermost ``def`` the literal sits in, ``None`` for module level
+#: and ``"*"`` for the whole file. A place that no longer names a split script
+#: (or a NOT_YET one) has outlived its claim and fails until it is taken off.
+FILE_NAMED: dict[tuple[str, str | None], str] = {
+    ("node_harness.py", None):
+        "APP_FAMILY is app.js and the scripts listed before it, so it names app.js as the script the family ends at.",
+    ("node_harness.py", "_main_scripts"):
+        "MAIN_SCRIPTS starts at main.js, the main process's entry (package.json's main), and follows what it requires.",
+    ("node_harness.py", "run_menu"):
+        "run_menu runs main.js itself under node, as Electron starts it, so it names the entry point.",
+    ("test_repo_map.py", "*"):
+        "The made-up repositories the map's tests build name their own files, app.js and main.js among them.",
+    ("test_renderer_seams.py", None):
+        "SEAMS and WRITES are keyed by the scripts that share names, and PLANNED and NOT_YET name the scripts this"
+        " guard watches: tables of the page's files, re-derived by each move (SPEC-architecture-p6 section 3).",
+    ("test_renderer_seams.py", "the_double_mode"):
+        "serve.mjs's double takes app.js out of the page by its file name.",
+    ("test_renderer_seams.py", "test_the_double_defines_every_name_the_scripts_beside_it_use_of_app_js_and_of_the_scripts_it_drops"):
+        "The double stands in for app.js and builds with app.js's own EL_ATTRIBUTES.",
+}
+
+
+def split_scripts() -> set[str]:
+    """Every script phase 6 splits, or creates, whose readers are retargeted."""
+    return set(RENDERER_SCRIPTS + MAIN_SCRIPTS + PLANNED) - set(NOT_SPLIT) - set(NOT_YET)
+
+
+def script_literals(text: str, names: set[str]) -> list[tuple[str | None, str, str, int]]:
+    """(function, script, literal, line) for every string literal in a test
+    file's code that is the name of one of ``names`` or ends with ``/`` and
+    one, in the order of their lines. The function is the outermost ``def``
+    around it, its decorators and defaults included; ``None`` at module
+    level."""
+    found = []
+
+    def visit(node: ast.AST, function: str | None) -> None:
+        for child in ast.iter_child_nodes(node):
+            if function is None and isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                visit(child, child.name)
+                continue
+            if isinstance(child, ast.Constant) and isinstance(child.value, str):
+                named = child.value.rsplit("/", 1)[-1]
+                if named in names:
+                    found.append((function, named, child.value, child.lineno))
+            visit(child, function)
+
+    visit(ast.parse(text), None)
+    return sorted(found, key=lambda one: one[3])
+
+
+def file_named_reads(sources: dict[str, str], split: set[str], not_yet: set[str],
+                     listed: dict[tuple[str, str | None], str]) -> tuple[list[str], list[tuple[str, str | None]]]:
+    """The literals of ``sources`` (test file to its text) that name a split
+    script outside a ``listed`` place, and the listed places that name none
+    (a NOT_YET name counts, so a place it still holds has not rotted)."""
+    unlisted, held = [], set()
+    for file, text in sources.items():
+        for function, named, literal, line in script_literals(text, split | not_yet):
+            places = {(file, function), (file, "*")} & set(listed)
+            held |= places
+            if named in split and not places:
+                unlisted.append(f"{file}:{line} ({function or 'module level'}) {literal!r}")
+    return unlisted, sorted(set(listed) - held, key=str)
+
+
+def test_no_test_reads_a_script_this_phase_splits_by_its_file_name():
+    """R6.1.3, D-5: a test names a script phase 6 splits (or one it will
+    create) only where the claim is about that file as a file, listed in
+    FILE_NAMED with why; everywhere else a claim reads the code by what it is
+    (``js_function``, ``main_function``, ``js_block``, ``lift_line``,
+    ``renderer_text``, ``main_text``), so a move cannot take code out from
+    under it. And an exemption never outlives its claim: a listed place that
+    names no split script fails until it is taken off, so a read added there
+    later cannot hide behind it."""
+    assert len(set(PLANNED)) == len(PLANNED) == 16 and not set(PLANNED) & set(NOT_SPLIT), PLANNED
+    assert set(NOT_YET) <= set(RENDERER_SCRIPTS + MAIN_SCRIPTS) and set(NOT_SPLIT) <= set(RENDERER_SCRIPTS)
+    sources = {path.name: path.read_text(encoding="utf-8") for path in sorted((REPO / "tests").glob("*.py"))}
+    unlisted, rotted = file_named_reads(sources, split_scripts(), set(NOT_YET), FILE_NAMED)
+    assert unlisted == [], f"tests that read a split script by its file name, outside FILE_NAMED: {unlisted}"
+    assert rotted == [], f"FILE_NAMED places that no longer name a split script (the claim has rotted): {rotted}"
+
+
+def test_the_named_script_guard_fails_a_read_outside_file_named_and_a_place_that_has_rotted():
+    """The guard itself, on made-up test files and made-up script names."""
+    sources = {
+        "test_one.py": "TABLE = ('carved.js', 'kept.js')\n\n"
+                       "@mark('fixtures/carved.js')\ndef test_named():\n    read('app/carved.js')\n\n"
+                       "def test_listed():\n    def inner():\n        read('carved.js')\n\n"
+                       "def test_clean():\n    read('kept.js')\n    read('uncarved.js')\n    read('carved.json')\n",
+        "test_two.py": "def one():\n    read('carved.js')\n\ndef two():\n    read('src/carved.js')\n\ndef three():\n    read('later.js')\n",
+    }
+    split, later = {"carved.js"}, {"later.js"}
+    every = {("test_one.py", None): "a table", ("test_one.py", "test_named"): "", ("test_one.py", "test_listed"): "",
+             ("test_two.py", "*"): "the whole file"}
+    # Inside a listed place a literal passes: a module-level table, a function (its decorator and a def nested in
+    # it), and every function of a file listed whole.
+    assert file_named_reads(sources, split, later, every) == ([], [])
+    # Outside one it fails: the name alone or a path ending in it, at module level, in a decorator, in a nested def.
+    unlisted, _ = file_named_reads(sources, split, later, {("test_two.py", "*"): ""})
+    assert unlisted == ["test_one.py:1 (module level) 'carved.js'", "test_one.py:3 (test_named) 'fixtures/carved.js'",
+                        "test_one.py:5 (test_named) 'app/carved.js'", "test_one.py:9 (test_listed) 'carved.js'"]
+    # Without its "*" place each function of test_two fails; a not-yet name is never flagged.
+    assert file_named_reads({"test_two.py": sources["test_two.py"]}, split, later, {}) == (
+        ["test_two.py:2 (one) 'carved.js'", "test_two.py:5 (two) 'src/carved.js'"], [])
+    # A listed place that names no split script has rotted, unless a not-yet name still holds it.
+    rotted = {**every, ("test_one.py", "test_clean"): "", ("test_three.py", "*"): "", ("test_two.py", "three"): ""}
+    assert file_named_reads(sources, split, later, rotted) == ([], [("test_one.py", "test_clean"), ("test_three.py", "*")])
+
+
+# ── the load test (SPEC-architecture-p6 R6.1.4) ───────────────────────────
+
+#: The page's scripts in one node context, in order, as the window runs its
+#: classic scripts: one global scope, so a script that meets a binding a later
+#: script makes - a ``let`` it reads, a function it calls - throws here as it
+#: would there. What the page provides is a permissive stand-in (any property
+#: of one is another, calling or constructing one gives one, a value set on one
+#: is kept, and one reads as "" or 0, iterates as empty and is never taken for
+#: a promise), with ``document.readyState`` "loading", so the app's start waits
+#: for a DOMContentLoaded that never comes. The probe exits once the last
+#: script has run (the pilot's timers would hold node open).
+LOAD_PROBE = r"""
+"use strict";
+const fs = require("fs");
+const path = require("path");
+const vm = require("vm");
+const [folder, listed] = process.argv.slice(2);
+function standIn(held = {}) {
+  return new Proxy(function () {}, {
+    get(target, key) {
+      if (Object.prototype.hasOwnProperty.call(held, key)) return held[key];
+      if (key === Symbol.toPrimitive) return (hint) => (hint === "number" ? 0 : "");
+      if (key === Symbol.iterator) return function* () {};
+      if (key === "then") return undefined;
+      return standIn();
+    },
+    set(target, key, value) { held[key] = value; return true; },
+    apply: () => standIn(),
+    construct: () => standIn(),
+  });
+}
+const context = vm.createContext({
+  window: standIn(), document: standIn({ readyState: "loading" }), navigator: standIn(), localStorage: standIn(),
+  console: new console.Console(process.stderr), setTimeout, clearTimeout, setInterval, clearInterval,
+});
+const scripts = JSON.parse(listed);
+for (const name of scripts) {
+  try {
+    new vm.Script(fs.readFileSync(path.join(folder, name), "utf8"), { filename: name }).runInContext(context);
+  } catch (err) {
+    process.stdout.write(`${name} threw while loading: ${(err && err.stack) || err}\n`);
+    process.exit(1);
+  }
+}
+process.stdout.write(`${scripts.length} scripts loaded\n`);
+process.exit(0);
+"""
+
+
+def load_in_order(folder: Path, scripts: list[str], tmp_path: Path) -> subprocess.CompletedProcess:
+    """Run ``scripts`` from ``folder`` in one context, in order (LOAD_PROBE)."""
+    if NODE is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    probe = tmp_path / "load_probe.js"
+    probe.write_text(LOAD_PROBE, encoding="utf-8", newline="\n")
+    return subprocess.run([NODE, str(probe), str(folder), json.dumps(scripts)], capture_output=True, text=True,
+                          encoding="utf-8", timeout=60, check=False)
+
+
+def test_every_script_the_page_loads_runs_in_order_in_one_scope(tmp_path):
+    """R6.1.4: every ``<script src>`` of index.html, the vendored libraries
+    too, loads in order in one scope without throwing. A split that put a
+    script before the one whose binding it meets at load - a carved-out script
+    that ran code, or wiring moved above the function it names - fails here,
+    in the suite, rather than in the window."""
+    scripts = re.findall(r'<script src="([^"]+)"', read("index.html"))
+    assert set(RENDERER_SCRIPTS) < set(scripts)
+    done = load_in_order(REPO / "app" / "renderer", scripts, tmp_path)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert done.stdout == f"{len(scripts)} scripts loaded\n", done.stdout
+
+
+def test_a_script_that_meets_a_later_scripts_binding_at_load_fails_the_load_test(tmp_path):
+    """The load test on made-up scripts: reading a later script's ``let``, or
+    calling a later script's function, as the page loads throws; the same
+    scripts in the other order load, so the probe tells the two apart."""
+    (tmp_path / "early-let.js").write_text("const early = later + 1;\n", encoding="utf-8")
+    (tmp_path / "early-call.js").write_text("start();\n", encoding="utf-8")
+    (tmp_path / "late.js").write_text("let later = 1;\nfunction start() { return later; }\n", encoding="utf-8")
+    for early, unbound in (("early-let.js", "later"), ("early-call.js", "start")):
+        done = load_in_order(tmp_path, [early, "late.js"], tmp_path)
+        assert done.returncode == 1 and done.stdout.startswith(f"{early} threw while loading"), done.stdout + done.stderr
+        assert f"ReferenceError: {unbound} is not defined" in done.stdout, done.stdout
+        assert load_in_order(tmp_path, ["late.js", early], tmp_path).stdout == "2 scripts loaded\n"
+
+
+#: A top-level statement that declares and runs nothing as the page loads.
+DECLARES = re.compile(r"(?:async function|function|class|let|const)\b")
+
+
+def top_level_statements(text: str) -> list[tuple[int, str]]:
+    """(line, first line) of each top-level statement of a script's code
+    (:func:`js_code`'s, so brackets in strings and comments are gone): a line
+    at bracket depth 0 that starts a statement, either after one that ended
+    (with ``;`` or ``}``) or at the line's first column."""
+    found, depth, open_statement = [], 0, False
+    for number, line in enumerate(text.split("\n"), start=1):
+        stripped = line.strip()
+        if depth == 0 and stripped and (not open_statement or not line[0].isspace()):
+            found.append((number, stripped))
+        depth += sum(line.count(one) for one in "([{") - sum(line.count(one) for one in ")]}")
+        if stripped:
+            open_statement = depth > 0 or not stripped.endswith((";", "}"))
+    return found
+
+
+def test_every_script_of_app_js_family_but_app_js_holds_declarations_only():
+    """R6.1.4, section 3: a script carved out of app.js loads before it and
+    holds only ``function``, ``async function``, ``class``, ``let`` and
+    ``const`` declarations at its top level, so nothing in it runs as the page
+    loads; every statement that does stays in app.js, the family's last
+    script. The reader sees such a statement - in made-up code, and in app.js's
+    own start - so it would see one in a carved-out script."""
+    made_up = js_code('"use strict";\nfunction a() {\n  b();\n}\nconst c = [\n  1,\n];\nlet d = "}" +\n  2;\n'
+                      "class E {}\nasync function f() {}\nif (d) {\n  a();\n}\nfoo(); // c\n")
+    assert [line for _, line in top_level_statements(made_up) if not DECLARES.match(line)] == [
+        '"          ";', "if (d) {", "foo();"]
+    *carved, keeper = APP_FAMILY
+    assert any(not DECLARES.match(line) for _, line in top_level_statements(code(keeper))), keeper
+    loose = [f"{script}:{number} {line}" for script in carved for number, line in top_level_statements(code(script))
+             if not DECLARES.match(line)]
+    assert loose == [], f"statements that run as the page loads, in a script carved out of app.js: {loose}"

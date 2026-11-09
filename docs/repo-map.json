@@ -16,7 +16,7 @@
   ],
   "counts": {
     "nodes": 414,
-    "edges": 2455,
+    "edges": 2456,
     "reused": 358
   },
   "node_types": [
@@ -4976,7 +4976,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "06004a7a83a17258",
+      "sha256": "04bb703a212859b9",
       "lines": 2058,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -5079,8 +5079,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b7c5f929c0d4cd98",
-      "lines": 345
+      "sha256": "2be4909f52d148b5",
+      "lines": 346
     },
     {
       "id": "pilot/HANDOFF-client-folder.md",
@@ -10372,34 +10372,55 @@
       "id": "tests/test_renderer_seams.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c5986fa491c82dbf",
-      "lines": 445,
+      "sha256": "fcf9e03247a19260",
+      "lines": 719,
       "exports": [
         "DECLARATION",
+        "DECLARES",
         "HARNESS",
+        "LOAD_PROBE",
+        "NOT_SPLIT",
+        "NOT_YET",
         "OWN",
+        "PLANNED",
         "SEAMS",
         "WORD",
         "WRITES",
         "code",
         "declared",
         "el_attributes",
+        "file_named_reads",
+        "load_in_order",
         "owners",
         "pinned",
+        "script_literals",
         "seams",
+        "split_scripts",
+        "test_a_script_that_meets_a_later_scripts_binding_at_load_fails_the_load_test",
         "test_every_named_part_of_the_renderer_is_inside_the_scripts_the_page_loads",
+        "test_every_script_of_app_js_family_but_app_js_holds_declarations_only",
+        "test_every_script_the_page_loads_runs_in_order_in_one_scope",
+        "test_no_test_reads_a_script_this_phase_splits_by_its_file_name",
         "test_no_two_scripts_declare_the_same_top_level_name",
         "test_stripped_js_takes_out_the_comments_the_reader_finds_and_nothing_inside_a_string",
         "test_the_double_defines_every_name_the_scripts_beside_it_use_of_app_js_and_of_the_scripts_it_drops",
+        "test_the_named_script_guard_fails_a_read_outside_file_named_and_a_place_that_has_rotted",
         "test_the_names_each_script_takes_from_another_are_todays_table",
         "test_the_reader_keeps_code_and_blanks_what_is_not",
         "test_the_reader_reads_every_script_the_page_loads_and_the_double",
         "test_the_writes_across_scripts_are_todays_five",
         "the_double_mode",
+        "top_level_statements",
         "writes"
       ],
-      "role": "The JavaScript analogue of test_layers: which renderer script uses which other script's top-level names, pinned as today's table with a line saying why for each (SEAMS), the writes across scripts to another script's top-level let pinned apart (WRITES, D-2's five), the harness's double of app.js held to every name the scripts loaded beside it use of app.js and of the scripts serve.mjs drops in double mode, and to app.js's EL_ATTRIBUTES, and every named part of RENDERER_SCRIPTS held inside the scripts index.html loads.",
-      "notes": "SPEC-architecture J3 (R3.2, R3.7, R3.8; D-2, D-5, D-8). The eight scripts share one global scope, so a top-level function, let or const in one is a name every other can read and nothing says which do; that is the seam a split of app.js cuts through. A use is the name as a whole word in the other script's code, read through js_code(), which blanks comments, string and template text and regular expressions and keeps a template's ${...} code; a name the using script declares itself at any depth is its own (the pilot's el, fill and show, pages.js's local active), and a parameter or object key named like a global is counted and said so in the table (fold, paths). A new cross-script name or write fails until it is added on purpose, and one no longer used is taken off. The scripts beside the double, and the ones it drops (sheet.js, whose sheetNow and sheetPress the double lacked until J3), are read from serve.mjs, every replace in its double branch accounted for. A JavaScript parser (acorn) was the rejected alternative: the gate installs nothing for node."
+      "constants": {
+        "PLANNED": "('api-client.js', 'notices.js', 'dialogs.js', 'reminder-card.js', 'review-rows.js', 'household.js', 'editor.js', 'schedule.js', 'pass.js', 'firm-loader.js', 'shell-words.js', 'logs.js', 'last-pass-watch.js', 'open-path.js', 'menu.js', 'engine.js')",
+        "NOT_YET": "('app.js', 'shell.js', 'main.js')",
+        "NOT_SPLIT": "('tooltip.js', 'pages.js', 'sheet.js', 'pilot-content.js', 'pilot.js', 'tour.js')",
+        "LOAD_PROBE": "'\\n\"use strict\";\\nconst fs = require(\"fs\");\\nconst path = require(\"path\");\\nconst vm = require(\"vm\");\\nconst [folder, listed] = process.argv.slice(2);\\nfunction standIn(held = {}) {\\n  return new Proxy(function () {}, {\\n    get(target, key) {\\n      if (Object.prototype.hasOwnProperty.call(held, key)) return held[key];\\n      if (key === Symbol.toPrimitive) return (hint) => (hint === \"number\" ? 0 : \"\");\\n      if (key === Symbol.iterator) return function* () {};\\n      if (key === \"then\") return undefined;\\n      return standIn();\\n    },\\n    set(target, key, value) { held[key] = value; return true; },\\n    apply: () => standIn(),\\n    construct: () => standIn(),\\n  });\\n}\\nconst context = vm.createContext({\\n  window: standIn(), document: standIn({ readyState: \"loading\" }), navigator: standIn(), localStorage: standIn(),\\n  console: new console.Console(process.stderr), setTimeout, clearTimeout, setInterval, clearInterval,\\n});\\nconst scripts = JSON.parse(listed);\\nfor (const name of scripts) {\\n  try {\\n    new vm.Script(fs.readFileSync(path.join(folder, name), \"utf8\"), { filename: name }).runInContext(context);\\n  } catch (err) {\\n    process.stdout.write(`${name} threw while loading: ${(err && err.stack) || err}\\\\n`);\\n    process.exit(1);\\n  }\\n}\\nprocess.stdout.write(`${scripts.length} scripts loaded\\\\n`);\\nprocess.exit(0);\\n'"
+      },
+      "role": "The JavaScript analogue of test_layers: which renderer script uses which other script's top-level names, pinned as today's table with a line saying why for each (SEAMS), the writes across scripts to another script's top-level let pinned apart (WRITES, D-2's five), the harness's double of app.js held to every name the scripts loaded beside it use of app.js and of the scripts serve.mjs drops in double mode, and to app.js's EL_ATTRIBUTES, and every named part of RENDERER_SCRIPTS held inside the scripts index.html loads; js_code's own tests and stripped_js's (the reader lives in tests/node_harness.py); the named-script guard, which fails on a test that names a script phase 6 splits by its file name outside the places FILE_NAMED lists (PLANNED names the sixteen scripts the phase creates, NOT_YET the three whose readers are not yet retargeted); and the load test, which runs every script index.html loads in order in one node context, with its two companions (a later binding met at load fails; a script carved out of app.js holds declarations only).",
+      "notes": "SPEC-architecture J3 (R3.2, R3.7, R3.8; D-2, D-5, D-8). The eight scripts share one global scope, so a top-level function, let or const in one is a name every other can read and nothing says which do; that is the seam a split of app.js cuts through. A use is the name as a whole word in the other script's code, read through js_code(), which blanks comments, string and template text and regular expressions and keeps a template's ${...} code; a name the using script declares itself at any depth is its own (the pilot's el, fill and show, pages.js's local active), and a parameter or object key named like a global is counted and said so in the table (fold, paths). A new cross-script name or write fails until it is added on purpose, and one no longer used is taken off. The scripts beside the double, and the ones it drops (sheet.js, whose sheetNow and sheetPress the double lacked until J3), are read from serve.mjs, every replace in its double branch accounted for. A JavaScript parser (acorn) was the rejected alternative: the gate installs nothing for node. SPEC-architecture-p6 P6.1 (R6.1.2-R6.1.4; P352): js_code moved byte for byte to tests/node_harness.py, where stripped_js reads comments with it. test_no_test_reads_a_script_this_phase_splits_by_its_file_name walks every tests/*.py with ast for a string literal that is, or ends with / and, a split script's name - RENDERER_SCRIPTS + MAIN_SCRIPTS + PLANNED, less the six scripts the phase does not split (NOT_SPLIT) and NOT_YET (app.js, shell.js and main.js until P6.2 and P6.3 empty and delete it) - and fails on one outside FILE_NAMED, whose places are (test file, outermost def), None for module level and \"*\" for a whole file, each with its reason; a listed place that names none (NOT_YET's names counting) fails as rotted, so an exemption never outlives its claim. PLANNED names the sixteen before they exist, so a test that names one fails from P6.1; P6.18 deletes it. test_every_script_the_page_loads_runs_in_order_in_one_scope runs every <script src> of index.html, the vendored libraries too, in one vm context with permissive stand-ins for document, window, navigator and localStorage and document.readyState loading, so a split that leaves a script meeting a later script's binding as the page loads fails in the suite; the two companions show the probe telling a later let or function met at load from the same scripts in order, and hold every script of APP_FAMILY but app.js to top-level declarations (read with js_code, the reader shown seeing app.js's own start)."
     },
     {
       "id": "tests/test_replies.py",
@@ -20547,6 +20568,12 @@
       "from": "tests/test_reminder.py",
       "to": "tracker/reminder.py",
       "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_renderer_seams.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
       "source": "derived"
     },
     {
