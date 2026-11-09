@@ -34,19 +34,21 @@ import tracker.screen_words as screen_words
 from tests.api_driver import run, sample_engagement, scan
 from tests.css_rules import GRID_PROPS, GRID_TOKEN, blocks, colour_faults, declarations, stripped, top_level
 from tests.node_harness import (
+    APP,
     APP_FAMILY,
     APP_SCRIPTS,
     COLUMN_FUNCTIONS,
     EARLY_FIRM,
     ENGINE_BRIDGE,
     FAKE_DOM,
+    MAIN_SCRIPTS,
     NODE,
     RENDERER,
     RENDERER_SCRIPTS,
-    SHELL_SCRIPTS,
     js_block,
     js_function,
     lift_line,
+    main_text,
     read,
     renderer_text,
     run_firm_load,
@@ -450,7 +452,7 @@ def test_escape_hides_a_showing_tip_first_and_leaves_the_key_to_the_page(tmp_pat
       tipFor = { id: "sort" }; e = key("Tab"); tipKey(e); out.push([hidden, tipFor === null]);
       return out;
     """
-    out = run_shell(["tipKey"], setup, probe, tmp_path, "tooltip.js")
+    out = run_shell(["tipKey"], setup, probe, tmp_path)
     assert out == [[1, None, 0, 0], [1, 0, 0], [1, False]]
 
 
@@ -622,14 +624,12 @@ def test_every_icon_has_a_name_and_a_tooltip():
     """SPEC 8.5, 14.1: each icon-only button carries data-tip-key, naming a
     vocabulary key; shell.js sets both its accessible name and its tooltip from it."""
     html = read("index.html")
-    shell = stripped_js("shell.js")
     keys = re.findall(r'<button[^>]*\bid="(sheet-close)"[^>]*data-tip-key="([\w.]+)"', html)
     assert {name for name, _key in keys} == {"sheet-close"}, "P274: the sort button says its own word, so it is not an icon-only button"
     assert re.search(r'<input[^>]*\bid="find"[^>]*data-tip-key="screen\.find"', html)
     for _name, key in keys:
         assert key.startswith("screen.")
-    named = shell[shell.index("function shellNameIcons() {"):]
-    named = named[:named.index("\n}\n")]
+    named = js_function("shellNameIcons")
     assert 'setAttribute("aria-label", words)' in named and "setTip(node, words)" in named
     # The notice's close icon is cloned from a template, so app.js names it when it draws one.
     template = html.split('<template id="notice-buttons">', 1)[1].split("</template>", 1)[0]
@@ -734,7 +734,6 @@ def test_the_apps_scripts_type_no_words_of_their_own():
     literal typed today is the label a ruling lets the page type, found
     exactly once: D-9's sentences are the API's since J5 (R5.5), and nothing
     may join that label."""
-    assert set(SHELL_SCRIPTS) <= set(APP_SCRIPTS)   # never fewer scripts than the guard read before
     assert len(RULED_LABELS) == 1
     found = [literal for name in APP_SCRIPTS for literal in typed_literals(stripped_js(name))]
     listed = [*RULED_LABELS]
@@ -806,7 +805,7 @@ def test_every_attribute_the_shell_builds_a_node_with_is_on_its_list():
     """h() is app.js's el(), which throws on an attribute it does not name
     (decision 137). A key used at a call site but missing from the list
     would throw when that node is first drawn - the harness found one."""
-    text = stripped_js("shell.js")
+    text = stripped_text()
     listed = set(re.findall(r'"([\w-]+)"', without_comments(js_block("const EL_ATTRIBUTES = new Set(["))))
     used = set(re.findall(r'"(aria-[\w-]+)":', text)) | set(re.findall(r"\b(role|tabindex|type|disabled|hidden|value|dataset|className)\s*:", text))
     used |= set(re.findall(r'\{ id: "|, id: "|\bid: ', text)) and {"id"}
@@ -815,14 +814,18 @@ def test_every_attribute_the_shell_builds_a_node_with_is_on_its_list():
 
 def test_one_keydown_listener_owns_the_keyboard():
     """SPEC 4.3: app.js keeps the document's one keydown listener and hands
-    the shell's keys to shellKey(e) first; the new files add none. Counted
-    across every script the page loads (R3.3), so the listener is found in
-    whichever one holds it. The only other document listeners are the
+    the shell's keys to shellKey(e) first; the new files add none. The
+    scripts outside app.js's family are the ones SPEC-shell added (P67) and,
+    from P6.12, firm-loader.js carved out of one of them: none holds a keydown
+    listener of any kind, on the document or on an element, while app.js's
+    family keeps the keyboard (P76). Counted across every script the page
+    loads (R3.3), so the listener is found in whichever one holds it. The only other document listeners are the
     pilot's: its terms and its tour, built at run time without touching
     app.js (P10), hold the keys in the capture phase while they are up and
     take the listener off when they close."""
-    for name in SHELL_SCRIPTS:
-        assert 'addEventListener("keydown"' not in read(name), name
+    for name in APP_SCRIPTS:
+        if name not in APP_FAMILY:
+            assert 'addEventListener("keydown"' not in read(name), name
     assert 'document.addEventListener("keydown", (e) => {' in read("app.js")   # P76: the one listener is app.js's own
     listener = js_block('document.addEventListener("keydown", (e) => {')
     assert listener.index("if (shellKey(e)) return;") < listener.index("dialogStack[dialogStack.length - 1]")
@@ -832,7 +835,7 @@ def test_one_keydown_listener_owns_the_keyboard():
 
 
 def test_the_harness_is_never_loaded_by_the_app():
-    for path in (RENDERER / "index.html", REPO / "app" / "main.js", REPO / "app" / "preload.js", REPO / "app" / "package.json"):
+    for path in (RENDERER / "index.html", *(APP / name for name in MAIN_SCRIPTS), APP / "preload.js", APP / "package.json"):
         assert "harness" not in path.read_text(encoding="utf-8"), path.name
     for path in RENDERER.iterdir():
         if path.suffix in (".js", ".css", ".html"):
@@ -1023,26 +1026,23 @@ def test_every_menu_id_the_page_answers_is_in_the_template_and_the_rest_are_the_
                 "reminders", "clients", "find", "refresh", "reset_columns", "compact_rows", "show_under_construction", "sort_now", "stop_sorting", "schedule", "repair_schedule", "remove_schedule_here", "firm_report",
                 "clear_lock", "tour", "safeguards", "terms", "error_log", "about"}
     rows = {"check", "not_requested", "another_return", "put_back", "keep_here", "edit_request", "unfile", "mark_missing", "show_in_explorer"}
-    text = read("shell.js")
-    table = text[text.index("const MENU_ANSWERS = {"):]
-    answered = set(re.findall(r"^  (\w+): ", table[:table.index("\n};\n")], flags=re.M))
+    table = js_block("const MENU_ANSWERS = {")
+    answered = set(re.findall(r"^  (\w+): ", table, flags=re.M))
     assert answered <= template, sorted(answered - template)
     assert template - answered == {"exit", "error_log"}, sorted(template - answered)
     assert not answered & rows, "the row menus' ids are pages.js's (pagesMenu), asked first"
-    assert "pagesMenu(id, message.token)" in text
+    assert "pagesMenu(id, message.token)" in renderer_text(APP_SCRIPTS)
 
 
 def test_a_menu_id_the_page_cannot_answer_is_said_and_logged():
-    text = stripped_js("shell.js")
-    body = text[text.index("function unanswered(id) {"):]
-    body = body[:body.index("\n}\n")]
+    body = js_function("unanswered")
     assert "notice(" in body and "vocab.shell.page_error" in body and "window.tracker.logError(" in body
 
 
 def test_the_shell_sends_only_the_menu_channels_messages_and_no_path():
     """SPEC 5.4: {enable, checked} (P197) and {popup, enable, token, x, y};
     the token is a key the page made, never a path."""
-    text = stripped_js("shell.js")
+    text = stripped_text()
     sends = re.findall(r"window\.tracker\.menu\.send\(([^;]*)\);", text)
     assert sorted(sends) == sorted(["{ enable: shellEnabled(), checked: shellChecked() }", "{ popup: name, enable: enable || shellEnabled(), token, x, y }"])
     assert 'shellPopup(one.popup, `crumb-${one.popup}`' in text, "a segment's token is its own name"
@@ -1503,8 +1503,7 @@ def test_every_loud_failure_of_the_old_screen_reaches_a_notice():
     assert 'keyedNotice("lock"' in app_body("showLock")
     pages = stripped_js("pages.js")
     assert "pagesHouseholdNotices(route);" in body(pages, "pagesDraw") and 'syncNotices("household"' in body(pages, "pagesHouseholdNotices")
-    shell = stripped_js("shell.js")
-    assert "firm_failed" in shell
+    assert "firm_failed" in stripped_text()
 
 
 def test_no_page_draws_a_path_as_text_or_as_a_tooltip(tmp_path):
@@ -2049,7 +2048,7 @@ def test_a_client_rows_item_is_answered_only_if_its_rule_holds_on_the_page_it_we
         await pagesClientMenu({ menu: "return" }, "edit_list");
         return [first, answered.slice()];
       })();
-    """, tmp_path, source="pages.js")
+    """, tmp_path)
     assert ran == [[], ["edit_list"]]
 
 
@@ -2112,7 +2111,7 @@ def test_the_sheet_finds_a_file_where_it_can_be_checked_and_nowhere_else(tmp_pat
         { handle: "p", decision: "Needs Review" }, { handle: "d", decision: "Not Requested" },
         { handle: "f", decision: "Filed" }, { handle: "x", decision: "File Moved" }, { handle: "m", decision: "File Moved" }] };
       return ["p", "d", "f", "x", "m", "none"].map((h) => { const found = sheetFind(state, h); return found ? found.kind : null; });
-    """, tmp_path, source="sheet.js")
+    """, tmp_path)
     assert ran == ["parked", "aside", None, None, "moved", None], "filed, marked missing and unknown files are not there to check"
 
 
@@ -2132,7 +2131,7 @@ def test_the_sheet_moves_on_only_when_the_file_it_shows_has_been_answered(tmp_pa
       const parkedNow = { paths: { engagement: "r1" }, moved: [], index: [{ handle: "m", decision: "Needs Review", seq: 2 }] };
       return [run(check(), at({})), run(check(), gone), run(check(), other), run(check({ ready: false }), gone), run({ kind: "reminder", ret: "r1", ready: true }, gone), run(null, gone),
               run(check(), at({ decision: "Not Requested" })), run(check(), at({ seq: 2 })), run(movedNow, parkedNow)];
-    """, tmp_path, source="sheet.js")
+    """, tmp_path)
     assert ran == [0, 1, 0, 0, 0, 0, 1, 1, 1]
 
 
@@ -2171,7 +2170,7 @@ def test_the_status_line_of_every_kind_of_file_says_what_and_when_it_was_receive
       const state = { index: [{ handle: "m", received: "2026-03-05" }, { handle: "p", received: "2026-03-03", code: "c" }] };
       return [sheetStatus({ kind: "moved", moved: { handle: "m" } }, state), sheetStatus({ kind: "parked", entry: state.index[1] }, state),
               sheetStatus({ kind: "aside", entry: { received: "2026-01-30" } }, state), sheetStatus({ kind: "moved", moved: { handle: "gone" } }, state)];
-    """, tmp_path, source="sheet.js")
+    """, tmp_path)
     assert ran == [["Moved by Hand", "day:2026-03-05"], ["reason:c", "day:2026-03-03"], ["Not Requested", "day:2026-01-30"], ["Moved by Hand"]]
 
 
@@ -2180,7 +2179,7 @@ def test_the_sheets_following_files_are_those_after_it_in_the_order_the_page_was
       const order = [{ ret: "a", handle: "1" }, { ret: "a", handle: "2" }, { ret: "b", handle: "3" }];
       return [sheetAfter({ order, ret: "a", handle: "1" }).map((s) => s.handle), sheetAfter({ order, ret: "b", handle: "3" }).length,
               sheetAfter({ order, ret: "z", handle: "9" }).length, sheetDraftsAfter({ order: [{ ret: "a" }, { ret: "b" }], ret: "a" }).map((s) => s.ret)];
-    """, tmp_path, source="sheet.js")
+    """, tmp_path)
     assert ran == [["2", "3"], 0, 0, ["b"]], "a file opened by hand (not in the order) has no Next"
 
 
@@ -2193,7 +2192,7 @@ def test_the_footers_buttons_are_the_secondary_then_the_primary_and_leave_the_ro
       const a = sheetFooter(parked, false); const b = sheetFooter(moved, true);
       const names = (list) => list.map((one) => ["r-dismiss", "r-file", "r-keep", "r-restore"].find((n) => one.classList.contains(n)));
       return { parked: names(a), moved: names(b), left: parked.children.length + moved.children.length };
-    """, tmp_path, source="sheet.js")
+    """, tmp_path)
     assert ran == {"parked": ["r-dismiss", "r-file"], "moved": ["r-keep", "r-restore"], "left": 0}
 
 
@@ -2397,8 +2396,8 @@ def test_a_failed_last_sort_is_a_keyed_notice_without_retry_that_clears_when_the
     assert ran["scheduled"] == [], "left as it is while a scheduled pass runs (pilot P256)"
     assert ran["worked"] == ["clear|last-sort"] and ran["none"] == ["clear|last-sort"]
     assert ran["never"] == ["clear|last-sort"] and ran["unreadable"] == ["clear|last-sort"]
-    assert "syncSortNotice();" in js_function("shellChanged", "shell.js")
-    body = js_function("syncSortNotice", "shell.js")
+    assert "syncSortNotice();" in js_function("shellChanged")
+    body = js_function("syncSortNotice")
     assert "retry" not in body and "runScan" not in body and "action" not in body
 
 
@@ -3051,7 +3050,8 @@ def test_the_app_starts_only_after_every_script_has_loaded(tmp_path):
     assert run_shell(["startWhenLoaded"], setup, probe, tmp_path) == {"loading": [0, 1], "after": 2}
     html = read("index.html")
     scripts = re.findall(r'<script src="([^"]+)"></script>', html)
-    assert scripts.index("app.js") < scripts.index("shell.js"), "the order is why the start must wait"
+    assert all(scripts.index("app.js") < scripts.index(name) for name in APP_SCRIPTS if name not in APP_FAMILY), \
+        "the order is why the start must wait"
     assert read("app.js").rstrip().endswith("startWhenLoaded(bootstrap);")
     assert not re.search(r"^bootstrap\(\);", renderer_text(APP_SCRIPTS), re.M)
 
@@ -3287,7 +3287,7 @@ def test_the_keyboard_resizes_a_focused_header_with_ctrl_shift_arrows_only():
     which acts on Ctrl+Shift+Left or Right alone (never with Alt), steps 16px
     and says the width in the polite live region; the one keydown listener
     stays app.js's."""
-    shell = read("shell.js")
+    shell = renderer_text(APP_SCRIPTS)
     assert 'e.target.closest(".col-head") && typeof pagesColumnKey === "function") return pagesColumnKey(e) === true;' in shell
     key = js_function("pagesColumnKey", "pages.js")
     assert "!e.ctrlKey || !e.shiftKey || e.altKey" in key and '"ArrowLeft"' in key and '"ArrowRight"' in key
@@ -3573,7 +3573,7 @@ def test_the_search_finds_waiting_files_on_needs_review_and_its_placeholder_says
     assert ran["check"] == {"ret": "r1", "name": "Smith W-2.pdf", "handle": "h1"} and ran["without"] == 3
     assert screen_words.SCREEN["find_placeholder"] == "Households and Returns"
     assert screen_words.SCREEN["find_placeholder_files"] == "Files, Households and Returns"
-    shell = stripped_js("shell.js")
+    shell = stripped_text()
     assert 'setAttribute("placeholder", shellRoute.level === "needs-review" ? words.find_placeholder_files : words.find_placeholder)' in shell
 
 
@@ -3597,9 +3597,8 @@ def test_the_side_panel_is_the_mocks_with_the_products_brand_and_nothing_behind_
     assert set(screen_words.SCREEN["client_types"]) == set(screen_words.CLIENT_TYPE_FORMS) and '"client_type_forms": CLIENT_TYPE_FORMS,' in (REPO / "tracker" / "api.py").read_text(encoding="utf-8")
     assert screen_words.CLIENT_TYPE_FORMS == {
         "individuals": ["1040"], "businesses": ["1120", "1120S", "1065"], "trusts": ["1041"], "nonprofits": ["990"]}
-    shell = stripped_js("shell.js")
-    soon = shell[shell.index('querySelectorAll(".side-section[data-soon]")) {\n  node.addEventListener'):]
-    soon = soon[:soon.index("\n}\n")]
+    shell = stripped_text()
+    soon = js_block('for (const node of document.querySelectorAll(".side-section[data-soon]")) {\n  node.addEventListener')
     assert 'toastWord("under_construction")' in soon and "call(" not in soon and "shellGo" not in soon
     assert '$("side-settings").addEventListener("click", () => shellAnswer("change_root"));' in shell
     css = read("shell.css")
@@ -3878,7 +3877,7 @@ def test_the_window_and_its_taskbar_button_carry_the_console_icon():
     """The unpackaged launch has no icon written into an .exe, so the window names
     the file; the app id is set before the window opens so Windows groups the
     running window with its shortcut."""
-    main = (REPO / "app" / "main.js").read_text(encoding="utf-8")
+    main = (APP / "main.js").read_text(encoding="utf-8")
     assert 'icon: path.join(__dirname, "assets", "icon.ico"),' in main
     assert (REPO / "app" / "assets" / "icon.ico").is_file()
     set_id = main.index('app.setAppUserModelId("com.jparkassociates.taxdocumentconsole");')
@@ -4010,7 +4009,7 @@ def test_the_setting_is_this_pcs_and_the_side_panel_draws_it_on_every_draw():
     """P197 rulings 4-6: kept under its own key in this PC's storage (never
     settings.json, never the engine), drawn by drawSide, answered by the menu
     and enabled from the first frame."""
-    text = stripped_js("shell.js")
+    text = stripped_text()
     assert 'const SOON_KEY = "tracker.underConstruction";' in text
     assert "drawSoon();" in js_function("drawSide")
     assert re.search(r"^drawSoon\(\);$", text, flags=re.M), "a stored hidden applies at load, before the words (review S1)"
@@ -5187,10 +5186,9 @@ def test_no_action_reads_the_counts_it_was_drawn_from():
     on a card from the return's own fresh read (P213). None of them reads the
     firm's counts, held, last or fresh - so a marked count can make no action
     act on an old number. Every write is judged under the lock in the engine."""
-    for name, source in (("showReturn", None), ("shellGo", "shell.js"), ("shellOpenState", "shell.js"),
-                         ("openCheck", "sheet.js"), ("sheetShow", "sheet.js"), ("sheetDrawCheck", "sheet.js"),
-                         ("openReminder", "sheet.js"), ("copyReminder", None), ("approveReminder", None)):
-        body = js_function(name, source)
+    for name in ("showReturn", "shellGo", "shellOpenState", "openCheck", "sheetShow", "sheetDrawCheck",
+                 "openReminder", "copyReminder", "approveReminder"):
+        body = js_function(name)
         for counts in ("shellFirm(", "shellFirmNow", "shellFirmAsOf", "shellFirmLast"):
             assert counts not in body, (name, counts)
     check = js_function("openCheck", "sheet.js")
@@ -5254,10 +5252,10 @@ def test_a_scheduled_pass_still_running_is_drawn_as_sorting_not_as_a_failure(tmp
     assert ran["own"]["text"] == ["Sorting 2 of 5"] and ran["own"]["failed"] is False
     assert ran["own"]["values"] == ["aria-valuemax", "aria-valuenow"] and ran["own"]["fillWidth"] == "40%"
     assert ran["stopping"]["text"] == ["Stopping"]
-    body = js_function("drawLastSort", "shell.js")
+    body = js_function("drawLastSort")
     assert body.index("if (scanning) {") < body.index("last.running") < body.index("words.never"), \
         "after the app's own sort, before the never check"
-    assert "scheduled" not in re.sub(r"words\.scheduled", "", stripped_js("shell.js")), "the page types no word of it"
+    assert "scheduled" not in re.sub(r"words\.scheduled", "", stripped_text()), "the page types no word of it"
 
 
 #: What lastPassStep's table says, one claim per row: held, fresh, the answer.
@@ -5336,7 +5334,7 @@ def test_the_shell_asks_list_again_once_a_scheduled_pass_has_ended(tmp_path):
     assert ran["own"]["seen"] == [], "an ask during the app's own pass calls nothing"
     assert ran["broken"]["seen"] == ["call:last-pass", "failed:boom"], "a throwing call is handed to failed once"
     assert ran["stoppedTicks"] == [] and ran["stopped"] is True, "no notice per ask once stopped"
-    assert "loadEngagements" not in re.sub(r"//.*", "", js_function("shellAskLastPass", "shell.js")), \
+    assert "loadEngagements" not in re.sub(r"//.*", "", js_function("shellAskLastPass")), \
         "the reread is the list adopted, never the start-up path"
 
 
@@ -5376,7 +5374,7 @@ def test_an_ask_before_the_first_list_or_after_a_stop_does_nothing(tmp_path):
     """, tmp_path)
     assert ran["early"] == {"seen": [], "asked": 0}, "before the first list"
     assert ran["late"] == {"seen": [], "asked": 0}, "after a stop"
-    assert re.search(r"if \(shellLastPassAsking \|\| shellLastPassStopped \|\| !vocab\) return;", js_function("shellAskLastPass", "shell.js"))
+    assert re.search(r"if \(shellLastPassAsking \|\| shellLastPassStopped \|\| !vocab\) return;", js_function("shellAskLastPass"))
 
 
 def test_a_reply_landing_after_the_apps_own_sort_began_does_nothing(tmp_path):
@@ -5452,8 +5450,8 @@ def test_an_ask_never_overlaps_itself_and_a_list_landing_clears_a_stop(tmp_path)
       })();
     """, tmp_path)
     assert ran["asked"] == 1, "an ask that arrives while one is on its way is dropped"
-    shell = stripped_js("shell.js")
-    adopt = js_function("shellAdopt", "shell.js")
+    shell = stripped_text()
+    adopt = js_function("shellAdopt")
     assert "shellLastPassStopped = false;" in adopt and "LastPass(" not in adopt, "a list landing clears a stop and arms nothing"
     assert 'window.addEventListener("focus", shellFocused);' in shell
 
@@ -5477,7 +5475,7 @@ def test_a_change_of_the_last_pass_file_asks_last_pass_once(tmp_path):
     assert ran["ended"] == ["call:last-pass", "call:list", "adopt-list"], "one ask, and the list once because a pass ended"
     assert ran["quiet"] == ["call:last-pass"], "nothing new: one ask and nothing more"
     assert ran["asked"] == 3
-    assert re.search(r"window\.tracker\.onLastPassChanged\(shellLastPassChanged\);", stripped_js("shell.js"))
+    assert re.search(r"window\.tracker\.onLastPassChanged\(shellLastPassChanged\);", stripped_text())
 
 
 def test_a_change_while_hidden_is_asked_when_the_window_is_shown(tmp_path):
@@ -5524,8 +5522,8 @@ def test_no_timer_asks_last_pass():
     """P277: nothing in the renderer times the last-pass ask (no ``setTimeout``
     reaches ``shellAskLastPass``), the polling watch and its vocabulary are
     gone, and the page is not told where the file is."""
-    shell = stripped_js("shell.js")
-    ask = js_function("shellAskLastPass", "shell.js")
+    shell = stripped_text()
+    ask = js_function("shellAskLastPass")
     assert "setTimeout" not in ask and "setInterval" not in ask
     assert not re.search(r"set(?:Timeout|Interval)\([^)]*(?:AskLastPass|LastPassChanged|shellFocused|shellShown)", shell)
     for gone in ("last_pass_watch", "shellArmLastPass", "shellWatchLastPass", "shellLastPassTimer"):
@@ -5857,7 +5855,7 @@ def test_the_schedule_sentence_is_toasted_when_the_step_registered_it(tmp_path):
     """, tmp_path)
     assert heard["a"] == [["outcome", "S", "ok", True], "setup notice"], "toasted, then the notice asked as before"
     assert heard["b"] == ["setup notice"] and heard["c"] == ["setup notice"]
-    main_js = (REPO / "app" / "main.js").read_text(encoding="utf-8")
+    main_js = main_text()
     preload = (REPO / "app" / "preload.js").read_text(encoding="utf-8")
     assert "win.webContents.send(LAUNCH_DONE_CHANNEL, {" in main_js
     assert "installed: result.installed === true," in main_js and "schedule_sentence: typeof result.schedule_sentence" in main_js
@@ -5996,7 +5994,7 @@ def test_a_refused_folder_is_one_keyed_notice_that_goes_when_a_folder_is_set(tmp
     assert ran["second"] == [["set-root", ["A different folder, please.", "refused", True]]], "replaced, not added"
     assert ran["own"] == [["set-root", ["page:odd", "failed", True]]], "an error of the page's own is said in its class sentence"
     assert ran["set"] == [] and ran["sawClear"] is True, "a folder that is set clears it"
-    cancel = js_function("setupPage", "shell.js")
+    cancel = js_function("setupPage")
     assert re.search(r'id: "setup-cancel".*?addEventListener\("click", \(\) => \{\s*clearNotice\("set-root"\);[^\n]*\n\s*shellGo\(shellBack \|\| \{ level: "overview" \}\);', cancel, re.S), \
         "Cancel clears the sentence, then goes back"
 
@@ -6004,9 +6002,9 @@ def test_a_refused_folder_is_one_keyed_notice_that_goes_when_a_folder_is_set(tmp
 def test_the_return_page_is_redrawn_only_on_a_return_route(tmp_path):
     """P262: ``shellRefresh`` (F5) and the watch's reread reach ``showReturn``
     only when the route is a return page."""
-    refresh = re.sub(r"//.*", "", js_function("shellRefresh", "shell.js"))
+    refresh = re.sub(r"//.*", "", js_function("shellRefresh"))
     assert 'if (shellRoute.level === "return") await showReturn(shellRoute.ret);' in refresh
-    reread = js_function("shellAskLastPass", "shell.js")
+    reread = js_function("shellAskLastPass")
     assert re.search(r'if \(shellRoute\.level === "return"\) \{\s*if \(dialogStack\.length === 0\) await showReturn\(shellRoute\.ret\);\s*else shellReturnStale = true;', reread)
     assert reread.count("showReturn(") == 1
 
@@ -6088,8 +6086,8 @@ def test_a_lookup_by_path_or_name_answers_what_the_scan_answered_and_follows_a_n
         assert all(all(row) for row in answers.values()), answers
     assert ran["newRet"] == "nine" and ran["goneRet"] is None and ran["goneFirm"] is None
     # No comparator or per-row call scans an array any more.
-    for name, source in (("shellReturn", "shell.js"), ("shellHousehold", "shell.js"), ("pagesFirmReturn", "pages.js"), ("pagesReturnName", "pages.js")):
-        body = js_function(name, source)
+    for name in ("shellReturn", "shellHousehold", "pagesFirmReturn", "pagesReturnName"):
+        body = js_function(name)
         assert ".find(" not in body and ".filter(" not in body, name
     returns = js_function("pagesReturnGroups", "pages.js")
     assert "index.filter(" not in returns.split("const filedBy")[1].split("for (const item of items)")[0] and "filedUnder" in returns
@@ -6242,7 +6240,7 @@ def test_search_draws_once_the_typing_pauses_and_folds_each_name_once(tmp_path):
     assert ran["cancelled"] == 0, "a hidden list is not drawn again by a keystroke already waiting"
     assert ran["enter"] == [["smi"], [["open", 1]]]
     assert ran["empty"] == 1, "an empty box hides the list at once"
-    shell = stripped_js("shell.js")
+    shell = stripped_text()
     assert '$("find").addEventListener("input", drawFoundSoon);' in shell
     folds = run_shell(["screenWords", "fold", "foldedName", "shellHousehold", "shellOwnReturns", "shellReturn", "findOptions"], PEOPLE.replace("const households", "let households").replace("const engagements", "let engagements"), """
       const real = fold; let count = 0; fold = (text) => { count += 1; return real(text); };
@@ -6287,7 +6285,7 @@ def test_the_last_pass_watch_and_the_lock_watch_send_nothing_while_the_window_is
     assert ran["hidden"] == {"asked": 0, "owed": True}, "no ask while hidden, and the change is owed"
     assert ran["shown"] == 1 and ran["owedAfter"] is False, "shown again: one ask pays it"
     assert ran["twoSecondsLater"] == 1 and ran["eightSecondsLater"] == 2 and ran["hiddenAgain"] == 2
-    shell = stripped_js("shell.js")
+    shell = stripped_text()
     assert 'window.addEventListener("focus", shellFocused);' in shell and 'document.addEventListener("visibilitychange", shellShown);' in shell
 
     lock = run_shell(["stopLockWatch", "lockWatchResume", "watchLock"], r"""
@@ -6334,7 +6332,7 @@ def test_the_small_hot_paths_do_their_work_once(tmp_path):
       handlers.pointermove({ clientX: 50 });                       // moved, then released before the frame
       handlers.pointerup();
       return { queued, afterFrame, final: widths.slice() };
-    """, tmp_path, "pages.js")
+    """, tmp_path)
     assert grip["queued"] == 1 and grip["afterFrame"] == [130]
     assert grip["final"] == [130, 140, "saved"], "the release writes what was waiting, then saves"
     app = stripped_text(APP_SCRIPTS)
@@ -6350,7 +6348,7 @@ def test_the_small_hot_paths_do_their_work_once(tmp_path):
     tip = js_function("replaceTip", "tooltip.js")
     assert tip.index("if (tipFor === null && tipWaitFor === null) return;") < tip.index("placeTip(tipFor")
     ran = run_shell(["replaceTip"], "let tipFor = null; let tipWaitFor = null; const calls = []; const placeTip = () => calls.push('place'); const hideTip = () => calls.push('hide'); const tipNode = () => null;\n",
-                    "replaceTip(); tipWaitFor = {}; replaceTip(); return calls;", tmp_path, "tooltip.js")
+                    "replaceTip(); tipWaitFor = {}; replaceTip(); return calls;", tmp_path)
     assert ran == ["hide"], "nothing showing or waiting: nothing; a tip waiting on its delay is still cancelled by a scroll"
 
 
@@ -6497,7 +6495,7 @@ def test_the_brand_band_is_the_mark_and_the_products_name_and_never_the_firms_na
         if one.is_file() and one.suffix in (".js", ".css", ".html", ".svg", ".json"):
             assert "logo.svg" not in one.read_text(encoding="utf-8"), one.name
     assert "brand" not in screen_words.SCREEN["side"]
-    assert "side.brand" not in stripped_js("shell.js")
+    assert "side.brand" not in stripped_text()
     merged, _each = _shell_rules()
     assert merged["#side-brand:not(.hidden)"]["height"] == "var(--size-bar)" and merged["#side-brand:not(.hidden)"]["background"] == "var(--brand)"
     assert merged["#side-brand img"]["width"] == merged["#side-brand img"]["height"] == "var(--size-control)"
@@ -6954,7 +6952,7 @@ def test_a_stored_density_applies_at_load_before_the_words():
     drawCompact(); in shell.js, so the first paint's outline rows are the
     chosen height; the key is its own, on this PC; the menu's id is answered
     and enabled from the first frame."""
-    text = stripped_js("shell.js")
+    text = stripped_text()
     assert 'const ROWS_KEY = "tracker.rows";' in text
     assert re.search(r"^drawCompact\(\);$", text, flags=re.M), "a stored compact applies at load, before the words"
     assert "compact_rows: () => shellToggleCompact()," in text
@@ -7343,7 +7341,7 @@ def test_f6_visits_the_notices_between_the_path_row_and_the_page_only_while_one_
     """P273: F6 cycles side panel, path row, notices, page - the notices only
     while #notices holds one - and Shift+F6 the other way; focusRegion puts
     focus on the first notice's first control; the order is the markup's."""
-    ran = run_shell(["regionOf", "f6Regions", "focusRegion", "shellKey"], lift_line("const F6_REGIONS = ", "shell.js") + F6_FAKES, """
+    ran = run_shell(["regionOf", "f6Regions", "focusRegion", "shellKey"], lift_line("const F6_REGIONS = ") + F6_FAKES, """
       const out = {};
       const cycle = (shift) => { log.length = 0; document.activeElement = things.side; for (let i = 0; i < 4; i += 1) press(shift); return [...log]; };
       out.forward = cycle(false);
@@ -7357,7 +7355,7 @@ def test_f6_visits_the_notices_between_the_path_row_and_the_page_only_while_one_
     assert ran["backward"] == ["page", "notice control", "path", "side item"]
     assert ran["noneForward"] == ["path", "page", "side item", "path"]
     assert ran["noneBackward"] == ["page", "path", "side item", "page"]
-    assert 'const F6_REGIONS = ["side", "bar", "notices", "page"];' in stripped_js("shell.js")
+    assert 'const F6_REGIONS = ["side", "bar", "notices", "page"];' in stripped_text()
     assert '"summary, .notice-act:not(:disabled)"' in js_function("focusRegion"), "the Details summary, else the action, else the dismiss"
 
 

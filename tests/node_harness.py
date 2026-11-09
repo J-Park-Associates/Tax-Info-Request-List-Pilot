@@ -72,9 +72,6 @@ RENDERER_SCRIPTS = tuple(src for src in re.findall(r'<script src="([^"]+)"', rea
 PILOT_SCRIPTS = ("pilot-content.js", "pilot.js", "tour.js")
 #: The app's own scripts: every one the page loads but the pilot's.
 APP_SCRIPTS = tuple(name for name in RENDERER_SCRIPTS if name not in PILOT_SCRIPTS)
-#: The scripts SPEC-shell added beside app.js (P67), the ones its claims about
-#: the new files name.
-SHELL_SCRIPTS = ("shell.js", "tooltip.js", "pages.js", "sheet.js")
 #: app.js and every script index.html lists between the vendored libraries and
 #: it, in load order, so app.js is its last: what a claim about app.js's code,
 #: as against the other app scripts, reads (SPEC-architecture-p6 R6.2.1). The
@@ -191,8 +188,15 @@ def js_code(text: str) -> str:
     return "".join(out)
 
 
+#: The main process's entry point: the file package.json's ``main`` names, which
+#: Electron starts and which a test that runs the main process under node runs
+#: (SPEC-architecture-p6 R6.3.5). Derived, so the claim "this is the entry" is
+#: package.json's, and no test names the file.
+MAIN_ENTRY = APP / json.loads((APP / "package.json").read_text(encoding="utf-8"))["main"]
+
+
 def _main_scripts() -> tuple[str, ...]:
-    """main.js and every script of ``app/`` it requires by a ``"./name"``
+    """The entry point (:data:`MAIN_ENTRY`) and every script of ``app/`` it requires by a ``"./name"``
     string, and every one those require, in the order each is first required,
     as node loads them. A require is read from the code (:func:`js_code`), so
     one in a comment is not one; ``./package.json`` is data, not a script."""
@@ -208,7 +212,7 @@ def _main_scripts() -> tuple[str, ...]:
             if required.startswith("./") and "/" not in required[2:] and not required.endswith(".json"):
                 walk(required[2:] if required.endswith(".js") else f"{required[2:]}.js")
 
-    walk("main.js")
+    walk(MAIN_ENTRY.name)
     return tuple(order)
 
 
@@ -411,13 +415,10 @@ def store_functions() -> str:
     return js_function("storeRead") + "\n" + js_function("storeWrite")
 
 
-def run_shell(functions: list[str], setup: str, probe: str, tmp_path: Path, source: str = "shell.js"):
+def run_shell(functions: list[str], setup: str, probe: str, tmp_path: Path):
     """Lift the named functions out of the app's scripts as they are, each
     found by name wherever it sits (:func:`js_function`), put fakes for what
-    app.js provides around them, and return what the probe prints. ``source``
-    is accepted and no longer read: P6.2 and P6.3 retarget the callers that
-    still name a script, and P6.3 removes it (SPEC-architecture-p6 R6.1.1,
-    R6.3.4)."""
+    app.js provides around them, and return what the probe prints."""
     if NODE is None:
         pytest.skip("node is not on PATH (CI installs it)")
     lifted = "\n".join(js_function(name) for name in functions)
@@ -615,9 +616,8 @@ def run_pages_dom(probe: str, tmp_path: Path, setup: str = "", functions=None):
         *COLUMN_FUNCTIONS, *LONG_LIST_FUNCTIONS,
     ]
     wanted = [*wanted, *[name for name in ENGINE_FUNCTIONS if name not in wanted]]
-    shell = read("shell.js")
-    consts = lift_line("const EL_ATTRIBUTES = new Set([") + js_function("el") + "\n" + shell[shell.index("const SVG_NS = "):shell.index("\n", shell.index("const SVG_NS = "))]
-    lifted = consts + "\n" + pages_consts() + "\n" + store_functions() + "\n" + "\n".join(js_function(name, "pages.js" if f"function {name}(" in read("pages.js") else "shell.js") for name in wanted)
+    consts = lift_line("const EL_ATTRIBUTES = new Set([") + js_function("el") + "\n" + lift_line("const SVG_NS = ")
+    lifted = consts + "\n" + pages_consts() + "\n" + store_functions() + "\n" + "\n".join(js_function(name) for name in wanted)
     script = tmp_path / "pages_probe.js"
     script.write_text(f"{FAKE_DOM}\n{PAGE_WORDS}\n{RETURN_STATE}\n{setup}\n{lifted}\nprocess.stdout.write(JSON.stringify((() => {{ {probe} }})()));\n",
                       encoding="utf-8", newline="\n")
@@ -638,7 +638,7 @@ def run_notices(probe: str, tmp_path: Path, vocab_notices: str = "{}"):
     recorded."""
     if NODE is None:
         pytest.skip("node is not on PATH (CI installs it)")
-    lifted = "\n".join([js_function(name) for name in NOTICE_FUNCTIONS] + [js_function("shortNotice", "shell.js"),
+    lifted = "\n".join([js_function(name) for name in NOTICE_FUNCTIONS] + [js_function("shortNotice"),
                                                                                        js_function("pagesHouseholdNotices", "pages.js")])
     harness = (REPO / "pilot" / "harness" / "stub.js").read_text(encoding="utf-8")
     mirror = json.dumps(api.vocab())
@@ -1293,8 +1293,7 @@ def run_menu(tmp_path, steps, **scenario) -> dict:
     harness = tmp_path / "menu_harness.js"
     harness.write_text(MENU_HARNESS, encoding="utf-8", newline="\n")
     done = subprocess.run(
-        [_node(), str(harness), str(REPO / "app" / "main.js"),
-         json.dumps({"steps": steps, **scenario})],
+        [_node(), str(harness), str(MAIN_ENTRY), json.dumps({"steps": steps, **scenario})],
         capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)

@@ -69,7 +69,6 @@ from tests.node_harness import (
     PILOT_SCRIPTS,
     RENDERER_SCRIPTS,
     REPO,
-    SHELL_SCRIPTS,
     js_code,
     read,
     stripped_js,
@@ -330,10 +329,9 @@ def test_every_named_part_of_the_renderer_is_inside_the_scripts_the_page_loads()
     """R3.2: each list of scripts a claim covers is the page's own list or a
     part of it, and the app's scripts and the pilot's are the whole of it
     between them."""
-    for part in (APP_SCRIPTS, PILOT_SCRIPTS, SHELL_SCRIPTS):
+    for part in (APP_SCRIPTS, PILOT_SCRIPTS):
         assert part and set(part) <= set(RENDERER_SCRIPTS), part
         assert len(set(part)) == len(part), part
-    assert set(SHELL_SCRIPTS) <= set(APP_SCRIPTS)
     assert sorted((*APP_SCRIPTS, *PILOT_SCRIPTS)) == sorted(RENDERER_SCRIPTS)
     assert set(APP_FAMILY) <= set(APP_SCRIPTS) and APP_FAMILY[-1] in APP_SCRIPTS
     assert len(set(RENDERER_SCRIPTS)) == len(RENDERER_SCRIPTS)
@@ -494,10 +492,6 @@ NOT_SPLIT = ("tooltip.js", "pages.js", "sheet.js", "pilot-content.js", "pilot.js
 FILE_NAMED: dict[tuple[str, str | None], str] = {
     ("node_harness.py", None):
         "APP_FAMILY is app.js and the scripts listed before it, so it names app.js as the script the family ends at.",
-    ("node_harness.py", "_main_scripts"):
-        "MAIN_SCRIPTS starts at main.js, the main process's entry (package.json's main), and follows what it requires.",
-    ("node_harness.py", "run_menu"):
-        "run_menu runs main.js itself under node, as Electron starts it, so it names the entry point.",
     ("test_repo_map.py", "*"):
         "The made-up repositories the map's tests build name their own files, app.js and main.js among them.",
     ("test_renderer_seams.py", None):
