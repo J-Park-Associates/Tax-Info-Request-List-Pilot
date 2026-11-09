@@ -26,7 +26,7 @@ from tests.node_harness import (
     main_function,
     main_text,
     renderer_text,
-    stripped_js,
+    stripped_text,
 )
 from tests.plugin_session import child_env
 from tests.source_pins import calls_of, py_function
@@ -127,10 +127,13 @@ def test_the_renderer_calls_only_commands_the_api_has_and_types_no_flag():
     fails, and so does a ``withEng(`` whose argument is not a literal, the
     pass's command apart. A call whose arguments are a variable
     (``call(args)``, ``call(args, payload)``, ``call(...built)``) is not
-    read: its command is checked only where that variable is built through
-    ``withEng``, and one built any other way (``rollHouseholdCall``'s
-    ``roll-household``) is not checked here. The pass's command is the
-    vocabulary's
+    read: its command is checked where that variable is built - through
+    ``withEng``, or as an array literal whose second element is the
+    engagement flag (``rollHouseholdCall``'s ``["roll-household",
+    vocab.engagement_flag, ...]``), whose first element is read as a
+    ``call([``'s is (R6.4.4); the one such array whose first element is
+    neither is ``withEng``'s own, its parameter, read at every call. The
+    pass's command is the vocabulary's
     (test_run_now_is_cut_off_only_at_the_run_limit_its_own_first_line_states)."""
     import tracker.api as api
 
@@ -139,9 +142,15 @@ def test_the_renderer_calls_only_commands_the_api_has_and_types_no_flag():
     constants = dict(re.findall(r'\bconst ([A-Z][A-Z_]*) = "([a-z-]+)";', js))
     unread = [one for one in commands if not re.fullmatch(r'"[a-z-]+"', one) and one not in constants]
     assert unread == [], (unread, constants)
+    flagged = re.findall(r'\[\s*([^\[\],]+?)\s*,\s*vocab\.engagement_flag\b', js)
+    handed = re.findall(r'\bconst withEng = \((\w+)\) =>', js)
+    assert len(handed) == 1, handed
+    assert [one for one in flagged if not re.fullmatch(r'"[a-z-]+"', one) and one not in constants] == handed, flagged
     engaged = re.findall(r'\bwithEng\(([^)]*)\)', js)
     assert [one for one in engaged if not re.fullmatch(r'"[a-z-]+"', one)] == ["vocab.pass_command"], engaged
-    called = {constants.get(one, one.strip('"')) for one in commands} | {one.strip('"') for one in engaged if one[0] == '"'}
+    called = ({constants.get(one, one.strip('"')) for one in commands}
+              | {constants.get(one, one.strip('"')) for one in flagged if one not in handed}
+              | {one.strip('"') for one in engaged if one[0] == '"'})
     assert called <= set(api.COMMANDS), called - set(api.COMMANDS)
     # The four a person presses on a card, each one an API command and none
     # of them a path the page walks itself (decisions 77, 110).
@@ -1077,12 +1086,15 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
 
     Read over every app script (R3.3, D-5), so a word typed in code that
     moves out of app.js is found where it lands. The pilot's scripts are
-    left out, as the typed-words guard leaves them: pilot-content.js is the
-    pilot's wording by design, and test_pilot holds it. app.js is read as it
-    always was, comments and all. The others are read without their
-    comments, and there a bare word is looked for as a whole word: a name
-    such as pages.js's menu id ``not_requested`` holds "requested" and puts
-    no word on screen."""
+    left out: pilot-content.js is the pilot's wording by design, and
+    test_pilot holds it. Every app script is read the same way (R6.4.5):
+    its code only, without its comments, a quoted word as quoted and a bare
+    word as a whole word. A comment puts no word on screen, and neither
+    does a longer identifier that holds one (pages.js's menu id
+    ``not_requested`` holds "requested"); and a rule tied to one file -
+    app.js read with its comments and by substring, as it was - would stop
+    covering its code as that code leaves it at the split, the silent loss
+    this phase designs out."""
     from tracker.api import _slug
     from tracker.index import DUPLICATE, FILE_MOVED, FILED, NEEDS_REVIEW, NOT_REQUESTED
     from tracker.layout import INBOX_DIR_NAME
@@ -1101,17 +1113,14 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
     from tracker.scheduling import DEFAULT_START
     from tracker.settings import EXAMPLE_ROOT
 
-    app_js = renderer_text(APP_FAMILY)
-    others = "\n".join(stripped_js(name) for name in APP_SCRIPTS if name not in APP_FAMILY)
-    js = "\n".join((app_js, others))
+    js = stripped_text(APP_SCRIPTS)
     html = read("app/renderer/index.html")
     for literal in (*Status.ALL, *Override.ALL, FILED, NEEDS_REVIEW, DUPLICATE, NOT_REQUESTED,
                     FILE_MOVED, DEFAULT_START,
                     ", ".join(DEFAULT_EXTENSIONS), "looks like", UNSCANNED_LABEL,
                     _slug(UNSCANNED_LABEL), EXPECTED_PATTERN.split("{")[1].split("}")[1].strip()):
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
-        assert literal not in app_js, literal
-        assert not re.search(rf"(?<!\w){re.escape(literal)}(?!\w)", others), literal
+        assert not re.search(rf"(?<!\w){re.escape(literal)}(?!\w)", js), literal
     for literal in (*HEADERS, YES, NO, ANY_EXTENSION):
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
     # The dashboard's own table heads its columns in plain English, so the
