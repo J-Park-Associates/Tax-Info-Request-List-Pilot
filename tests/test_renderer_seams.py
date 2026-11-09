@@ -30,8 +30,11 @@ by the word; the table says where (``fold``, ``paths``).
 The rejected alternative was a JavaScript parser (acorn, as the audit used).
 The gate installs nothing for node, and a vendored parser would be a second
 large file of someone else's code to keep; the scripts are written plainly
-enough that the reader below - strings, templates, comments and regular
-expressions - is all the claim needs, and its own tests say what it does.
+enough that the reader - strings, templates, comments and regular
+expressions - is all the claim needs, and its own tests say what it does. It
+is :func:`tests.node_harness.js_code`, moved there so every reader of a
+script's code reads it one way (SPEC-architecture-p6 R6.1.2); its tests stay
+here.
 
 The lists of scripts a claim covers are :data:`tests.node_harness.RENDERER_SCRIPTS`
 - the ones ``index.html`` loads - or a named part of it (R3.2), so a part that
@@ -41,116 +44,9 @@ named a script the page does not load would be a claim about nothing.
 import re
 from functools import cache
 
-from tests.node_harness import APP_SCRIPTS, PILOT_SCRIPTS, RENDERER_SCRIPTS, REPO, SHELL_SCRIPTS, read
+from tests.node_harness import APP_SCRIPTS, PILOT_SCRIPTS, RENDERER_SCRIPTS, REPO, SHELL_SCRIPTS, js_code, read
 
 HARNESS = REPO / "pilot" / "harness"
-
-#: A word after which a ``/`` begins a regular expression rather than a division.
-_BEFORE_A_REGEX = {"return", "typeof", "case", "do", "else", "in", "of", "new", "delete", "void",
-                   "throw", "instanceof", "yield", "await"}
-
-
-def js_code(text: str) -> str:
-    """The script's code alone: its comments, the insides of its strings, the
-    text of its template literals and its regular expressions blanked to
-    spaces, and the code inside a template's ``${...}`` kept. The length and
-    every newline are kept, so a place in it is a place in the script.
-
-    A ``/`` begins a regular expression after an operator, an opening
-    bracket, a comma or a keyword such as ``return``, and is a division after
-    a name, a number or a closing bracket - the rule the scripts are written
-    to. An unclosed string, template or regular expression is an error, not a
-    guess."""
-    out = list(text)
-    n = len(text)
-    depth = [0]   # open braces at each level of code; a template's ${ opens a level
-
-    def blank(start: int, end: int) -> None:
-        for k in range(start, end):
-            if out[k] != "\n":
-                out[k] = " "
-
-    def template(i: int) -> tuple[int, bool]:
-        """From just inside a template's text: past its closing backtick
-        (False), or past a ``${`` that opens code inside it (True)."""
-        start = i
-        while i < n:
-            if text[i] == "\\":
-                i += 2
-            elif text[i] == "`":
-                blank(start, i)
-                return i + 1, False
-            elif text.startswith("${", i):
-                blank(start, i)
-                return i + 2, True
-            else:
-                i += 1
-        raise ValueError(f"an unclosed template literal at {start}")
-
-    def regex_may_start(i: int) -> bool:
-        j = i - 1
-        while j >= 0 and text[j] in " \t\r\n":
-            j -= 1
-        if j < 0 or text[j] in "(,=:[!&|?{};+-*%<>~^":
-            return True
-        if text[j].isalnum() or text[j] in "_$":
-            k = j
-            while k >= 0 and (text[k].isalnum() or text[k] in "_$"):
-                k -= 1
-            return text[k + 1:j + 1] in _BEFORE_A_REGEX
-        return False
-
-    i = 0
-    while i < n:
-        c = text[i]
-        if text.startswith("//", i):
-            end = text.find("\n", i)
-            end = n if end < 0 else end
-            blank(i, end)
-            i = end
-        elif text.startswith("/*", i):
-            end = text.index("*/", i + 2) + 2
-            blank(i, end)
-            i = end
-        elif c in "'\"":
-            j = i + 1
-            while text[j] != c:
-                if text[j] == "\n":
-                    raise ValueError(f"an unclosed string at {i}")
-                j += 2 if text[j] == "\\" else 1
-            blank(i + 1, j)
-            i = j + 1
-        elif c == "`":
-            i, opened = template(i + 1)
-            if opened:
-                depth.append(0)
-        elif c == "/" and regex_may_start(i):
-            j, in_class = i + 1, False
-            while text[j] != "/" or in_class:
-                if text[j] == "\n":
-                    raise ValueError(f"an unclosed regular expression at {i}")
-                if text[j] == "\\":
-                    j += 1
-                elif text[j] == "[":
-                    in_class = True
-                elif text[j] == "]":
-                    in_class = False
-                j += 1
-            blank(i + 1, j)
-            i = j + 1
-        elif c == "{":
-            depth[-1] += 1
-            i += 1
-        elif c == "}" and depth[-1] == 0 and len(depth) > 1:
-            depth.pop()
-            i, opened = template(i + 1)
-            if opened:
-                depth.append(0)
-        else:
-            if c == "}":
-                depth[-1] -= 1
-            i += 1
-    return "".join(out)
 
 
 #: A top-level declaration, as R3.7 reads one: at the start of its line.
