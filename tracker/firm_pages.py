@@ -296,8 +296,8 @@ def _folder_name(path: str) -> str:
 #: which ``trim()`` keeps. So a cut the window draws is made with this set
 #: (SPEC-architecture-p6 R6.6.1, P355); ``tests/test_shell.py`` holds it to the
 #: characters ``trim()`` strips, enumerated under node.
-PAGE_TRIM = ("\t\n\v\f\r          "
-             "        　﻿")
+PAGE_TRIM = ("\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006"
+             "\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff")
 
 
 def taxpayer(name: str, form: str, *, chars: str | None = None) -> str:

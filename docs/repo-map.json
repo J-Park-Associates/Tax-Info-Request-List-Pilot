@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 414,
     "edges": 2467,
-    "reused": 349
+    "reused": 359
   },
   "node_types": [
     "artifact",
@@ -1011,8 +1011,8 @@
       "id": "tracker/firm_pages.py",
       "type": "module",
       "layer": "core",
-      "sha256": "3c7e5d178f100217",
-      "lines": 734,
+      "sha256": "9f29c01788ec43d3",
+      "lines": 732,
       "exports": [
         "Ask",
         "CELLS",
@@ -11493,7 +11493,7 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0206cc24fe2c68fb",
+      "sha256": "6b91eb9515dda58e",
       "lines": 8583,
       "exports": [
         "CARD_HOUSEHOLD",

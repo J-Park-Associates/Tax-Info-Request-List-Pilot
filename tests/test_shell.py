@@ -8511,7 +8511,7 @@ def test_the_engines_taxpayer_form_and_count_words_are_the_pages(tmp_path):
 
     words = api._firm_words()
     vocab_words = api.vocab()
-    trims = [("1040 - ﻿John Park", "1040"), ("1040 - John Park﻿", "1040"), ("1040 - \x85John Park", "1040"), ("1040 - John Park\x85", "1040"),
+    trims = [("1040 - \ufeffJohn Park", "1040"), ("1040 - John Park\ufeff", "1040"), ("1040 - \x85John Park", "1040"), ("1040 - John Park\x85", "1040"),
              ("1040 - \x1cJohn Park", "1040"), ("1040 - John Park\x1c", "1040")]
     names = [("1040 - John & Maria Park", "1040"), ("1120-S - Rivera Design LLC", "1120S"), ("1120S - Rivera Design LLC", "1120-S"), ("1040 - John Park", "1065"),
              ("John Park 1040", "1040"), ("1040 - John Park", ""), ("1040 -", "1040"), ("1040 - 1040 - Twice", "1040"), ("990 - Trust of A - B", "990"), ("", "1040"),
