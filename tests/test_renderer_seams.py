@@ -684,18 +684,35 @@ def test_a_script_that_meets_a_later_scripts_binding_at_load_fails_the_load_test
 #: A top-level statement that declares and runs nothing as the page loads.
 DECLARES = re.compile(r"(?:async function|function|class|let|const)\b")
 
+#: After a ``}`` that brings the depth back to 0, a word that starts a new
+#: statement: not one that carries the statement on (``} else {``), and not a
+#: template's next ``${``, whose code :func:`js_code` keeps.
+AFTER_A_BRACE = re.compile(r"(?!(?:else|catch|finally|instanceof|in)\b|\$\{)[A-Za-z_$]")
+
 
 def top_level_statements(text: str) -> list[tuple[int, str]]:
     """(line, first line) of each top-level statement of a script's code
-    (:func:`js_code`'s, so brackets in strings and comments are gone): a line
-    at bracket depth 0 that starts a statement, either after one that ended
-    (with ``;`` or ``}``) or at the line's first column."""
+    (:func:`js_code`'s, so brackets in strings and comments are gone), the
+    first line read from where the statement starts. One starts on a line at
+    bracket depth 0, either after one that ended (with ``;`` or ``}``) or at
+    the line's first column; and within a line, at the code after a ``;`` at
+    depth 0, or at a word after a ``}`` that brings the depth back to 0
+    (:data:`AFTER_A_BRACE`), so ``const a = 1; init();`` is two statements
+    and the second is read."""
     found, depth, open_statement = [], 0, False
     for number, line in enumerate(text.split("\n"), start=1):
         stripped = line.strip()
         if depth == 0 and stripped and (not open_statement or not line[0].isspace()):
             found.append((number, stripped))
-        depth += sum(line.count(one) for one in "([{") - sum(line.count(one) for one in ")]}")
+        for column, one in enumerate(line):
+            if one in "([{":
+                depth += 1
+            elif one in ")]}":
+                depth -= 1
+            if depth == 0 and one in ";}":
+                rest = line[column + 1:].strip()
+                if rest and (one == ";" or AFTER_A_BRACE.match(rest)):
+                    found.append((number, rest))
         if stripped:
             open_statement = depth > 0 or not stripped.endswith((";", "}"))
     return found
@@ -706,12 +723,15 @@ def test_every_script_of_app_js_family_but_app_js_holds_declarations_only():
     holds only ``function``, ``async function``, ``class``, ``let`` and
     ``const`` declarations at its top level, so nothing in it runs as the page
     loads; every statement that does stays in app.js, the family's last
-    script. The reader sees such a statement - in made-up code, and in app.js's
-    own start - so it would see one in a carved-out script."""
+    script. The reader sees such a statement - in made-up code, where one also
+    follows a declaration on its line, and in app.js's own start - so it would
+    see one in a carved-out script."""
     made_up = js_code('"use strict";\nfunction a() {\n  b();\n}\nconst c = [\n  1,\n];\nlet d = "}" +\n  2;\n'
-                      "class E {}\nasync function f() {}\nif (d) {\n  a();\n}\nfoo(); // c\n")
+                      "class E {}\nasync function f() {}\nif (d) {\n  a();\n} else {\n  b();\n}\nfoo(); // c\n"
+                      "const g = 1; h();\nfunction i() {}  j();\nconst k = [\n  1,\n]; l();\n"
+                      "const m = `${d} and ${g}`;\n")
     assert [line for _, line in top_level_statements(made_up) if not DECLARES.match(line)] == [
-        '"          ";', "if (d) {", "foo();"]
+        '"          ";', "if (d) {", "foo();", "h();", "j();", "l();"]
     *carved, keeper = APP_FAMILY
     assert any(not DECLARES.match(line) for _, line in top_level_statements(code(keeper))), keeper
     loose = [f"{script}:{number} {line}" for script in carved for number, line in top_level_statements(code(script))

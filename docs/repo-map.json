@@ -10372,9 +10372,10 @@
       "id": "tests/test_renderer_seams.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "fcf9e03247a19260",
-      "lines": 719,
+      "sha256": "0e59809bcbd14b5b",
+      "lines": 739,
       "exports": [
+        "AFTER_A_BRACE",
         "DECLARATION",
         "DECLARES",
         "HARNESS",
