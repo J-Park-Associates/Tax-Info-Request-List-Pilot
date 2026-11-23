@@ -5,4 +5,4 @@
 # which the app does not ship; its real runtime dependencies are listed in
 # requirements.txt instead, with the headless OpenCV. Nothing else belongs
 # in this file.
-rapidocr==3.9.2
+rapidocr==3.10.0
